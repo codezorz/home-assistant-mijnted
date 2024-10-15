@@ -3,7 +3,7 @@ import json
 import base64
 from homeassistant import core
 from datetime import datetime, timedelta
-from .const import DOMAIN, LOGGER, BASE_PATH, AUTH_PATH
+from .const import DOMAIN
 from .sensor import MijnTedSensor
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -56,3 +56,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
+
