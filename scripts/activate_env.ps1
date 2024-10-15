@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 
 # Construct the path to the mijnted_env activation script
-$activateScript = Join-Path $PSScriptRoot "..\..\mijnted_env\Scripts\Activate.ps1"
+$activateScript = Join-Path $PSScriptRoot "..\mijnted_env\Scripts\Activate.ps1"
 
 # Check if the activation script exists
 if (-not (Test-Path $activateScript)) {
