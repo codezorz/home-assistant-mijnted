@@ -23,7 +23,7 @@ This custom component integrates MijnTed devices with Home Assistant, allowing y
 2. In Home Assistant, go to HACS > Integrations.
 3. Click on the three dots in the top right corner and select "Custom repositories".
 4. Enter the following information:
-   - URL: `https://github.com/hackzorz/home-assistant-mijnted`
+   - URL: `https://github.com/codezorz/home-assistant-mijnted`
    - Category: Integration
 5. Click "Add".
 6. Search for "MijnTed" in HACS and install it.

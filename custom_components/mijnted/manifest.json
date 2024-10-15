@@ -1,8 +1,8 @@
 {
-    "codeowners": ["@hackzorz"],
+    "codeowners": ["@codezorz"],
     "config_flow": true,
     "documentation": "https://www.example.com",
-    "issue_tracker": "https://github.com/hackzorz/mijnted/issues",
+    "issue_tracker": "https://github.com/codezorz/mijnted/issues",
     "dependencies": [],
     "domain": "mijnted",
     "iot_class": "cloud_polling",
