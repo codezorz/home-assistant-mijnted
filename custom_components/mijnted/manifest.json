@@ -1,0 +1,15 @@
+{
+    "codeowners": ["@hackzorz"],
+    "config_flow": true,
+    "documentation": "https://www.example.com",
+    "issue_tracker": "https://github.com/hackzorz/mijnted/issues",
+    "dependencies": [],
+    "domain": "mijnted",
+    "iot_class": "cloud_polling",
+    "name": "MijnTed",
+    "requirements": [],
+    "ssdp": [],
+    "zeroconf": [],
+    "homekit": {},
+    "version": "0.1.0"
+}

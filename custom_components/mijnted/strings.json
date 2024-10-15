@@ -1,0 +1,61 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Fill in your MijnTed credentials",
+        "data": {
+          "username": "MijnTed account username",
+          "password": "MijnTed account password",
+          "client_id": "MijnTed account client-id",
+          "polling_interval": "Polling interval (seconds, default: 3600)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate with your MijnTed credentials",
+        "data": {
+          "username": "MijnTed account username",
+          "password": "MijnTed account password",
+          "client_id": "MijnTed account client-id",
+          "polling_interval": "Polling interval (seconds, default: 3600)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect, please try again",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error",
+      "access_token_payload_missing": "Access token payload is missing",
+      "failed_delivery_types": "Failed to get delivery types",
+      "failed_energy_usage": "Failed to get energy usage",
+      "failed_last_data_update": "Failed to get last data update",
+      "failed_filter_status": "Failed to get filter status",
+      "failed_usage_insight": "Failed to get usage insight"
+    },
+    "abort": {
+      "already_configured": "Device is already configured",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "mijnted_options": {
+        "data": {
+          "polling_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "energy_usage": {
+        "name": "Energy usage"
+      },
+      "last_data_update": {
+        "name": "Last data update"
+      },
+      "filter": {
+        "name": "Filter"
+      }
+    }
+  }
+}
