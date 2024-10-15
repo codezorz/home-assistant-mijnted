@@ -1,6 +1,7 @@
 import aiohttp
 import async_timeout
 from datetime import datetime
+from .const import BASE_URL, AUTH_URL
 
 class MijntedApi:
     def __init__(self, username, password, client_id):
@@ -9,8 +10,8 @@ class MijntedApi:
         self.client_id = client_id
         self.session = None
         self.access_token = None
-        self.auth_url = "https://auth.mijnted.nl/oauth/token"
-        self.base_url = "https://ted-prod-function-app.azurewebsites.net/api"
+        self.auth_url = AUTH_URL
+        self.base_url = BASE_URL
         self.residential_unit = None
         self.delivery_type = None
         self.residential_units_claim = "https://ted-prod-function-app.azurewebsites.net/residential_units"

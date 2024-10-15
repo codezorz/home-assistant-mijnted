@@ -3,8 +3,8 @@ from homeassistant.const import Platform
 from datetime import timedelta
 
 DOMAIN = "mijnted"
-BASE_PATH = "ted-prod-function-app.azurewebsites.net/api"
-AUTH_PATH = "auth.mijnted.nl"
+BASE_URL = "https://ted-prod-function-app.azurewebsites.net/api"
+AUTH_URL = "https://auth.mijnted.nl/oauth/token"
 LOGGER = logging.getLogger(__package__)
 PLATFORMS = [ Platform.SENSOR ]
 DEFAULT_POLLING_INTERVAL = timedelta(hours=1)
