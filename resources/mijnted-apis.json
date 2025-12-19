@@ -474,7 +474,7 @@
                     "path": "/",
                     "sameSite": "none",
                     "secure": true,
-                    "value": "s%3Av0%3A34ec8743-e3ef-4c87-8093-14a01e4692de.%2B2G80CjnDttQ45jFTkgu1cAQM1fH2Ngu%2FHRxf5bvOrc"
+                    "value": "<cookie_value>"
                 },
                 {
                     "creation": "2023-10-07T11:08:24.221Z",
@@ -488,7 +488,7 @@
                     "maxAge": 31557600,
                     "path": "/",
                     "secure": true,
-                    "value": "s%3Av0%3A34ec8743-e3ef-4c87-8093-14a01e4692de.%2B2G80CjnDttQ45jFTkgu1cAQM1fH2Ngu%2FHRxf5bvOrc"
+                    "value": "<cookie_value>"
                 },
                 {
                     "creation": "2023-10-07T11:08:24.222Z",
@@ -502,7 +502,7 @@
                     "path": "/",
                     "sameSite": "none",
                     "secure": true,
-                    "value": "0467uPEsGlDztbSueQXpT6mvsfA_046eycTeI.PLFKs-1728928213-1.0.1.1-.QCHKYDDVSscMpvKI.ibUDeYzfHV8oYgk6dg0V09rxRyshmPqNgOudKIcdTN3i2H"
+                    "value": "<cookie_value>"
                 }
             ],
             "created": 1696676403898,

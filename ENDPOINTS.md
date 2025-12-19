@@ -52,14 +52,14 @@ All data endpoints require authentication via Bearer token in the `Authorization
 **Description**: Retrieves the available delivery types for a residential unit.
 
 **Parameters**:
-- `residential_unit` (path): The residential unit ID (e.g., "150257")
+- `residential_unit` (path): The residential unit ID (e.g., "123456")
 
 **Response**: Array of delivery type IDs
 ```json
 [1, 2]
 ```
 
-**Example**: `GET /api/address/deliveryTypes/150257`
+**Example**: `GET /api/address/deliveryTypes/123456`
 
 ---
 
@@ -101,8 +101,8 @@ All data endpoints require authentication via Bearer token in the `Authorization
 ```
 
 **Examples**:
-- `GET /api/residentialUnitUsage/2025/150257/1`
-- `GET /api/residentialUnitUsage/2024/150257/1`
+- `GET /api/residentialUnitUsage/2025/123456/1`
+- `GET /api/residentialUnitUsage/2024/123456/1`
 
 **Notes**:
 - The `monthlyEnergyUsages` array contains monthly data for the specified year
@@ -127,7 +127,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 **Content-Type**: `text/plain; charset=utf-8`
 
-**Example**: `GET /api/getLastSyncDate/150257/1/2025`
+**Example**: `GET /api/getLastSyncDate/123456/1/2025`
 
 ---
 
@@ -145,20 +145,20 @@ All data endpoints require authentication via Bearer token in the `Authorization
 ```json
 [
   {
-    "measurementDeviceId": 689292,
+    "measurementDeviceId": 123456,
     "room": "KA",
-    "deviceId": 689292,
-    "deviceNumber": "21724686",
+    "deviceId": 123456,
+    "deviceNumber": "12345678",
     "currentReadingValue": 145.0000,
     "unitOfMeasure": "Einheiten",
     "deactivationDate": "",
     "radiographicMeter": true
   },
   {
-    "measurementDeviceId": 730479,
+    "measurementDeviceId": 789012,
     "room": "W",
-    "deviceId": 730479,
-    "deviceNumber": "15837773",
+    "deviceId": 789012,
+    "deviceNumber": "87654321",
     "currentReadingValue": 785.0000,
     "unitOfMeasure": "Einheiten",
     "deactivationDate": "",
@@ -167,7 +167,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 ]
 ```
 
-**Example**: `GET /api/deviceStatuses/150257/1/2025`
+**Example**: `GET /api/deviceStatuses/123456/1/2025`
 
 ---
 
@@ -192,7 +192,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 }
 ```
 
-**Example**: `GET /api/usageInsight/2025/150257/1`
+**Example**: `GET /api/usageInsight/2025/123456/1`
 
 ---
 
@@ -212,7 +212,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 **Content-Type**: `text/plain; charset=utf-8`
 
-**Example**: `GET /api/activeModel/150257/1`
+**Example**: `GET /api/activeModel/123456/1`
 
 ---
 
@@ -227,20 +227,20 @@ All data endpoints require authentication via Bearer token in the `Authorization
 **Response**: JSON object with residential unit details
 ```json
 {
-  "id": 150257,
-  "billingUnitId": 2956,
-  "appartmentNo": "50",
+  "id": 123456,
+  "billingUnitId": 7890,
+  "appartmentNo": "12",
   "street": "Example Street",
   "zipCode": "1234AB",
   "residentName": "",
   "hasRegistration": true,
-  "registrationId": 1999,
+  "registrationId": 5678,
   "registrationComplete": true,
   "isMeterValuesExportActive": true
 }
 ```
 
-**Example**: `GET /api/residentialUnitDetailItem/150257`
+**Example**: `GET /api/residentialUnitDetailItem/123456`
 
 **Notes**:
 - The `street`, `appartmentNo`, and `zipCode` fields can be used to construct a human-readable address
@@ -283,7 +283,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 - The `values` arrays correspond to rooms by index
 - Values are summed for rooms with duplicate names
 
-**Example**: `GET /api/residentialUnitUsagePerRoom/2025/150257/1`
+**Example**: `GET /api/residentialUnitUsagePerRoom/2025/123456/1`
 
 ---
 

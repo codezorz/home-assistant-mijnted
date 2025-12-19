@@ -47,7 +47,7 @@ To obtain the client ID:
 4. In the URL, find the `client_id` parameter
 5. The value after `client_id=` is your client ID
 
-For example, the client ID might look like: `AbCdEfGhIjKlMnOpQrStUvWxYz123456`
+For example, the client ID might look like: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (a UUID format) or a similar alphanumeric string
 
 These credentials are used to authenticate with the MijnTed API. During the integration setup in Home Assistant, you'll be prompted to enter these details.
 
