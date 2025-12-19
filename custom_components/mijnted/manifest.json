@@ -9,7 +9,8 @@
     "name": "MijnTed",
     "requirements": [
         "aiohttp",
-        "async-timeout"
+        "async-timeout",
+        "PyJWT"
     ],
     "ssdp": [],
     "zeroconf": [],

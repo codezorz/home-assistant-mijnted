@@ -85,9 +85,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 To set up a development environment:
 
 1. Clone the repository
-2. Create a virtual environment: `python -m venv mijnted_env`
-3. Activate the virtual environment
-4. Install the required packages: `pip install -r requirements_test.txt`
+2. The integration can be tested directly in Home Assistant by copying the `custom_components/mijnted` folder to your Home Assistant's `custom_components` directory
 
-When submitting a pull request, please ensure that all tests pass:
+For running unit tests (optional), you'll need to set up a Python environment with Home Assistant and pytest. Note that this requires Python 3.13.x and can be complex on Windows due to build tool requirements.
 

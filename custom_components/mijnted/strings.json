@@ -7,8 +7,9 @@
           "username": "MijnTed account username",
           "password": "MijnTed account password",
           "client_id": "MijnTed account client-id",
-          "polling_interval": "Polling interval (seconds, default: 3600)"
-        }
+          "polling_interval": "Polling interval (seconds)"
+        },
+        "description": "How often to poll the API for updates. Default: 3600 seconds (1 hour). Range: 900-86400 seconds (15 minutes to 24 hours)."
       },
       "reauth_confirm": {
         "title": "Reauthenticate with your MijnTed credentials",
@@ -16,8 +17,9 @@
           "username": "MijnTed account username",
           "password": "MijnTed account password",
           "client_id": "MijnTed account client-id",
-          "polling_interval": "Polling interval (seconds, default: 3600)"
-        }
+          "polling_interval": "Polling interval (seconds)"
+        },
+        "description": "How often to poll the API for updates. Default: 3600 seconds (1 hour). Range: 900-86400 seconds (15 minutes to 24 hours)."
       }
     },
     "error": {

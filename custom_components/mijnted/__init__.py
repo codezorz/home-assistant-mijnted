@@ -1,46 +1,152 @@
-import requests
-import json
-import base64
-from homeassistant import core
-from datetime import datetime, timedelta
-from .const import DOMAIN
-from .sensor import MijnTedSensor
+from datetime import timedelta
+from typing import Any, Dict
+import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from .api import MijntedApi
+from .const import DOMAIN, DEFAULT_POLLING_INTERVAL
 
-DEFAULT_POLLING_INTERVAL = timedelta(hours=1)
+_LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    api = MijntedApi(
-        entry.data["username"],
-        entry.data["password"],
-        entry.data["client_id"]
-    )
+# Import config flow to register it
+from . import config_flow
 
-    async def async_update_data():
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up MijnTed from a config entry."""
+    
+    async def async_update_data() -> Dict[str, Any]:
+        """Fetch data from the API and structure it for sensors."""
+        # Create a new API instance for each update to ensure fresh session
+        api = MijntedApi(
+            client_id=entry.data["client_id"],
+            refresh_token=entry.data["refresh_token"],
+            access_token=entry.data.get("access_token"),
+            residential_unit=entry.data.get("residential_unit")
+        )
+        
         try:
-            await api.authenticate()
-            energy_usage = await api.get_energy_usage()
-            last_update = await api.get_last_data_update()
-            filter_status = await api.get_filter_status()
-            usage_insight = await api.get_usage_insight()
-            return {
-                "energy_usage": energy_usage,
-                "last_update": last_update,
-                "filter_status": filter_status,
-                "usage_insight": usage_insight
-            }
+            async with api:
+                await api.authenticate()
+                
+                # Update stored tokens if they were refreshed
+                if api.refresh_token != entry.data.get("refresh_token") or api.access_token != entry.data.get("access_token"):
+                    hass.config_entries.async_update_entry(
+                        entry,
+                        data={
+                            **entry.data,
+                            "refresh_token": api.refresh_token,
+                            "access_token": api.access_token,
+                            "residential_unit": api.residential_unit
+                        }
+                    )
+                
+                # Fetch all data
+                energy_usage_data = await api.get_energy_usage()
+                last_update_data = await api.get_last_data_update()
+                filter_status_data = await api.get_filter_status()
+                usage_insight_data = await api.get_usage_insight()
+                active_model_data = await api.get_active_model()
+                residential_unit_detail_data = await api.get_residential_unit_detail()
+                usage_last_year_data = await api.get_usage_last_year()
+                usage_per_room_data = await api.get_usage_per_room()
+                
+                # Get all delivery types (already fetched during authenticate)
+                delivery_types = await api.get_delivery_types()
+                
+                # Parse and structure the data for sensors
+                # Energy usage: API returns {"monthlyEnergyUsages": [...], "averageEnergyUseForBillingUnit": 0}
+                # Calculate total from monthly data
+                energy_usage_total = 0.0
+                if isinstance(energy_usage_data, dict):
+                    monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
+                    if monthly_usages:
+                        energy_usage_total = sum(
+                            float(month.get("totalEnergyUsage", 0))
+                            for month in monthly_usages
+                            if isinstance(month, dict)
+                        )
+                
+                # Last update: API returns plain text "18/12/2025" wrapped in {"value": "..."}
+                if isinstance(last_update_data, dict):
+                    last_update = last_update_data.get("value", "")
+                else:
+                    last_update = str(last_update_data) if last_update_data else ""
+                
+                # Filter status: API returns array of device objects
+                # Keep the array as-is for processing
+                filter_status = filter_status_data if isinstance(filter_status_data, list) else []
+                
+                # Active model: API returns plain text "F71" wrapped in {"value": "..."}
+                if isinstance(active_model_data, dict):
+                    active_model = active_model_data.get("value", "")
+                else:
+                    active_model = str(active_model_data) if active_model_data else None
+                
+                # Extract usage data
+                # energy_usage_data is for current year
+                usage_this_year = energy_usage_data if isinstance(energy_usage_data, dict) else {}
+                usage_last_year = usage_last_year_data if isinstance(usage_last_year_data, dict) else {}
+                
+                # Extract room usage - structure as dict with room names as keys
+                # API returns: {"rooms": ["KA", "KA", "W", "W"], "currentYear": {"values": [129.0, 0.0, 0.0, 633.0]}, ...}
+                room_usage = {}
+                if isinstance(usage_per_room_data, dict):
+                    rooms = usage_per_room_data.get("rooms", [])
+                    current_year_data = usage_per_room_data.get("currentYear", {})
+                    values = current_year_data.get("values", [])
+                    
+                    # Combine values for rooms with the same name
+                    for i, room_name in enumerate(rooms):
+                        if i < len(values):
+                            value = values[i]
+                            if room_name in room_usage:
+                                # Room already exists, add the value (or take max, depending on what makes sense)
+                                # For now, we'll sum them if there are duplicates
+                                if isinstance(room_usage[room_name], (int, float)):
+                                    room_usage[room_name] = float(room_usage[room_name]) + float(value)
+                                else:
+                                    room_usage[room_name] = float(value)
+                            else:
+                                room_usage[room_name] = float(value)
+                elif isinstance(usage_per_room_data, list):
+                    # Fallback: if it's a list, convert to dict
+                    for i, item in enumerate(usage_per_room_data):
+                        if isinstance(item, dict):
+                            room_name = item.get("room") or item.get("roomName") or item.get("name") or item.get("id")
+                            if room_name:
+                                room_usage[room_name] = item
+                            else:
+                                room_usage[f"room_{i}"] = item
+                        else:
+                            room_usage[f"room_{i}"] = item
+                
+                return {
+                    "energy_usage": energy_usage_total,
+                    "energy_usage_data": energy_usage_data,  # Keep full data for sensors that need it
+                    "last_update": last_update,
+                    "filter_status": filter_status,
+                    "usage_insight": usage_insight_data,
+                    "active_model": active_model,
+                    "delivery_types": delivery_types,
+                    "residential_unit": api.residential_unit,
+                    "residential_unit_detail": residential_unit_detail_data,
+                    "usage_this_year": usage_this_year,
+                    "usage_last_year": usage_last_year,
+                    "room_usage": room_usage,
+                }
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}")
 
+    polling_interval_seconds = entry.data.get("polling_interval", DEFAULT_POLLING_INTERVAL.total_seconds())
+    update_interval = timedelta(seconds=int(polling_interval_seconds))
+    
     coordinator = DataUpdateCoordinator(
         hass,
-        hass.logger,
+        _LOGGER,
         name=DOMAIN,
         update_method=async_update_data,
-        update_interval=entry.data.get("polling_interval", DEFAULT_POLLING_INTERVAL),
+        update_interval=update_interval,
     )
 
     await coordinator.async_config_entry_first_refresh()
