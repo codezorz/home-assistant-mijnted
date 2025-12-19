@@ -59,7 +59,6 @@ To set up the MijnTed integration, you'll need:
 4. Look for a POST request to `mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token`
 5. Click on the request and check the Response tab - the refresh token will be in the JSON response
 6. Alternatively, you can check the Application/Storage tab for cookies or local storage containing authentication tokens
-7. You can also use the test scripts in the `scripts/` directory to obtain a refresh token
 
 For example, the client ID might look like: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (a UUID format) or a similar alphanumeric string.
 
