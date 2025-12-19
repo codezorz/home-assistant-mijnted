@@ -1,21 +1,11 @@
 {
-    "codeowners": ["@codezorz"],
-    "config_flow": true,
-    "documentation": "https://www.example.com",
-    "issue_tracker": "https://github.com/codezorz/home-assistant-mijnted/issues",
-    "dependencies": [],
     "domain": "mijnted",
-    "iot_class": "cloud_polling",
     "name": "MijnTed",
-    "logo": "logo.png",
-    "requirements": [
-        "aiohttp",
-        "async-timeout",
-        "PyJWT"
-    ],
-    "ssdp": [],
-    "zeroconf": [],
-    "homekit": {},
-    "version": "1.0.0",
-    "test_requirements": ["requirements_test.txt"]
+    "documentation": "https://github.com/codezorz/home-assistant-mijnted",
+    "issue_tracker": "https://github.com/codezorz/home-assistant-mijnted/issues",
+    "codeowners": ["@codezorz"],
+    "iot_class": "cloud_polling",
+    "config_flow": true,
+    "requirements": ["aiohttp", "async-timeout", "PyJWT"],
+    "version": "1.0.0"
 }
