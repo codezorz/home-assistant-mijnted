@@ -1,7 +1,5 @@
 {
   "name": "MijnTed",
   "country": "NL",
-  "zip_release": true,
-  "filename": "mijnted.zip",
-  "homeassistant": "2024.4.1"
+  "render_readme": true
 }
