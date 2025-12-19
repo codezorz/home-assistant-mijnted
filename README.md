@@ -55,10 +55,11 @@ To set up the MijnTed integration, you'll need:
 **Refresh Token:**
 1. Log in to the [MijnTed website](https://mijnted.nl)
 2. Open your browser's developer console (F12)
-3. Go to the Application/Storage tab
-4. Look for cookies or local storage containing authentication tokens
-5. Find the refresh token (it may be stored in a cookie or in localStorage)
-6. Alternatively, you can use the test scripts in the `scripts/` directory to obtain a refresh token
+3. Go to the Network tab
+4. Look for a POST request to `mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token`
+5. Click on the request and check the Response tab - the refresh token will be in the JSON response
+6. Alternatively, you can check the Application/Storage tab for cookies or local storage containing authentication tokens
+7. You can also use the test scripts in the `scripts/` directory to obtain a refresh token
 
 For example, the client ID might look like: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (a UUID format) or a similar alphanumeric string.
 
