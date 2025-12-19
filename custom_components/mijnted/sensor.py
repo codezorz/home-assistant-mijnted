@@ -200,6 +200,7 @@ class MijnTedRoomUsageSensor(MijnTedSensor):
         """Initialize the room usage sensor."""
         super().__init__(coordinator, f"usage_room_{room}", f"Usage {room}")
         self.room = room
+        self._attr_icon = "mdi:door"
 
     @property
     def state(self) -> Optional[float]:
@@ -265,6 +266,7 @@ class MijnTedEnergySensor(MijnTedSensor):
     def __init__(self, coordinator):
         """Initialize the energy sensor."""
         super().__init__(coordinator, "energy_usage", "Energy Usage")
+        self._attr_icon = "mdi:lightning-bolt"
 
     @property
     def state(self) -> Optional[float]:
@@ -292,6 +294,9 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
     def __init__(self, coordinator):
         """Initialize the last update sensor."""
         super().__init__(coordinator, "last_update", "Last Update")
+        self._attr_icon = "mdi:clock-outline"
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def state(self) -> Optional[str]:
@@ -301,17 +306,14 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
             return last_update.get("lastSyncDate") or last_update.get("date")
         return str(last_update) if last_update else None
 
-    @property
-    def device_class(self) -> SensorDeviceClass:
-        """Return the device class."""
-        return SensorDeviceClass.TIMESTAMP
-
 class MijnTedFilterSensor(MijnTedSensor):
     """Sensor for total device readings from all devices."""
     
     def __init__(self, coordinator):
         """Initialize the device readings sensor."""
         super().__init__(coordinator, "filter", "Total Device Readings")
+        self._attr_icon = "mdi:counter"
+        self._attr_state_class = SensorStateClass.TOTAL
 
     @property
     def state(self) -> Optional[float]:
@@ -352,6 +354,8 @@ class MijnTedActiveModelSensor(MijnTedSensor):
     def __init__(self, coordinator):
         """Initialize the active model sensor."""
         super().__init__(coordinator, "active_model", "Active model")
+        self._attr_icon = "mdi:tag"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def state(self) -> Optional[str]:
@@ -364,6 +368,8 @@ class MijnTedDeliveryTypesSensor(MijnTedSensor):
     def __init__(self, coordinator):
         """Initialize the delivery types sensor."""
         super().__init__(coordinator, "delivery_types", "Delivery types")
+        self._attr_icon = "mdi:package-variant"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def state(self) -> Optional[str]:
@@ -380,6 +386,8 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
     def __init__(self, coordinator):
         """Initialize the residential unit detail sensor."""
         super().__init__(coordinator, "residential_unit_detail", "Residential unit detail")
+        self._attr_icon = "mdi:home"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def state(self) -> Optional[str]:
@@ -397,6 +405,7 @@ class MijnTedUsageLastYearSensor(MijnTedSensor):
     def __init__(self, coordinator):
         """Initialize the last year usage sensor."""
         super().__init__(coordinator, "usage_last_year", "Usage last year")
+        self._attr_icon = "mdi:chart-line"
 
     @property
     def state(self) -> Optional[float]:
@@ -437,6 +446,7 @@ class MijnTedUsageThisYearSensor(MijnTedSensor):
     def __init__(self, coordinator):
         """Initialize the this year usage sensor."""
         super().__init__(coordinator, "usage_this_year", "Usage this year")
+        self._attr_icon = "mdi:chart-line"
 
     @property
     def state(self) -> Optional[float]:
