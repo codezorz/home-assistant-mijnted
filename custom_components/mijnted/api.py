@@ -244,9 +244,11 @@ class MijntedApi:
             return value if isinstance(value, list) else []
         return []
 
-    async def get_usage_insight(self) -> Dict[str, Any]:
-        """Get usage insight information."""
-        url = f"{self.base_url}/usageInsight/{datetime.now().year}/{self.residential_unit}/{self.delivery_type}"
+    async def get_usage_insight(self, year: Optional[int] = None) -> Dict[str, Any]:
+        """Get usage insight information for a specific year."""
+        if year is None:
+            year = datetime.now().year
+        url = f"{self.base_url}/usageInsight/{year}/{self.residential_unit}/{self.delivery_type}"
         return await self._make_request("GET", url)
 
     async def get_active_model(self) -> Dict[str, Any]:
@@ -270,6 +272,20 @@ class MijntedApi:
         current_year = datetime.now().year
         url = f"{self.base_url}/residentialUnitUsagePerRoom/{current_year}/{self.residential_unit}/{self.delivery_type}"
         return await self._make_request("GET", url)
+
+    async def get_unit_of_measures(self) -> list:
+        """Get unit of measures for the residential unit."""
+        current_year = datetime.now().year
+        url = f"{self.base_url}/unitOfMeasures/{self.residential_unit}/{self.delivery_type}/{current_year}"
+        result = await self._make_request("GET", url)
+        # API returns a JSON array directly
+        if isinstance(result, list):
+            return result
+        # Fallback: if somehow wrapped, try to extract
+        if isinstance(result, dict) and "value" in result:
+            value = result["value"]
+            return value if isinstance(value, list) else []
+        return []
 
     def _headers(self) -> Dict[str, str]:
         """Get headers for API requests."""

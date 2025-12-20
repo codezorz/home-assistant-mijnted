@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Any, Dict
 import logging
 from homeassistant.config_entries import ConfigEntry
@@ -46,10 +46,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 last_update_data = await api.get_last_data_update()
                 filter_status_data = await api.get_filter_status()
                 usage_insight_data = await api.get_usage_insight()
+                last_year = datetime.now().year - 1
+                usage_insight_last_year_data = await api.get_usage_insight(last_year)
                 active_model_data = await api.get_active_model()
                 residential_unit_detail_data = await api.get_residential_unit_detail()
                 usage_last_year_data = await api.get_usage_last_year()
                 usage_per_room_data = await api.get_usage_per_room()
+                unit_of_measures_data = await api.get_unit_of_measures()
                 
                 # Get all delivery types (already fetched during authenticate)
                 delivery_types = await api.get_delivery_types()
@@ -127,6 +130,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "last_update": last_update,
                     "filter_status": filter_status,
                     "usage_insight": usage_insight_data,
+                    "usage_insight_last_year": usage_insight_last_year_data,
                     "active_model": active_model,
                     "delivery_types": delivery_types,
                     "residential_unit": api.residential_unit,
@@ -134,6 +138,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "usage_this_year": usage_this_year,
                     "usage_last_year": usage_last_year,
                     "room_usage": room_usage,
+                    "unit_of_measures": unit_of_measures_data,
                 }
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}")
