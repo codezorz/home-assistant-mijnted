@@ -46,7 +46,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 - `Authorization: Bearer {access_token}`
 - `User-Agent: HomeAssistant/MijnTed`
 
-### 1. Get Delivery Types
+### Get Delivery Types
 **Endpoint**: `GET /api/address/deliveryTypes/{residential_unit}`
 
 **Description**: Retrieves the available delivery types for a residential unit.
@@ -63,7 +63,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 ---
 
-### 2. Get Energy Usage
+### Get Energy Usage
 **Endpoint**: `GET /api/residentialUnitUsage/{year}/{residential_unit}/{delivery_type}`
 
 **Description**: Retrieves energy usage data for a specific year.
@@ -110,7 +110,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 ---
 
-### 3. Get Last Data Update
+### Get Last Data Update
 **Endpoint**: `GET /api/getLastSyncDate/{residential_unit}/{delivery_type}/{year}`
 
 **Description**: Retrieves the last synchronization date for the data.
@@ -131,7 +131,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 ---
 
-### 4. Get Filter Status
+### Get Filter Status
 **Endpoint**: `GET /api/deviceStatuses/{residential_unit}/{delivery_type}/{year}`
 
 **Description**: Retrieves the filter status information for devices.
@@ -171,7 +171,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 ---
 
-### 5. Get Usage Insight
+### Get Usage Insight
 **Endpoint**: `GET /api/usageInsight/{year}/{residential_unit}/{delivery_type}`
 
 **Description**: Retrieves usage insights and analytics.
@@ -196,7 +196,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 ---
 
-### 6. Get Active Model
+### Get Active Model
 **Endpoint**: `GET /api/activeModel/{residential_unit}/{delivery_type}`
 
 **Description**: Retrieves information about the active model/device.
@@ -216,7 +216,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 ---
 
-### 7. Get Residential Unit Detail
+### Get Residential Unit Detail
 **Endpoint**: `GET /api/residentialUnitDetailItem/{residential_unit}`
 
 **Description**: Retrieves detailed information about the residential unit.
@@ -248,7 +248,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 ---
 
-### 8. Get Usage Per Room
+### Get Usage Per Room
 **Endpoint**: `GET /api/residentialUnitUsagePerRoom/{year}/{residential_unit}/{delivery_type}`
 
 **Description**: Retrieves energy usage data broken down by room.
@@ -284,6 +284,35 @@ All data endpoints require authentication via Bearer token in the `Authorization
 - Values are summed for rooms with duplicate names
 
 **Example**: `GET /api/residentialUnitUsagePerRoom/2025/123456/1`
+
+---
+
+### Get Unit of Measures
+**Endpoint**: `GET /api/unitOfMeasures/{residential_unit}/{delivery_type}/{year}`
+
+**Description**: Retrieves the unit of measurement information for a residential unit.
+
+**Parameters**:
+- `residential_unit` (path): The residential unit ID
+- `delivery_type` (path): The delivery type ID
+- `year` (path): The year
+
+**Response**: JSON array with unit of measure objects
+```json
+[
+  {
+    "value": "eenheid",
+    "displayName": "Eenheden"
+  }
+]
+```
+
+**Example**: `GET /api/unitOfMeasures/123456/1/2025`
+
+**Notes**:
+- Returns an array of unit of measure objects
+- Each object contains a `value` (internal identifier) and `displayName` (human-readable name)
+- Typically returns a single item in the array
 
 ---
 

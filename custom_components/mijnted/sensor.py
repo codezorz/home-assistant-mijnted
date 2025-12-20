@@ -30,13 +30,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
     sensors: List[SensorEntity] = [
-        MijnTedEnergySensor(coordinator),
+        MijnTedThisMonthUsageSensor(coordinator),
         MijnTedLastUpdateSensor(coordinator),
-        MijnTedFilterSensor(coordinator),
+        MijnTedTotalUsageSensor(coordinator),
         MijnTedActiveModelSensor(coordinator),
         MijnTedDeliveryTypesSensor(coordinator),
         MijnTedResidentialUnitDetailSensor(coordinator),
-        MijnTedUsageThisYearSensor(coordinator),
+        MijnTedUnitOfMeasuresSensor(coordinator),
+        MijnTedThisYearTotalUsageSensor(coordinator),
+        MijnTedThisYearUsageSensor(coordinator),
+        MijnTedLastYearUsageSensor(coordinator),
     ]
     
     # Add individual device sensors dynamically
@@ -310,12 +313,12 @@ class MijnTedInsightSensor(MijnTedSensor):
         """Return the unit of measurement."""
         return UNIT_MIJNTED
 
-class MijnTedEnergySensor(MijnTedSensor):
-    """Sensor for energy usage."""
+class MijnTedThisMonthUsageSensor(MijnTedSensor):
+    """Sensor for this month's usage."""
     
     def __init__(self, coordinator):
-        """Initialize the energy sensor."""
-        super().__init__(coordinator, "energy_usage", "usage")
+        """Initialize the this month usage sensor."""
+        super().__init__(coordinator, "energy_usage", "this month usage")
         self._attr_icon = "mdi:lightning-bolt"
 
     def _find_latest_valid_month(self, usage_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -387,6 +390,19 @@ class MijnTedEnergySensor(MijnTedSensor):
     @property
     def state(self) -> Optional[float]:
         """Return the state of the sensor."""
+        # Get the latest month's usage value (the last available value for this year)
+        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
+        if isinstance(energy_usage_data, dict):
+            latest_month = self._find_latest_valid_month(energy_usage_data)
+            if latest_month:
+                total_usage = latest_month.get("totalEnergyUsage")
+                if total_usage is not None:
+                    try:
+                        return float(total_usage)
+                    except (ValueError, TypeError):
+                        pass
+        
+        # Fallback to old behavior if latest month not found
         energy_usage = self.coordinator.data.get("energy_usage")
         if isinstance(energy_usage, (int, float)):
             return float(energy_usage)
@@ -443,7 +459,7 @@ class MijnTedEnergySensor(MijnTedSensor):
                             last_year_total = last_year_month.get("totalEnergyUsage")
                             if last_year_total is not None:
                                 try:
-                                    attributes["last_year_total_usage"] = float(last_year_total)
+                                    attributes["last_year_usage"] = float(last_year_total)
                                 except (ValueError, TypeError):
                                     pass
                 
@@ -494,11 +510,11 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
             return self._parse_date_to_timestamp(date_str)
         return None
 
-class MijnTedFilterSensor(MijnTedSensor):
+class MijnTedTotalUsageSensor(MijnTedSensor):
     """Sensor for total device readings from all devices."""
     
     def __init__(self, coordinator):
-        """Initialize the device readings sensor."""
+        """Initialize the total usage sensor."""
         super().__init__(coordinator, "filter", "total usage")
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_state_class = SensorStateClass.TOTAL
@@ -609,11 +625,39 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
         """Return entity specific state attributes."""
         return self.coordinator.data.get("residential_unit_detail", {})
 
-class MijnTedUsageThisYearSensor(MijnTedSensor):
-    """Sensor for this year's usage."""
+class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
+    """Sensor for unit of measures information."""
     
     def __init__(self, coordinator):
-        """Initialize the this year usage sensor."""
+        """Initialize the unit of measures sensor."""
+        super().__init__(coordinator, "unit_of_measures", "unit of measures")
+        self._attr_icon = "mdi:ruler"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def state(self) -> Optional[str]:
+        """Return the state of the sensor."""
+        unit_of_measures = self.coordinator.data.get("unit_of_measures", [])
+        if isinstance(unit_of_measures, list) and len(unit_of_measures) > 0:
+            # Get the first item's displayName
+            first_item = unit_of_measures[0]
+            if isinstance(first_item, dict):
+                return first_item.get("displayName")
+        return None
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes."""
+        unit_of_measures = self.coordinator.data.get("unit_of_measures", [])
+        if isinstance(unit_of_measures, list):
+            return {"unit_of_measures": unit_of_measures}
+        return {}
+
+class MijnTedThisYearTotalUsageSensor(MijnTedSensor):
+    """Sensor for this year's total usage (sum of all months)."""
+    
+    def __init__(self, coordinator):
+        """Initialize the this year total usage sensor."""
         super().__init__(coordinator, "usage_this_year", "usage this year")
         self._attr_icon = "mdi:chart-line"
 
@@ -649,3 +693,191 @@ class MijnTedUsageThisYearSensor(MijnTedSensor):
         """Return entity specific state attributes."""
         usage_data = self.coordinator.data.get("usage_this_year", {})
         return usage_data if isinstance(usage_data, dict) else {}
+
+class MijnTedThisYearUsageSensor(MijnTedSensor):
+    """Sensor for this year's total usage with month breakdown."""
+    
+    def __init__(self, coordinator):
+        """Initialize the this year usage sensor."""
+        super().__init__(coordinator, "this_year_usage", "this year usage")
+        self._attr_icon = "mdi:chart-line"
+    
+    @property
+    def state(self) -> Optional[float]:
+        """Return the state of the sensor from usageInsight."""
+        usage_insight = self.coordinator.data.get("usage_insight", {})
+        if isinstance(usage_insight, dict):
+            usage = usage_insight.get("usage")
+            if usage is not None:
+                try:
+                    return float(usage)
+                except (ValueError, TypeError):
+                    pass
+        return None
+    
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.TOTAL
+    
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MIJNTED
+    
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes from usageInsight and residentialUnitUsage."""
+        attributes: Dict[str, Any] = {}
+        
+        # Add all properties from usageInsight
+        usage_insight = self.coordinator.data.get("usage_insight", {})
+        if isinstance(usage_insight, dict):
+            if "unitType" in usage_insight:
+                attributes["unit_type"] = usage_insight.get("unitType")
+            if "billingUnitAverageUsage" in usage_insight:
+                billing_avg = usage_insight.get("billingUnitAverageUsage")
+                if billing_avg is not None:
+                    try:
+                        attributes["billing_unit_average_usage"] = float(billing_avg)
+                    except (ValueError, TypeError):
+                        pass
+            if "usageDifference" in usage_insight:
+                usage_diff = usage_insight.get("usageDifference")
+                if usage_diff is not None:
+                    try:
+                        attributes["usage_difference"] = float(usage_diff)
+                    except (ValueError, TypeError):
+                        pass
+            if "deviceModel" in usage_insight:
+                attributes["device_model"] = usage_insight.get("deviceModel")
+        
+        # Add monthly breakdown from residentialUnitUsage
+        usage_data = self.coordinator.data.get("usage_this_year", {})
+        if isinstance(usage_data, dict):
+            monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+            if monthly_usages:
+                # Create a dict with monthYear as key and full month data as value
+                month_breakdown = {}
+                for month in monthly_usages:
+                    if isinstance(month, dict):
+                        month_year = month.get("monthYear")
+                        if month_year:
+                            month_data = {}
+                            # Store all available fields
+                            if "totalEnergyUsage" in month:
+                                total_usage = month.get("totalEnergyUsage")
+                                if total_usage is not None:
+                                    try:
+                                        month_data["total_energy_usage"] = float(total_usage)
+                                    except (ValueError, TypeError):
+                                        pass
+                            if "unitOfMeasurement" in month:
+                                month_data["unit_of_measurement"] = month.get("unitOfMeasurement")
+                            if "averageEnergyUseForBillingUnit" in month:
+                                avg_usage = month.get("averageEnergyUseForBillingUnit")
+                                if avg_usage is not None:
+                                    try:
+                                        month_data["average_energy_use_for_billing_unit"] = float(avg_usage)
+                                    except (ValueError, TypeError):
+                                        pass
+                            if month_data:
+                                month_breakdown[month_year] = month_data
+                if month_breakdown:
+                    attributes["monthly_breakdown"] = month_breakdown
+        
+        return attributes
+
+class MijnTedLastYearUsageSensor(MijnTedSensor):
+    """Sensor for last year's total usage with month breakdown."""
+    
+    def __init__(self, coordinator):
+        """Initialize the last year usage sensor."""
+        super().__init__(coordinator, "last_year_usage", "last year usage")
+        self._attr_icon = "mdi:chart-line"
+    
+    @property
+    def state(self) -> Optional[float]:
+        """Return the state of the sensor from usageInsight."""
+        usage_insight = self.coordinator.data.get("usage_insight_last_year", {})
+        if isinstance(usage_insight, dict):
+            usage = usage_insight.get("usage")
+            if usage is not None:
+                try:
+                    return float(usage)
+                except (ValueError, TypeError):
+                    pass
+        return None
+    
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.TOTAL
+    
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MIJNTED
+    
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes from usageInsight and residentialUnitUsage."""
+        attributes: Dict[str, Any] = {}
+        
+        # Add all properties from usageInsight
+        usage_insight = self.coordinator.data.get("usage_insight_last_year", {})
+        if isinstance(usage_insight, dict):
+            if "unitType" in usage_insight:
+                attributes["unit_type"] = usage_insight.get("unitType")
+            if "billingUnitAverageUsage" in usage_insight:
+                billing_avg = usage_insight.get("billingUnitAverageUsage")
+                if billing_avg is not None:
+                    try:
+                        attributes["billing_unit_average_usage"] = float(billing_avg)
+                    except (ValueError, TypeError):
+                        pass
+            if "usageDifference" in usage_insight:
+                usage_diff = usage_insight.get("usageDifference")
+                if usage_diff is not None:
+                    try:
+                        attributes["usage_difference"] = float(usage_diff)
+                    except (ValueError, TypeError):
+                        pass
+            if "deviceModel" in usage_insight:
+                attributes["device_model"] = usage_insight.get("deviceModel")
+        
+        # Add monthly breakdown from residentialUnitUsage
+        usage_data = self.coordinator.data.get("usage_last_year", {})
+        if isinstance(usage_data, dict):
+            monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+            if monthly_usages:
+                # Create a dict with monthYear as key and full month data as value
+                month_breakdown = {}
+                for month in monthly_usages:
+                    if isinstance(month, dict):
+                        month_year = month.get("monthYear")
+                        if month_year:
+                            month_data = {}
+                            # Store all available fields
+                            if "totalEnergyUsage" in month:
+                                total_usage = month.get("totalEnergyUsage")
+                                if total_usage is not None:
+                                    try:
+                                        month_data["total_energy_usage"] = float(total_usage)
+                                    except (ValueError, TypeError):
+                                        pass
+                            if "unitOfMeasurement" in month:
+                                month_data["unit_of_measurement"] = month.get("unitOfMeasurement")
+                            if "averageEnergyUseForBillingUnit" in month:
+                                avg_usage = month.get("averageEnergyUseForBillingUnit")
+                                if avg_usage is not None:
+                                    try:
+                                        month_data["average_energy_use_for_billing_unit"] = float(avg_usage)
+                                    except (ValueError, TypeError):
+                                        pass
+                            if month_data:
+                                month_breakdown[month_year] = month_data
+                if month_breakdown:
+                    attributes["monthly_breakdown"] = month_breakdown
+        
+        return attributes
