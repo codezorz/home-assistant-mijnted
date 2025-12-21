@@ -1,4 +1,3 @@
-"""Sensor platform setup for MijnTed integration."""
 from typing import List
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant

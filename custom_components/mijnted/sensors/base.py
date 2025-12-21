@@ -1,4 +1,3 @@
-"""Base sensor class for MijnTed integration."""
 from typing import Any, Dict, Optional
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator

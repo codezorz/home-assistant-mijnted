@@ -1,4 +1,3 @@
-"""Device sensor for MijnTed integration."""
 from typing import Any, Dict, Optional
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor

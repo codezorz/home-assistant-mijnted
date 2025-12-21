@@ -1,4 +1,3 @@
-"""Utility functions for MijnTed integration."""
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime, timezone
 from homeassistant.core import HomeAssistant
