@@ -1,5 +1,6 @@
 """Device sensor for MijnTed integration."""
 from typing import Any, Dict, Optional
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
 from ..const import DOMAIN, UNIT_MIJNTED
 from ..utils import TranslationUtil
@@ -8,7 +9,7 @@ from ..utils import TranslationUtil
 class MijnTedDeviceSensor(MijnTedSensor):
     """Sensor for Mijnted devices."""
     
-    def __init__(self, coordinator, device_number: str):
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], device_number: str) -> None:
         """Initialize the device sensor.
         
         Args:
@@ -32,7 +33,11 @@ class MijnTedDeviceSensor(MijnTedSensor):
         Returns:
             Device data dictionary if found, None otherwise
         """
-        filter_status = self.coordinator.data.get("filter_status", [])
+        data = self.coordinator.data
+        if not data:
+            return None
+        
+        filter_status = data.get("filter_status", [])
         if isinstance(filter_status, list):
             for device in filter_status:
                 if isinstance(device, dict) and str(device.get("deviceNumber", "")) == str(self.device_number):

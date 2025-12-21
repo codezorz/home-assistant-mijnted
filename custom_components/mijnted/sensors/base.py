@@ -1,7 +1,7 @@
 """Base sensor class for MijnTed integration."""
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.helpers.entity import DeviceInfo
 from ..const import DOMAIN
 
@@ -9,7 +9,7 @@ from ..const import DOMAIN
 class MijnTedSensor(CoordinatorEntity, SensorEntity):
     """Base class for Mijnted sensors."""
     
-    def __init__(self, coordinator, sensor_type: str, name: str):
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], sensor_type: str, name: str) -> None:
         """Initialize the sensor.
         
         Args:
@@ -33,10 +33,19 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         Returns:
             DeviceInfo object with device identifiers and details
         """
-        residential_unit = self.coordinator.data.get("residential_unit", "unknown")
+        data = self.coordinator.data
+        if not data:
+            return DeviceInfo(
+                identifiers={(DOMAIN, "unknown")},
+                name="MijnTed",
+                manufacturer="MijnTed",
+                model="Unknown",
+            )
+        
+        residential_unit = data.get("residential_unit", "unknown")
         
         # Build device name from address if available
-        residential_unit_detail = self.coordinator.data.get("residential_unit_detail", {})
+        residential_unit_detail = data.get("residential_unit_detail", {})
         device_name = "MijnTed"
         
         if isinstance(residential_unit_detail, dict):
@@ -64,7 +73,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             identifiers={(DOMAIN, residential_unit)},
             name=device_name,
             manufacturer="MijnTed",
-            model=self.coordinator.data.get("active_model", "Unknown"),
+            model=data.get("active_model", "Unknown"),
         )
 
     @property
@@ -83,7 +92,10 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         Returns:
             True if coordinator last update was successful, False otherwise
         """
-        return self.coordinator.last_update_success
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.data is not None
+        )
     
     def _get_last_successful_sync(self) -> Optional[str]:
         """Get the timestamp of the last successful sync from coordinator data.
@@ -91,7 +103,10 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         Returns:
             ISO timestamp string or None if not available
         """
-        return self.coordinator.data.get("last_successful_sync")
+        data = self.coordinator.data
+        if not data:
+            return None
+        return data.get("last_successful_sync")
     
     def _update_last_known_value(self, value: Any) -> None:
         """Update the last known value when fresh data is available.

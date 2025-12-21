@@ -290,14 +290,82 @@ class DataUtil:
             attributes["device_model"] = usage_insight.get("deviceModel")
         
         return attributes
+    
+    @staticmethod
+    def find_latest_valid_month(usage_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Find the most recent month with totalEnergyUsage > 0 and averageEnergyUseForBillingUnit != null.
+        
+        Args:
+            usage_data: Dictionary containing monthly energy usage data
+            
+        Returns:
+            Most recent valid month dictionary if found, None otherwise
+        """
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        # Parse monthYear format (e.g., "11.2025") and sort by date (most recent first)
+        valid_months = []
+        for month in monthly_usages:
+            if not isinstance(month, dict):
+                continue
+            
+            total_usage = month.get("totalEnergyUsage", 0)
+            avg_usage = month.get("averageEnergyUseForBillingUnit")
+            
+            # Check if this month has valid data
+            if (isinstance(total_usage, (int, float)) and float(total_usage) > 0 and 
+                avg_usage is not None):
+                month_year = month.get("monthYear", "")
+                parsed = DataUtil.parse_month_year(month_year)
+                if parsed:
+                    month_num, year = parsed
+                    # Create a sortable key (year * 100 + month)
+                    sort_key = year * 100 + month_num
+                    valid_months.append((sort_key, month))
+        
+        # Sort by date descending (most recent first) and return the first valid one
+        if valid_months:
+            valid_months.sort(key=lambda x: x[0], reverse=True)
+            return valid_months[0][1]
+        
+        return None
+    
+    @staticmethod
+    def find_month_by_identifier(usage_data: Dict[str, Any], month_identifier: str) -> Optional[Dict[str, Any]]:
+        """Find a specific month entry by monthYear identifier.
+        
+        Args:
+            usage_data: Dictionary containing monthly energy usage data
+            month_identifier: Month identifier in format "MM.YYYY"
+            
+        Returns:
+            Month dictionary if found, None otherwise
+        """
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        for month in monthly_usages:
+            if isinstance(month, dict) and month.get("monthYear") == month_identifier:
+                return month
+        
+        return None
 
 
 class TranslationUtil:
     """Utility class for translations."""
     
     @staticmethod
-    def translate_room_code(room_code: str, hass: Optional[HomeAssistant] = None) -> str:
-        """Translate room codes to full room names.
+    async def async_translate_room_code(room_code: str, hass: Optional[HomeAssistant] = None) -> str:
+        """Translate room codes to full room names using Home Assistant's translation system.
         
         Args:
             room_code: Room code to translate (e.g., "KA", "W")
@@ -308,12 +376,99 @@ class TranslationUtil:
         """
         if hass:
             try:
-                # Try to get translation from translation files
-                translations = hass.data.get("frontend_translations", {}).get("en", {})
-                room_translations = translations.get("room_codes", {})
-                if room_code in room_translations:
-                    return room_translations[room_code]
+                # Use Home Assistant's translation system
+                from homeassistant.helpers import translation
+                
+                # Get the current language
+                language = hass.config.language or "en"
+                
+                # Load translations for the integration
+                # Use the domain name for translation loading
+                from ..const import DOMAIN
+                translations = await translation.async_get_translations(
+                    hass, "entity", language, [DOMAIN]
+                )
+                
+                # Try to get translation from integration translation files
+                # Format: "component.mijnted.room_codes.KA" or similar
+                translation_key = f"room_codes.{room_code}"
+                if translation_key in translations:
+                    translated = translations[translation_key]
+                    if translated and translated != translation_key:
+                        return translated
+                
+                # Also try direct access to room_codes in translations
+                if "room_codes" in translations:
+                    room_translations = translations.get("room_codes", {})
+                    if isinstance(room_translations, dict) and room_code in room_translations:
+                        return room_translations[room_code]
             except Exception:
+                # Fall through to fallback translations
+                pass
+        
+        # Fallback to hardcoded translations
+        room_translations = {
+            "KA": "bedroom",
+            "W": "living room",
+        }
+        return room_translations.get(room_code, room_code)
+    
+    @staticmethod
+    def translate_room_code(room_code: str, hass: Optional[HomeAssistant] = None) -> str:
+        """Translate room codes to full room names using Home Assistant's translation system.
+        
+        This is a synchronous version that uses already-loaded translations from hass.data.
+        For async contexts where translations may need to be loaded, use async_translate_room_code().
+        
+        Args:
+            room_code: Room code to translate (e.g., "KA", "W")
+            hass: Home Assistant instance for translations (optional)
+            
+        Returns:
+            Translated room name or original code if translation not found
+        """
+        if hass:
+            try:
+                from ..const import DOMAIN
+                
+                # Get the current language
+                language = hass.config.language or "en"
+                
+                # Try to get translations from already-loaded translation data
+                # Check frontend_translations first (most common)
+                translations_data = hass.data.get("frontend_translations", {})
+                if language in translations_data:
+                    translations = translations_data[language]
+                    
+                    # Try various translation key formats
+                    translation_keys = [
+                        f"component.{DOMAIN}.entity.sensor.room_codes.{room_code}",
+                        f"component.{DOMAIN}.room_codes.{room_code}",
+                        f"room_codes.{room_code}",
+                    ]
+                    
+                    for key in translation_keys:
+                        if key in translations:
+                            translated = translations[key]
+                            if translated and translated != key:
+                                return translated
+                    
+                    # Also try direct access to room_codes
+                    if "room_codes" in translations:
+                        room_translations = translations.get("room_codes", {})
+                        if isinstance(room_translations, dict) and room_code in room_translations:
+                            return room_translations[room_code]
+                
+                # Try entity_translations
+                entity_translations = hass.data.get("entity_translations", {})
+                if language in entity_translations:
+                    domain_translations = entity_translations[language].get(DOMAIN, {})
+                    if "room_codes" in domain_translations:
+                        room_translations = domain_translations["room_codes"]
+                        if isinstance(room_translations, dict) and room_code in room_translations:
+                            return room_translations[room_code]
+            except Exception:
+                # Fall through to fallback translations
                 pass
         
         # Fallback to hardcoded translations
