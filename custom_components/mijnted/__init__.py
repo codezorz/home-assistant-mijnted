@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from .api import MijntedApi, MijntedApiError, MijntedAuthenticationError, MijntedConnectionError
 from .const import DOMAIN, DEFAULT_POLLING_INTERVAL
+from .utils import TimestampUtil, ApiUtil
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -135,20 +136,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         )
                 
                 # Last update: API returns plain text "18/12/2025" wrapped in {"value": "..."}
-                if isinstance(last_update_data, dict):
-                    last_update = last_update_data.get("value", "")
-                else:
-                    last_update = str(last_update_data) if last_update_data else ""
+                last_update = ApiUtil.extract_value(last_update_data, "")
                 
                 # Filter status: API returns array of device objects
                 # Keep the array as-is for processing
                 filter_status = filter_status_data if isinstance(filter_status_data, list) else []
                 
                 # Active model: API returns plain text "F71" wrapped in {"value": "..."}
-                if isinstance(active_model_data, dict):
-                    active_model = active_model_data.get("value", "")
-                else:
-                    active_model = str(active_model_data) if active_model_data else None
+                active_model = ApiUtil.extract_value(active_model_data, None)
                 
                 # Extract usage data
                 # energy_usage_data is for current year
@@ -190,7 +185,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 
                 # Track successful update timestamp (ISO 8601 format with Z suffix for UTC)
                 now = datetime.now(timezone.utc)
-                last_successful_update = now.replace(microsecond=0).isoformat() + "Z"
+                last_successful_update = TimestampUtil.format_datetime_to_timestamp(now)
                 
                 return {
                     "energy_usage": energy_usage_total,
