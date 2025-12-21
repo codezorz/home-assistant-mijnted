@@ -1,0 +1,105 @@
+"""Base sensor class for MijnTed integration."""
+from typing import Any, Optional
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.entity import DeviceInfo
+from ..const import DOMAIN
+
+
+class MijnTedSensor(CoordinatorEntity, SensorEntity):
+    """Base class for Mijnted sensors."""
+    
+    def __init__(self, coordinator, sensor_type: str, name: str):
+        """Initialize the sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+            sensor_type: Type identifier for the sensor
+            name: Display name for the sensor
+        """
+        super().__init__(coordinator)
+        self.sensor_type = sensor_type
+        self._name = name
+        # Normalize to lowercase to avoid duplicate ID issues with case differences
+        self._attr_unique_id = f"{DOMAIN}_{sensor_type.lower()}"
+        # Store last known value for when sensor becomes unavailable
+        self._last_known_value = None
+        self._last_known_state = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information.
+        
+        Returns:
+            DeviceInfo object with device identifiers and details
+        """
+        residential_unit = self.coordinator.data.get("residential_unit", "unknown")
+        
+        # Build device name from address if available
+        residential_unit_detail = self.coordinator.data.get("residential_unit_detail", {})
+        device_name = "MijnTed"
+        
+        if isinstance(residential_unit_detail, dict):
+            street = residential_unit_detail.get("street", "")
+            appartment_no = residential_unit_detail.get("appartmentNo", "")
+            zip_code = residential_unit_detail.get("zipCode", "")
+            
+            # Build address string in format: "Street Number, ZipCode"
+            address_parts = []
+            if street:
+                if appartment_no:
+                    address_parts.append(f"{street} {appartment_no}")
+                else:
+                    address_parts.append(street)
+            elif appartment_no:
+                address_parts.append(appartment_no)
+            
+            if zip_code:
+                address_parts.append(zip_code)
+            
+            if address_parts:
+                device_name = f"MijnTed - {', '.join(address_parts)}"
+        
+        return DeviceInfo(
+            identifiers={(DOMAIN, residential_unit)},
+            name=device_name,
+            manufacturer="MijnTed",
+            model=self.coordinator.data.get("active_model", "Unknown"),
+        )
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor.
+        
+        Returns:
+            Formatted sensor name with "MijnTed" prefix
+        """
+        return f"MijnTed {self._name}"
+    
+    @property
+    def available(self) -> bool:
+        """Return True if sensor has fresh data from coordinator.
+        
+        Returns:
+            True if coordinator last update was successful, False otherwise
+        """
+        return self.coordinator.last_update_success
+    
+    def _get_last_successful_update(self) -> Optional[str]:
+        """Get the timestamp of the last successful update from coordinator data.
+        
+        Returns:
+            ISO timestamp string or None if not available
+        """
+        return self.coordinator.data.get("last_successful_update")
+    
+    def _update_last_known_value(self, value: Any) -> None:
+        """Update the last known value when fresh data is available.
+        
+        Args:
+            value: The current state value
+        """
+        if value is not None:
+            self._last_known_value = value
+            self._last_known_state = value
+
