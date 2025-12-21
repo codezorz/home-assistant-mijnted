@@ -15,8 +15,13 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry."""
     
+    # Track if callback was called during this update cycle to prevent duplicate config entry updates
+    callback_called = False
+    
     async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str]) -> None:
         """Callback to persist updated tokens to config entry."""
+        nonlocal callback_called
+        callback_called = True
         hass.config_entries.async_update_entry(
             entry,
             data={
@@ -33,6 +38,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     async def async_update_data() -> Dict[str, Any]:
         """Fetch data from the API and structure it for sensors."""
+        nonlocal callback_called
+        # Reset flag for this update cycle
+        callback_called = False
+        
+        # Store original token values to compare against after authentication
+        original_refresh_token = entry.data.get("refresh_token")
+        original_access_token = entry.data.get("access_token")
+        
         # Create a new API instance for each update to ensure fresh session
         api = MijntedApi(
             client_id=entry.data["client_id"],
@@ -47,7 +60,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await api.authenticate()
                 
                 # Update stored tokens if they were refreshed (fallback check in case callback didn't fire)
-                if api.refresh_token != entry.data.get("refresh_token") or api.access_token != entry.data.get("access_token"):
+                # Only update if callback wasn't called, to prevent duplicate updates
+                if not callback_called and (api.refresh_token != original_refresh_token or api.access_token != original_access_token):
                     hass.config_entries.async_update_entry(
                         entry,
                         data={

@@ -118,8 +118,8 @@ class MijntedAuth:
                             if not self.residential_unit:
                                 self._extract_residential_unit_from_token()
                         
-                        # Notify callback if tokens were updated
-                        if new_refresh_token and self.token_update_callback:
+                        # Notify callback if tokens were updated (always call if callback exists, as access_token is always updated)
+                        if self.token_update_callback:
                             try:
                                 await self.token_update_callback(
                                     self.refresh_token,
