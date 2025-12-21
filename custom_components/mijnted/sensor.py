@@ -9,15 +9,33 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import EntityCategory, DeviceInfo
-from .const import DOMAIN, UNIT_MIJNTED
+from .const import DOMAIN, UNIT_MIJNTED, YEAR_TRANSITION_MULTIPLIER
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 
-def translate_room_code(room_code: str) -> str:
+def translate_room_code(room_code: str, hass: Optional[HomeAssistant] = None) -> str:
     """Translate room codes to full room names.
     
-    Maps common room codes to their English names.
-    If no translation exists, returns the original code.
+    Args:
+        room_code: Room code to translate (e.g., "KA", "W")
+        hass: Home Assistant instance for translations (optional)
+        
+    Returns:
+        Translated room name or original code if translation not found
     """
+    if hass:
+        try:
+            # Try to get translation from translation files
+            translations = hass.data.get("frontend_translations", {}).get("en", {})
+            room_translations = translations.get("room_codes", {})
+            if room_code in room_translations:
+                return room_translations[room_code]
+        except Exception:
+            pass
+    
+    # Fallback to hardcoded translations
     room_translations = {
         "KA": "bedroom",
         "W": "living room",
@@ -25,8 +43,119 @@ def translate_room_code(room_code: str) -> str:
     return room_translations.get(room_code, room_code)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
-    """Set up the Mijnted sensors."""
+def _extract_monthly_breakdown(usage_data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Extract monthly breakdown from usage data.
+    
+    Args:
+        usage_data: Dictionary containing monthlyEnergyUsages list
+        
+    Returns:
+        Dictionary with monthYear as key and month data as value
+        
+    Example:
+        Input: {"monthlyEnergyUsages": [{"monthYear": "11.2025", ...}]}
+        Output: {"11.2025": {"total_energy_usage": 100.0, ...}}
+    """
+    month_breakdown: Dict[str, Dict[str, Any]] = {}
+    
+    if not isinstance(usage_data, dict):
+        return month_breakdown
+    
+    monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+    if not monthly_usages:
+        return month_breakdown
+    
+    for month in monthly_usages:
+        if not isinstance(month, dict):
+            continue
+        
+        month_year = month.get("monthYear")
+        if not month_year:
+            continue
+        
+        month_data: Dict[str, Any] = {}
+        
+        # Store all available fields
+        if "totalEnergyUsage" in month:
+            total_usage = month.get("totalEnergyUsage")
+            if total_usage is not None:
+                try:
+                    month_data["total_energy_usage"] = float(total_usage)
+                except (ValueError, TypeError):
+                    pass
+        
+        if "unitOfMeasurement" in month:
+            month_data["unit_of_measurement"] = month.get("unitOfMeasurement")
+        
+        if "averageEnergyUseForBillingUnit" in month:
+            avg_usage = month.get("averageEnergyUseForBillingUnit")
+            if avg_usage is not None:
+                try:
+                    month_data["average_energy_use_for_billing_unit"] = float(avg_usage)
+                except (ValueError, TypeError):
+                    pass
+        
+        if month_data:
+            month_breakdown[month_year] = month_data
+    
+    return month_breakdown
+
+
+def _extract_usage_insight_attributes(usage_insight: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract attributes from usage insight data.
+    
+    Args:
+        usage_insight: Dictionary containing usage insight data
+        
+    Returns:
+        Dictionary of extracted attributes with snake_case keys
+        
+    Example:
+        Input: {"unitType": "heat", "billingUnitAverageUsage": 50.0}
+        Output: {"unit_type": "heat", "billing_unit_average_usage": 50.0}
+    """
+    attributes: Dict[str, Any] = {}
+    
+    if not isinstance(usage_insight, dict):
+        return attributes
+    
+    if "unitType" in usage_insight:
+        attributes["unit_type"] = usage_insight.get("unitType")
+    
+    if "billingUnitAverageUsage" in usage_insight:
+        billing_avg = usage_insight.get("billingUnitAverageUsage")
+        if billing_avg is not None:
+            try:
+                attributes["billing_unit_average_usage"] = float(billing_avg)
+            except (ValueError, TypeError):
+                pass
+    
+    if "usageDifference" in usage_insight:
+        usage_diff = usage_insight.get("usageDifference")
+        if usage_diff is not None:
+            try:
+                attributes["usage_difference"] = float(usage_diff)
+            except (ValueError, TypeError):
+                pass
+    
+    if "deviceModel" in usage_insight:
+        attributes["device_model"] = usage_insight.get("deviceModel")
+    
+    return attributes
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities,
+) -> None:
+    """Set up the Mijnted sensors.
+    
+    Args:
+        hass: Home Assistant instance
+        entry: Configuration entry
+        async_add_entities: Callback to add entities
+    """
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
     sensors: List[SensorEntity] = [
@@ -61,7 +190,13 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     """Base class for Mijnted sensors."""
     
     def __init__(self, coordinator, sensor_type: str, name: str):
-        """Initialize the sensor."""
+        """Initialize the sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+            sensor_type: Type identifier for the sensor
+            name: Display name for the sensor
+        """
         super().__init__(coordinator)
         self.sensor_type = sensor_type
         self._name = name
@@ -70,7 +205,11 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device information."""
+        """Return device information.
+        
+        Returns:
+            DeviceInfo object with device identifiers and details
+        """
         residential_unit = self.coordinator.data.get("residential_unit", "unknown")
         
         # Build device name from address if available
@@ -107,14 +246,23 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def name(self) -> str:
-        """Return the name of the sensor."""
+        """Return the name of the sensor.
+        
+        Returns:
+            Formatted sensor name with "MijnTed" prefix
+        """
         return f"MijnTed {self._name}"
 
 class MijnTedDeviceSensor(MijnTedSensor):
     """Sensor for Mijnted devices."""
     
     def __init__(self, coordinator, device_number: str):
-        """Initialize the device sensor."""
+        """Initialize the device sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+            device_number: Device number identifier
+        """
         super().__init__(
             coordinator,
             f"device_{device_number}",
@@ -126,7 +274,11 @@ class MijnTedDeviceSensor(MijnTedSensor):
 
     @property
     def _device_data(self) -> Optional[Dict[str, Any]]:
-        """Get device data from coordinator."""
+        """Get device data from coordinator.
+        
+        Returns:
+            Device data dictionary if found, None otherwise
+        """
         filter_status = self.coordinator.data.get("filter_status", [])
         if isinstance(filter_status, list):
             for device in filter_status:
@@ -136,7 +288,11 @@ class MijnTedDeviceSensor(MijnTedSensor):
 
     @property
     def unique_id(self) -> str:
-        """Return the unique ID of the sensor."""
+        """Return the unique ID of the sensor.
+        
+        Returns:
+            Unique identifier string based on room and device number
+        """
         device_data = self._device_data
         if device_data and device_data.get("room"):
             # Normalize room name: lowercase and replace spaces/special chars with underscore
@@ -152,13 +308,19 @@ class MijnTedDeviceSensor(MijnTedSensor):
         device_data = self._device_data
         if device_data and device_data.get("room"):
             room_code = device_data['room']
-            room_name = translate_room_code(room_code)
+            # Get hass instance from coordinator (DataUpdateCoordinator has hass attribute)
+            hass = getattr(self.coordinator, 'hass', None)
+            room_name = translate_room_code(room_code, hass)
             return f"MijnTed device {room_name}"
         return f"MijnTed device {self.device_number}"
 
     @property
     def state(self) -> Any:
-        """Return the state of the sensor."""
+        """Return the state of the sensor.
+        
+        Returns:
+            Current reading value from device data
+        """
         device_data = self._device_data
         if device_data:
             return device_data.get("currentReadingValue")
@@ -178,7 +340,11 @@ class MijnTedDeviceSensor(MijnTedSensor):
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing room, device_id, and measurement_device_id
+        """
         device_data = self._device_data
         if device_data:
             return {
@@ -188,129 +354,6 @@ class MijnTedDeviceSensor(MijnTedSensor):
             }
         return {}
 
-class MijnTedSyncDateSensor(MijnTedSensor):
-    """Sensor for last synchronization date."""
-    
-    def __init__(self, coordinator):
-        """Initialize the sync date sensor."""
-        super().__init__(coordinator, "sync_date", "last synchronization")
-        
-    @property
-    def device_class(self) -> SensorDeviceClass:
-        """Return the device class."""
-        return SensorDeviceClass.TIMESTAMP
-
-    @property
-    def state(self) -> Optional[str]:
-        """Return the state of the sensor."""
-        return self.coordinator.data.get("sync_date")
-
-class MijnTedResidentialUnitSensor(MijnTedSensor):
-    """Sensor for residential unit information."""
-    
-    def __init__(self, coordinator):
-        """Initialize the residential unit sensor."""
-        super().__init__(coordinator, "residential_unit", "residential unit")
-        
-    @property
-    def state(self) -> Optional[str]:
-        """Return the state of the sensor."""
-        return self.coordinator.data.get("residential_unit")
-
-    @property
-    def entity_category(self) -> EntityCategory:
-        """Return the entity category."""
-        return EntityCategory.DIAGNOSTIC
-
-class MijnTedUsageSensor(MijnTedSensor):
-    """Base class for usage sensors."""
-    
-    def __init__(self, coordinator, period: str, name: str):
-        """Initialize the usage sensor."""
-        super().__init__(coordinator, f"usage_{period}", name)
-        self.period = period
-
-    @property
-    def state(self) -> Optional[float]:
-        """Return the state of the sensor."""
-        return self.coordinator.data.get("usage", {}).get(self.period)
-
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class."""
-        return SensorStateClass.TOTAL
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return UNIT_MIJNTED
-
-class MijnTedRoomUsageSensor(MijnTedSensor):
-    """Sensor for room usage."""
-    
-    def __init__(self, coordinator, room: str):
-        """Initialize the room usage sensor."""
-        super().__init__(coordinator, f"usage_room_{room}", f"usage {room}")
-        self.room = room
-        self._attr_icon = "mdi:lightning-bolt"
-
-    @property
-    def state(self) -> Optional[float]:
-        """Return the state of the sensor."""
-        room_usage = self.coordinator.data.get("room_usage", {})
-        
-        if isinstance(room_usage, dict):
-            # Dict format - get by room name (case-insensitive match)
-            for room_key, room_value in room_usage.items():
-                if room_key.lower() == self.room.lower():
-                    if isinstance(room_value, (int, float)):
-                        return float(room_value)
-                    elif isinstance(room_value, dict):
-                        # Extract usage value from dict
-                        return float(room_value.get("usage") or room_value.get("value") or room_value.get("total", 0))
-            return None
-        elif isinstance(room_usage, list):
-            # Fallback: if it's still a list, find the room
-            for item in room_usage:
-                if isinstance(item, dict):
-                    room_name = item.get("room") or item.get("roomName") or item.get("name")
-                    if room_name and room_name.lower() == self.room.lower():
-                        return float(item.get("usage") or item.get("value") or item.get("total", 0))
-            return None
-        return None
-
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class."""
-        return SensorStateClass.TOTAL
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return UNIT_MIJNTED
-
-class MijnTedInsightSensor(MijnTedSensor):
-    """Sensor for usage insights."""
-    
-    def __init__(self, coordinator, insight_type: str, name: str):
-        """Initialize the insight sensor."""
-        super().__init__(coordinator, f"insight_{insight_type}", name)
-        self.insight_type = insight_type
-
-    @property
-    def state(self) -> Optional[float]:
-        """Return the state of the sensor."""
-        return self.coordinator.data.get("insights", {}).get(self.insight_type)
-
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class."""
-        return SensorStateClass.MEASUREMENT
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return UNIT_MIJNTED
 
 class MijnTedThisMonthUsageSensor(MijnTedSensor):
     """Sensor for this month's usage."""
@@ -362,7 +405,15 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         return None
 
     def _find_month_by_identifier(self, usage_data: Dict[str, Any], month_identifier: str) -> Optional[Dict[str, Any]]:
-        """Find a specific month entry by monthYear identifier."""
+        """Find a specific month entry by monthYear identifier.
+        
+        Args:
+            usage_data: Dictionary containing monthly energy usage data
+            month_identifier: Month identifier in format "MM.YYYY"
+            
+        Returns:
+            Month dictionary if found, None otherwise
+        """
         if not isinstance(usage_data, dict):
             return None
         
@@ -377,7 +428,14 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         return None
 
     def _extract_month_number(self, month_year: str) -> Optional[int]:
-        """Extract month number from monthYear format (e.g., "11.2025" -> 11)."""
+        """Extract month number from monthYear format.
+        
+        Args:
+            month_year: Month year string in format "MM.YYYY"
+            
+        Returns:
+            Month number (1-12) if valid, None otherwise
+        """
         try:
             parts = month_year.split(".")
             if len(parts) == 2:
@@ -387,7 +445,15 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         return None
 
     def _calculate_measured_months_total(self, usage_data: Dict[str, Any], current_year: int) -> Optional[float]:
-        """Calculate the sum of all measured months for the current year from monthly breakdown."""
+        """Calculate the sum of all measured months for the current year.
+        
+        Args:
+            usage_data: Dictionary containing monthly energy usage data
+            current_year: Year to calculate for
+            
+        Returns:
+            Total usage for measured months, or None if no valid data
+        """
         if not isinstance(usage_data, dict):
             return None
         
@@ -423,7 +489,11 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
 
     @property
     def state(self) -> Optional[float]:
-        """Return the state of the sensor."""
+        """Return the state of the sensor.
+        
+        Returns:
+            This month's usage calculated from total minus measured months, or None if not available
+        """
         # Get total usage from filter_status (sum of all device readings - cumulative)
         total_usage = None
         filter_status = self.coordinator.data.get('filter_status')
@@ -469,7 +539,7 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
             # Sanity check: if difference is more than 2x this_year_usage, likely year transition issue
             # In that case, return None to indicate data isn't ready yet
             if this_month_usage >= 0:
-                if this_year_usage > 0 and this_month_usage > (this_year_usage * 2):
+                if this_year_usage > 0 and this_month_usage > (this_year_usage * YEAR_TRANSITION_MULTIPLIER):
                     # Suspiciously large difference - likely year transition issue
                     # Return None to wait for monthly data to be available
                     return None
@@ -502,7 +572,11 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing month data, averages, and last year comparisons
+        """
         attributes: Dict[str, Any] = {}
         
         # Get current year usage data
@@ -562,25 +636,56 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
     """Sensor for last update timestamp."""
     
     def __init__(self, coordinator):
-        """Initialize the last update sensor."""
+        """Initialize the last update sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
         super().__init__(coordinator, "last_update", "last update")
         self._attr_icon = "mdi:clock-outline"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def _parse_date_to_timestamp(self, date_str: str) -> Optional[str]:
-        """Convert date string (DD/MM/YYYY) to ISO 8601 timestamp."""
+        """Convert date string to ISO 8601 timestamp.
+        
+        Args:
+            date_str: Date string in DD/MM/YYYY format or ISO 8601 format
+            
+        Returns:
+            ISO 8601 timestamp string (YYYY-MM-DDTHH:MM:SSZ) or None if parsing fails
+        """
+        if not date_str or not isinstance(date_str, str):
+            return None
+        
+        date_str = date_str.strip()
         if not date_str:
             return None
         
+        # Check if already in ISO 8601 format
+        if "T" in date_str or date_str.count("-") >= 2:
+            try:
+                # Try to parse as ISO format
+                if date_str.endswith("Z"):
+                    return date_str
+                # Try parsing various ISO formats
+                for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"]:
+                    try:
+                        parsed = datetime.strptime(date_str, fmt)
+                        return parsed.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + "Z"
+                    except ValueError:
+                        continue
+            except (ValueError, AttributeError):
+                pass
+        
+        # Try DD/MM/YYYY format
         try:
-            # Parse DD/MM/YYYY format
-            date_obj = datetime.strptime(date_str.strip(), "%d/%m/%Y")
+            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
             # Convert to ISO 8601 format (midnight UTC)
             return date_obj.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + "Z"
         except (ValueError, AttributeError):
-            # If parsing fails, try to return as-is (might already be in correct format)
-            return date_str if date_str else None
+            _LOGGER.debug("Failed to parse date string: %s", date_str)
+            return None
 
     @property
     def state(self) -> Optional[str]:
@@ -599,14 +704,22 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
     """Sensor for total device readings from all devices."""
     
     def __init__(self, coordinator):
-        """Initialize the total usage sensor."""
+        """Initialize the total usage sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
         super().__init__(coordinator, "filter", "total usage")
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
     def state(self) -> Optional[float]:
-        """Return the state of the sensor."""
+        """Return the state of the sensor.
+        
+        Returns:
+            Sum of all device readings, or None if no valid data
+        """
         filter_status = self.coordinator.data.get('filter_status')
         # API returns an array of device objects
         if isinstance(filter_status, list):
@@ -623,11 +736,19 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit string constant
+        """
         return UNIT_MIJNTED
     
     def _calculate_last_year_total(self) -> Optional[float]:
-        """Calculate total usage from last year's monthly data."""
+        """Calculate total usage from last year's monthly data.
+        
+        Returns:
+            Total usage for last year, or None if no valid data
+        """
         usage_data = self.coordinator.data.get("usage_last_year", {})
         # API returns {"monthlyEnergyUsages": [...], "averageEnergyUseForBillingUnit": 0}
         if isinstance(usage_data, dict):
@@ -644,7 +765,11 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing device list and last year usage
+        """
         attributes: Dict[str, Any] = {}
         
         filter_status = self.coordinator.data.get('filter_status')
@@ -663,28 +788,44 @@ class MijnTedActiveModelSensor(MijnTedSensor):
     """Sensor for active model information."""
     
     def __init__(self, coordinator):
-        """Initialize the active model sensor."""
+        """Initialize the active model sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
         super().__init__(coordinator, "active_model", "active model")
         self._attr_icon = "mdi:tag"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def state(self) -> Optional[str]:
-        """Return the state of the sensor."""
+        """Return the state of the sensor.
+        
+        Returns:
+            Active model string, or None if not available
+        """
         return self.coordinator.data.get("active_model")
 
 class MijnTedDeliveryTypesSensor(MijnTedSensor):
     """Sensor for delivery types."""
     
     def __init__(self, coordinator):
-        """Initialize the delivery types sensor."""
+        """Initialize the delivery types sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
         super().__init__(coordinator, "delivery_types", "delivery type")
         self._attr_icon = "mdi:package-variant"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def state(self) -> Optional[str]:
-        """Return the state of the sensor."""
+        """Return the state of the sensor.
+        
+        Returns:
+            Comma-separated list of delivery types, or None if empty
+        """
         delivery_types = self.coordinator.data.get("delivery_types", [])
         if not delivery_types:
             return None
@@ -695,33 +836,53 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
     """Sensor for residential unit details."""
     
     def __init__(self, coordinator):
-        """Initialize the residential unit detail sensor."""
+        """Initialize the residential unit detail sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
         super().__init__(coordinator, "residential_unit_detail", "residential unit")
         self._attr_icon = "mdi:home"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def state(self) -> Optional[str]:
-        """Return the state of the sensor."""
+        """Return the state of the sensor.
+        
+        Returns:
+            Residential unit identifier, or None if not available
+        """
         return self.coordinator.data.get("residential_unit")
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing all residential unit detail data
+        """
         return self.coordinator.data.get("residential_unit_detail", {})
 
 class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
     """Sensor for unit of measures information."""
     
     def __init__(self, coordinator):
-        """Initialize the unit of measures sensor."""
+        """Initialize the unit of measures sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
         super().__init__(coordinator, "unit_of_measures", "unit of measures")
         self._attr_icon = "mdi:ruler"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def state(self) -> Optional[str]:
-        """Return the state of the sensor."""
+        """Return the state of the sensor.
+        
+        Returns:
+            Display name of first unit of measure, or None if not available
+        """
         unit_of_measures = self.coordinator.data.get("unit_of_measures", [])
         if isinstance(unit_of_measures, list) and len(unit_of_measures) > 0:
             # Get the first item's displayName
@@ -732,7 +893,11 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing unit of measures list
+        """
         unit_of_measures = self.coordinator.data.get("unit_of_measures", [])
         if isinstance(unit_of_measures, list):
             return {"unit_of_measures": unit_of_measures}
@@ -766,69 +931,31 @@ class MijnTedThisYearUsageSensor(MijnTedSensor):
     
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit string constant
+        """
         return UNIT_MIJNTED
     
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes from usageInsight and residentialUnitUsage."""
+        """Return entity specific state attributes from usageInsight and residentialUnitUsage.
+        
+        Returns:
+            Dictionary containing usage insight data and monthly breakdown
+        """
         attributes: Dict[str, Any] = {}
         
         # Add all properties from usageInsight
         usage_insight = self.coordinator.data.get("usage_insight", {})
-        if isinstance(usage_insight, dict):
-            if "unitType" in usage_insight:
-                attributes["unit_type"] = usage_insight.get("unitType")
-            if "billingUnitAverageUsage" in usage_insight:
-                billing_avg = usage_insight.get("billingUnitAverageUsage")
-                if billing_avg is not None:
-                    try:
-                        attributes["billing_unit_average_usage"] = float(billing_avg)
-                    except (ValueError, TypeError):
-                        pass
-            if "usageDifference" in usage_insight:
-                usage_diff = usage_insight.get("usageDifference")
-                if usage_diff is not None:
-                    try:
-                        attributes["usage_difference"] = float(usage_diff)
-                    except (ValueError, TypeError):
-                        pass
-            if "deviceModel" in usage_insight:
-                attributes["device_model"] = usage_insight.get("deviceModel")
+        attributes.update(_extract_usage_insight_attributes(usage_insight))
         
         # Add monthly breakdown from residentialUnitUsage
         usage_data = self.coordinator.data.get("usage_this_year", {})
-        if isinstance(usage_data, dict):
-            monthly_usages = usage_data.get("monthlyEnergyUsages", [])
-            if monthly_usages:
-                # Create a dict with monthYear as key and full month data as value
-                month_breakdown = {}
-                for month in monthly_usages:
-                    if isinstance(month, dict):
-                        month_year = month.get("monthYear")
-                        if month_year:
-                            month_data = {}
-                            # Store all available fields
-                            if "totalEnergyUsage" in month:
-                                total_usage = month.get("totalEnergyUsage")
-                                if total_usage is not None:
-                                    try:
-                                        month_data["total_energy_usage"] = float(total_usage)
-                                    except (ValueError, TypeError):
-                                        pass
-                            if "unitOfMeasurement" in month:
-                                month_data["unit_of_measurement"] = month.get("unitOfMeasurement")
-                            if "averageEnergyUseForBillingUnit" in month:
-                                avg_usage = month.get("averageEnergyUseForBillingUnit")
-                                if avg_usage is not None:
-                                    try:
-                                        month_data["average_energy_use_for_billing_unit"] = float(avg_usage)
-                                    except (ValueError, TypeError):
-                                        pass
-                            if month_data:
-                                month_breakdown[month_year] = month_data
-                if month_breakdown:
-                    attributes["monthly_breakdown"] = month_breakdown
+        month_breakdown = _extract_monthly_breakdown(usage_data)
+        if month_breakdown:
+            attributes["monthly_breakdown"] = month_breakdown
         
         return attributes
 
@@ -836,13 +963,21 @@ class MijnTedLastYearUsageSensor(MijnTedSensor):
     """Sensor for last year's total usage with month breakdown."""
     
     def __init__(self, coordinator):
-        """Initialize the last year usage sensor."""
+        """Initialize the last year usage sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
         super().__init__(coordinator, "last_year_usage", "last year usage")
         self._attr_icon = "mdi:chart-line"
     
     @property
     def state(self) -> Optional[float]:
-        """Return the state of the sensor from usageInsight."""
+        """Return the state of the sensor from usageInsight.
+        
+        Returns:
+            Total usage for last year, or None if not available
+        """
         usage_insight = self.coordinator.data.get("usage_insight_last_year", {})
         if isinstance(usage_insight, dict):
             usage = usage_insight.get("usage")
@@ -870,58 +1005,12 @@ class MijnTedLastYearUsageSensor(MijnTedSensor):
         
         # Add all properties from usageInsight
         usage_insight = self.coordinator.data.get("usage_insight_last_year", {})
-        if isinstance(usage_insight, dict):
-            if "unitType" in usage_insight:
-                attributes["unit_type"] = usage_insight.get("unitType")
-            if "billingUnitAverageUsage" in usage_insight:
-                billing_avg = usage_insight.get("billingUnitAverageUsage")
-                if billing_avg is not None:
-                    try:
-                        attributes["billing_unit_average_usage"] = float(billing_avg)
-                    except (ValueError, TypeError):
-                        pass
-            if "usageDifference" in usage_insight:
-                usage_diff = usage_insight.get("usageDifference")
-                if usage_diff is not None:
-                    try:
-                        attributes["usage_difference"] = float(usage_diff)
-                    except (ValueError, TypeError):
-                        pass
-            if "deviceModel" in usage_insight:
-                attributes["device_model"] = usage_insight.get("deviceModel")
+        attributes.update(_extract_usage_insight_attributes(usage_insight))
         
         # Add monthly breakdown from residentialUnitUsage
         usage_data = self.coordinator.data.get("usage_last_year", {})
-        if isinstance(usage_data, dict):
-            monthly_usages = usage_data.get("monthlyEnergyUsages", [])
-            if monthly_usages:
-                # Create a dict with monthYear as key and full month data as value
-                month_breakdown = {}
-                for month in monthly_usages:
-                    if isinstance(month, dict):
-                        month_year = month.get("monthYear")
-                        if month_year:
-                            month_data = {}
-                            # Store all available fields
-                            if "totalEnergyUsage" in month:
-                                total_usage = month.get("totalEnergyUsage")
-                                if total_usage is not None:
-                                    try:
-                                        month_data["total_energy_usage"] = float(total_usage)
-                                    except (ValueError, TypeError):
-                                        pass
-                            if "unitOfMeasurement" in month:
-                                month_data["unit_of_measurement"] = month.get("unitOfMeasurement")
-                            if "averageEnergyUseForBillingUnit" in month:
-                                avg_usage = month.get("averageEnergyUseForBillingUnit")
-                                if avg_usage is not None:
-                                    try:
-                                        month_data["average_energy_use_for_billing_unit"] = float(avg_usage)
-                                    except (ValueError, TypeError):
-                                        pass
-                            if month_data:
-                                month_breakdown[month_year] = month_data
-                if month_breakdown:
-                    attributes["monthly_breakdown"] = month_breakdown
+        month_breakdown = _extract_monthly_breakdown(usage_data)
+        if month_breakdown:
+            attributes["monthly_breakdown"] = month_breakdown
         
         return attributes
