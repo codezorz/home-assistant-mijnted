@@ -2,6 +2,7 @@
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime, timezone
 from homeassistant.core import HomeAssistant
+from ..const import YEAR_MONTH_SORT_MULTIPLIER
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -328,8 +329,8 @@ class DataUtil:
                 parsed = DataUtil.parse_month_year(month_year)
                 if parsed:
                     month_num, year = parsed
-                    # Create a sortable key (year * 100 + month)
-                    sort_key = year * 100 + month_num
+                    # Create a sortable key (year * YEAR_MONTH_SORT_MULTIPLIER + month)
+                    sort_key = year * YEAR_MONTH_SORT_MULTIPLIER + month_num
                     valid_months.append((sort_key, month))
         
         # Sort by date descending (most recent first) and return the first valid one
