@@ -15,7 +15,7 @@ This custom component integrates MijnTed devices with Home Assistant, allowing y
 - Configurable automatic data refresh (default: 1 hour)
 - Usage sensors display with zero decimal precision for cleaner UI
 - Sensors retain last known values when data becomes unavailable
-- Track last successful update timestamp for all sensors
+- Track last successful sync timestamp for all sensors
 
 ## Installation
 
@@ -79,7 +79,7 @@ Once configured, the integration will create several sensors in Home Assistant:
 
 - **This Month Usage** - Current month's energy usage (calculated from total minus measured months)
 - **Last Update** - Timestamp of the last data synchronization from the API
-- **Last Successful Update** - Timestamp of the last successful data fetch by the integration
+- **Last Successful Sync** - Timestamp of the last successful data synchronization from the API
 - **Total Usage** - Sum of all device readings (cumulative filter status)
 - **Active Model** - The active model identifier (e.g., "F71")
 - **Delivery Type** - Available delivery types for your residential unit
@@ -94,7 +94,7 @@ All usage sensors display values with zero decimal places for a cleaner interfac
 **Data Availability:**
 - Sensors retain their last known value when data becomes temporarily unavailable
 - The `available` property indicates whether the sensor has fresh data or is showing cached values
-- All sensors include a `last_successful_update` attribute showing when data was last successfully fetched
+- All sensors include a `last_successful_sync` attribute showing when data was last successfully synchronized
 
 You can use these sensors in your automations, scripts, and dashboards to monitor and analyze your energy consumption. The sensors include additional attributes with detailed information that can be accessed in templates and automations.
 

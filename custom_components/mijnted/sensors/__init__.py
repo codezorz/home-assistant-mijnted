@@ -13,7 +13,7 @@ from .diagnostics import (
     MijnTedDeliveryTypesSensor,
     MijnTedResidentialUnitDetailSensor,
     MijnTedUnitOfMeasuresSensor,
-    MijnTedLastSuccessfulUpdateSensor,
+    MijnTedLastSuccessfulSyncSensor,
 )
 
 __all__ = [
@@ -28,6 +28,6 @@ __all__ = [
     "MijnTedDeliveryTypesSensor",
     "MijnTedResidentialUnitDetailSensor",
     "MijnTedUnitOfMeasuresSensor",
-    "MijnTedLastSuccessfulUpdateSensor",
+    "MijnTedLastSuccessfulSyncSensor",
 ]
 

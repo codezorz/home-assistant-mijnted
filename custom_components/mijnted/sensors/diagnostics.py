@@ -157,16 +157,16 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
         return {}
 
 
-class MijnTedLastSuccessfulUpdateSensor(MijnTedSensor):
-    """Sensor for the timestamp of the last successful data update."""
+class MijnTedLastSuccessfulSyncSensor(MijnTedSensor):
+    """Sensor for the timestamp of the last successful data sync."""
     
     def __init__(self, coordinator):
-        """Initialize the last successful update sensor.
+        """Initialize the last successful sync sensor.
         
         Args:
             coordinator: Data update coordinator
         """
-        super().__init__(coordinator, "last_successful_update", "last successful update")
+        super().__init__(coordinator, "last_successful_sync", "last successful sync")
         self._attr_icon = "mdi:clock-check"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -176,7 +176,7 @@ class MijnTedLastSuccessfulUpdateSensor(MijnTedSensor):
         """Return the state of the sensor.
         
         Returns:
-            ISO timestamp string of last successful update, or None if not available
+            ISO timestamp string of last successful sync, or None if not available
         """
-        return self._get_last_successful_update()
+        return self._get_last_successful_sync()
 
