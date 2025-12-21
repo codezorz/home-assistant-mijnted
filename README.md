@@ -5,13 +5,15 @@ This custom component integrates MijnTed devices with Home Assistant, allowing y
 ## Features
 
 - Authenticate with MijnTed API using refresh token
-- Retrieve energy usage data (current year and last year)
+- Retrieve energy usage data (current month, current year, and last year)
 - Get last data update timestamp
 - Monitor filter status and device readings
-- Track usage per room
+- Track usage per room/device
 - Get active model information
 - Retrieve residential unit details
+- Get unit of measures information
 - Configurable automatic data refresh (default: 1 hour)
+- Usage sensors display with zero decimal precision for cleaner UI
 
 ## Installation
 
@@ -73,15 +75,18 @@ These credentials are used to authenticate with the MijnTed API. During the inte
 
 Once configured, the integration will create several sensors in Home Assistant:
 
-- **Energy Usage** - Total energy usage (sum of monthly usage for current year)
+- **This Month Usage** - Current month's energy usage (calculated from total minus measured months)
 - **Last Update** - Timestamp of the last data synchronization
-- **Total Device Readings** - Sum of all device readings (filter status)
+- **Total Usage** - Sum of all device readings (cumulative filter status)
 - **Active Model** - The active model identifier (e.g., "F71")
-- **Delivery Types** - Available delivery types for your residential unit
-- **Residential Unit Detail** - Detailed information about your residential unit
-- **Usage Last Year** - Total energy usage for the previous year
-- **Usage This Year** - Total energy usage for the current year (with monthly breakdown in attributes)
-- **Usage per Room** - Individual sensors for each room (dynamically created based on your setup)
+- **Delivery Type** - Available delivery types for your residential unit
+- **Residential Unit** - Detailed information about your residential unit
+- **Unit of Measures** - Unit of measurement information
+- **This Year Usage** - Total energy usage for the current year (with monthly breakdown in attributes)
+- **Last Year Usage** - Total energy usage for the previous year (with monthly breakdown in attributes)
+- **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)
+
+All usage sensors display values with zero decimal places for a cleaner interface.
 
 You can use these sensors in your automations, scripts, and dashboards to monitor and analyze your energy consumption. The sensors include additional attributes with detailed information that can be accessed in templates and automations.
 
@@ -134,6 +139,5 @@ For running unit tests (optional), you'll need to set up a Python environment wi
 
 The integration uses the following dependencies:
 - `aiohttp` - For async HTTP requests
-- `async-timeout` - For request timeouts
 - `PyJWT` - For JWT token decoding
 
