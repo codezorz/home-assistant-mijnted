@@ -14,24 +14,40 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry."""
     
+    # Track if config entry was updated during this coordinator update cycle
+    # to prevent duplicate updates that could trigger additional coordinator refreshes
+    config_entry_updated = False
+    
     async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str]) -> None:
         """Callback to persist updated tokens to config entry."""
-        hass.config_entries.async_update_entry(
-            entry,
-            data={
-                **entry.data,
-                "refresh_token": refresh_token,
-                "access_token": access_token,
-                "residential_unit": residential_unit
-            }
-        )
-        _LOGGER.debug(
-            "Updated tokens in config entry",
-            extra={"entry_id": entry.entry_id, "has_residential_unit": bool(residential_unit)}
-        )
+        nonlocal config_entry_updated
+        if not config_entry_updated:
+            hass.config_entries.async_update_entry(
+                entry,
+                data={
+                    **entry.data,
+                    "refresh_token": refresh_token,
+                    "access_token": access_token,
+                    "residential_unit": residential_unit
+                }
+            )
+            config_entry_updated = True
+            _LOGGER.debug(
+                "Updated tokens in config entry",
+                extra={"entry_id": entry.entry_id, "has_residential_unit": bool(residential_unit)}
+            )
     
     async def async_update_data() -> Dict[str, Any]:
         """Fetch data from the API and structure it for sensors."""
+        nonlocal config_entry_updated
+        # Reset flag for this update cycle
+        config_entry_updated = False
+        
+        # Store original token values to compare against after authentication
+        # (entry.data might be updated by callback during authentication)
+        original_refresh_token = entry.data.get("refresh_token")
+        original_access_token = entry.data.get("access_token")
+        
         # Create a new API instance for each update to ensure fresh session
         api = MijntedApi(
             client_id=entry.data["client_id"],
@@ -46,7 +62,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await api.authenticate()
                 
                 # Update stored tokens if they were refreshed (fallback check in case callback didn't fire)
-                if api.refresh_token != entry.data.get("refresh_token") or api.access_token != entry.data.get("access_token"):
+                # Only update if callback hasn't already updated the config entry
+                if not config_entry_updated and (api.refresh_token != original_refresh_token or api.access_token != original_access_token):
                     hass.config_entries.async_update_entry(
                         entry,
                         data={
@@ -56,6 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             "residential_unit": api.residential_unit
                         }
                     )
+                    config_entry_updated = True
                 
                 # Fetch all data in parallel where possible for better performance
                 # Group independent calls together
