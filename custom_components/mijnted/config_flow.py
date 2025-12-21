@@ -6,8 +6,8 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.const import CONF_CLIENT_ID
 from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN, DEFAULT_POLLING_INTERVAL, MIN_POLLING_INTERVAL, MAX_POLLING_INTERVAL
-from .api import (
-    MijntedApi,
+from .api import MijntedApi
+from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
     MijntedConnectionError,

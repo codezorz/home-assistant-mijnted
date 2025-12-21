@@ -5,7 +5,8 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from .api import MijntedApi, MijntedApiError, MijntedAuthenticationError, MijntedConnectionError
+from .api import MijntedApi
+from .exceptions import MijntedApiError, MijntedAuthenticationError, MijntedConnectionError
 from .const import DOMAIN, DEFAULT_POLLING_INTERVAL
 from .utils import TimestampUtil, ApiUtil, DateUtil
 
