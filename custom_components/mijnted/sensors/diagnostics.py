@@ -1,4 +1,3 @@
-"""Diagnostic sensors for MijnTed integration."""
 from typing import Any, Dict, Optional
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.entity import EntityCategory

@@ -1,4 +1,3 @@
-"""Sensor implementations for MijnTed integration."""
 from .base import MijnTedSensor
 from .device import MijnTedDeviceSensor
 from .usage import (

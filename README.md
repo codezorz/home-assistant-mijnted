@@ -16,6 +16,8 @@ This custom component integrates MijnTed devices with Home Assistant, allowing y
 - Usage sensors display with zero decimal precision for cleaner UI
 - Sensors retain last known values when data becomes unavailable
 - Track last successful sync timestamp for all sensors
+- Automatic retry logic for token refresh with connection error handling
+- Intelligent caching: returns cached data on temporary connection errors when token is still valid
 
 ## Installation
 
@@ -116,6 +118,7 @@ The integration uses a custom `MijntedApi` class to interact with the MijnTed AP
 - `get_residential_unit_detail()`: Gets detailed residential unit information
 - `get_usage_last_year()`: Fetches last year's energy usage data
 - `get_usage_per_room()`: Gets usage data per room for the current year
+- `get_unit_of_measures()`: Gets unit of measurement information
 
 ## Troubleshooting
 

@@ -1,4 +1,3 @@
-"""Usage-related sensors for MijnTed integration."""
 from typing import Any, Dict, Optional
 from datetime import datetime
 from homeassistant.components.sensor import SensorStateClass
