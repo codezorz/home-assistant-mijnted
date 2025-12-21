@@ -2,7 +2,7 @@
 from typing import Any, Dict, Optional, Tuple
 from datetime import datetime, timezone
 from homeassistant.core import HomeAssistant
-from ..const import YEAR_MONTH_SORT_MULTIPLIER
+from .const import YEAR_MONTH_SORT_MULTIPLIER
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -389,7 +389,7 @@ class TranslationUtil:
                 
                 # Load translations for the integration
                 # Use the domain name for translation loading
-                from ..const import DOMAIN
+                from .const import DOMAIN
                 translations = await translation.async_get_translations(
                     hass, "entity", language, [DOMAIN]
                 )
@@ -434,7 +434,7 @@ class TranslationUtil:
         """
         if hass:
             try:
-                from ..const import DOMAIN
+                from .const import DOMAIN
                 
                 # Get the current language
                 language = hass.config.language or "en"
