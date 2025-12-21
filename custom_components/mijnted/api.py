@@ -65,29 +65,42 @@ class MijntedApi:
         self.residential_unit = residential_unit
         self.delivery_type: Optional[str] = None
         self.token_update_callback = token_update_callback
+        self._in_context_manager = False
 
     def _ensure_session(self) -> None:
-        """Ensure a session exists, creating one if necessary."""
+        """Ensure a session exists, creating one if necessary.
+        
+        Note: This method should typically only be called from within the async context manager.
+        Creating a session outside the context manager may lead to resource leaks.
+        """
         if self.session is None:
             self.session = aiohttp.ClientSession()
 
     async def __aenter__(self):
         """Async context manager entry.
         
+        Creates and manages the aiohttp session lifecycle. The session is created here
+        and will be automatically closed when exiting the context manager.
+        
         Returns:
             Self instance with ensured session
         """
-        self._ensure_session()
+        if self.session is None:
+            self.session = aiohttp.ClientSession()
+        self._in_context_manager = True
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit.
+        
+        Ensures the session is properly closed, even if an exception occurred.
         
         Args:
             exc_type: Exception type if any
             exc_val: Exception value if any
             exc_tb: Exception traceback if any
         """
+        self._in_context_manager = False
         await self.close()
 
     async def refresh_access_token(self) -> str:
@@ -574,7 +587,9 @@ class MijntedApi:
     async def close(self) -> None:
         """Close the API session.
         
-        Safely closes the aiohttp session if it exists.
+        Safely closes the aiohttp session if it exists. This method is called
+        automatically when exiting the async context manager, but can also be
+        called manually if needed.
         """
         if self.session:
             await self.session.close()
