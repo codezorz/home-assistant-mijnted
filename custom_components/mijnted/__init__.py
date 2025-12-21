@@ -183,9 +183,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         else:
                             room_usage[f"room_{i}"] = item
                 
-                # Track successful update timestamp (ISO 8601 format with Z suffix for UTC)
+                # Track successful sync timestamp (ISO 8601 format with Z suffix for UTC)
                 now = datetime.now(timezone.utc)
-                last_successful_update = TimestampUtil.format_datetime_to_timestamp(now)
+                last_successful_sync = TimestampUtil.format_datetime_to_timestamp(now)
                 
                 return {
                     "energy_usage": energy_usage_total,
@@ -202,7 +202,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "usage_last_year": usage_last_year,
                     "room_usage": room_usage,
                     "unit_of_measures": unit_of_measures_data,
-                    "last_successful_update": last_successful_update,
+                    "last_successful_sync": last_successful_sync,
                 }
         except MijntedAuthenticationError as err:
             _LOGGER.error("Authentication error: %s", err)
