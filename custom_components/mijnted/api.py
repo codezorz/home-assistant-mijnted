@@ -125,7 +125,10 @@ class MijntedApi:
                         
                         # If no access_token, try using id_token (some flows return only id_token)
                         if not self.access_token and id_token:
-                            _LOGGER.debug("No access_token in response, using id_token")
+                            _LOGGER.debug(
+                                "No access_token in response, using id_token",
+                                extra={"has_residential_unit": bool(self.residential_unit)}
+                            )
                             self.access_token = id_token
                         
                         if not self.access_token:
@@ -152,20 +155,38 @@ class MijntedApi:
                                     self.residential_unit
                                 )
                             except Exception as err:
-                                _LOGGER.warning("Error in token update callback: %s", err, exc_info=True)
+                                _LOGGER.warning(
+                                    "Error in token update callback: %s",
+                                    err,
+                                    extra={"has_residential_unit": bool(self.residential_unit)},
+                                    exc_info=True
+                                )
                         
                         return self.access_token
                     else:
                         error_text = await response.text()
-                        _LOGGER.error("Token refresh failed: %s - %s", response.status, error_text)
+                        _LOGGER.error(
+                            "Token refresh failed: %s - %s",
+                            response.status,
+                            error_text,
+                            extra={"status_code": response.status, "has_residential_unit": bool(self.residential_unit)}
+                        )
                         if response.status == 401:
                             raise MijntedAuthenticationError(f"Authentication failed: {error_text}")
                         raise MijntedApiError(f"Token refresh failed: {response.status} - {error_text}")
         except (TimeoutError, asyncio.TimeoutError) as err:
-            _LOGGER.error("Timeout during token refresh: %s", err)
+            _LOGGER.error(
+                "Timeout during token refresh: %s",
+                err,
+                extra={"timeout": REQUEST_TIMEOUT}
+            )
             raise MijntedTimeoutError("Timeout during token refresh") from err
         except aiohttp.ClientError as err:
-            _LOGGER.error("Network error during token refresh: %s", err)
+            _LOGGER.error(
+                "Network error during token refresh: %s",
+                err,
+                extra={"auth_url": self.auth_url}
+            )
             raise MijntedConnectionError(f"Network error during token refresh: {err}") from err
         except (MijntedAuthenticationError, MijntedApiError):
             raise
@@ -207,9 +228,17 @@ class MijntedApi:
             if residential_unit:
                 self.residential_unit = residential_unit
         except jwt.DecodeError as err:
-            _LOGGER.debug("Could not decode id_token: %s", err)
+            _LOGGER.debug(
+                "Could not decode id_token: %s",
+                err,
+                extra={"has_id_token": bool(id_token)}
+            )
         except Exception as err:
-            _LOGGER.debug("Could not extract residential unit from id_token: %s", err)
+            _LOGGER.debug(
+                "Could not extract residential unit from id_token: %s",
+                err,
+                extra={"has_id_token": bool(id_token)}
+            )
 
     def _extract_residential_unit_from_token(self) -> None:
         """Extract residential unit from the access token.
@@ -225,9 +254,17 @@ class MijntedApi:
             if residential_unit:
                 self.residential_unit = residential_unit
         except jwt.DecodeError as err:
-            _LOGGER.debug("Could not decode access token: %s", err)
+            _LOGGER.debug(
+                "Could not decode access token: %s",
+                err,
+                extra={"has_access_token": bool(self.access_token)}
+            )
         except Exception as err:
-            _LOGGER.debug("Could not extract residential unit from token: %s", err)
+            _LOGGER.debug(
+                "Could not extract residential unit from token: %s",
+                err,
+                extra={"has_access_token": bool(self.access_token)}
+            )
 
     async def authenticate(self) -> None:
         """Authenticate with the Mijnted API using refresh token.
@@ -254,10 +291,17 @@ class MijntedApi:
                         return
             except jwt.DecodeError:
                 # Token is invalid, need to refresh
-                _LOGGER.debug("Access token decode failed, refreshing token")
+                _LOGGER.debug(
+                    "Access token decode failed, refreshing token",
+                    extra={"has_access_token": bool(self.access_token), "has_residential_unit": bool(self.residential_unit)}
+                )
             except Exception as err:
                 # Token is invalid, need to refresh
-                _LOGGER.debug("Access token validation failed: %s", err)
+                _LOGGER.debug(
+                    "Access token validation failed: %s",
+                    err,
+                    extra={"has_access_token": bool(self.access_token), "has_residential_unit": bool(self.residential_unit)}
+                )
 
         # Refresh the access token
         await self.refresh_access_token()
@@ -312,7 +356,10 @@ class MijntedApi:
                         return await self._parse_response(response)
                     elif response.status == 401:
                         # Token expired, try to refresh
-                        _LOGGER.info("Access token expired, refreshing...")
+                        _LOGGER.info(
+                            "Access token expired, refreshing...",
+                            extra={"url": url, "method": method, "residential_unit": self.residential_unit}
+                        )
                         await self.refresh_access_token()
                         # Retry the request with new token
                         async with self.session.request(method, url, headers=self._headers(), timeout=timeout, **kwargs) as retry_response:
@@ -324,6 +371,7 @@ class MijntedApi:
                                     "API request failed after token refresh: %s - %s",
                                     retry_response.status,
                                     error_text,
+                                    extra={"url": url, "method": method, "status_code": retry_response.status, "residential_unit": self.residential_unit}
                                 )
                                 if retry_response.status == 401:
                                     raise MijntedAuthenticationError(
@@ -334,22 +382,43 @@ class MijntedApi:
                                 )
                     elif response.status == 401:
                         error_text = await response.text()
-                        _LOGGER.error("API request unauthorized: %s", error_text)
+                        _LOGGER.error(
+                            "API request unauthorized: %s",
+                            error_text,
+                            extra={"url": url, "method": method, "status_code": response.status, "residential_unit": self.residential_unit}
+                        )
                         raise MijntedAuthenticationError(f"Authentication failed: {error_text}")
                     else:
                         error_text = await response.text()
-                        _LOGGER.error("API request failed: %s - %s", response.status, error_text)
+                        _LOGGER.error(
+                            "API request failed: %s - %s",
+                            response.status,
+                            error_text,
+                            extra={"url": url, "method": method, "status_code": response.status, "residential_unit": self.residential_unit}
+                        )
                         raise MijntedApiError(f"API request failed: {response.status} - {error_text}")
         except (TimeoutError, asyncio.TimeoutError) as err:
-            _LOGGER.error("Timeout during API request: %s", err)
+            _LOGGER.error(
+                "Timeout during API request: %s",
+                err,
+                extra={"url": url, "method": method, "timeout": REQUEST_TIMEOUT, "residential_unit": self.residential_unit}
+            )
             raise MijntedTimeoutError("Timeout during API request") from err
         except aiohttp.ClientError as err:
-            _LOGGER.error("Network error during API request: %s", err)
+            _LOGGER.error(
+                "Network error during API request: %s",
+                err,
+                extra={"url": url, "method": method, "residential_unit": self.residential_unit}
+            )
             raise MijntedConnectionError(f"Network error during API request: {err}") from err
         except (MijntedAuthenticationError, MijntedConnectionError, MijntedTimeoutError, MijntedApiError):
             raise
         except Exception as err:
-            _LOGGER.exception("Unexpected error during API request: %s", err)
+            _LOGGER.exception(
+                "Unexpected error during API request: %s",
+                err,
+                extra={"url": url, "method": method, "residential_unit": self.residential_unit}
+            )
             raise MijntedApiError(f"Unexpected error during API request: {err}") from err
 
     @staticmethod
@@ -382,6 +451,10 @@ class MijntedApi:
         """
         current_year = self._get_current_year()
         url = f"{self.base_url}/residentialUnitUsage/{current_year}/{self.residential_unit}/{self.delivery_type}"
+        _LOGGER.debug(
+            "Fetching energy usage",
+            extra={"residential_unit": self.residential_unit, "year": current_year, "delivery_type": self.delivery_type}
+        )
         return await self._make_request("GET", url)
 
     async def get_last_data_update(self) -> Dict[str, Any]:
@@ -423,6 +496,10 @@ class MijntedApi:
         if year is None:
             year = self._get_current_year()
         url = f"{self.base_url}/usageInsight/{year}/{self.residential_unit}/{self.delivery_type}"
+        _LOGGER.debug(
+            "Fetching usage insight",
+            extra={"residential_unit": self.residential_unit, "year": year, "delivery_type": self.delivery_type}
+        )
         return await self._make_request("GET", url)
 
     async def get_active_model(self) -> Dict[str, Any]:
