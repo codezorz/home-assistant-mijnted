@@ -483,3 +483,33 @@ class TranslationUtil:
         }
         return room_translations.get(room_code, room_code)
 
+
+class DateUtil:
+    """Utility class for date calculations."""
+    
+    @staticmethod
+    def get_last_year() -> int:
+        """Get the previous year.
+        
+        Returns:
+            Previous year as integer (current year - 1)
+        """
+        return datetime.now().year - 1
+
+
+class ListUtil:
+    """Utility class for list operations."""
+    
+    @staticmethod
+    def get_first_item(items: Any) -> Optional[Any]:
+        """Safely get the first item from a list.
+        
+        Args:
+            items: List or any other type
+            
+        Returns:
+            First item if items is a non-empty list, None otherwise
+        """
+        if isinstance(items, list) and len(items) > 0:
+            return items[0]
+        return None
