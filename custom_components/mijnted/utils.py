@@ -49,7 +49,11 @@ class TimestampUtil:
             # Convert to ISO 8601 format (midnight UTC)
             return date_obj.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + "Z"
         except (ValueError, AttributeError):
-            _LOGGER.debug("Failed to parse date string: %s", date_str)
+            _LOGGER.debug(
+                "Failed to parse date string: %s",
+                date_str,
+                extra={"date_string": date_str, "date_length": len(date_str) if date_str else 0}
+            )
             return None
     
     @staticmethod

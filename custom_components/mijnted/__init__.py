@@ -25,7 +25,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "residential_unit": residential_unit
             }
         )
-        _LOGGER.debug("Updated tokens in config entry")
+        _LOGGER.debug(
+            "Updated tokens in config entry",
+            extra={"entry_id": entry.entry_id, "has_residential_unit": bool(residential_unit)}
+        )
     
     async def async_update_data() -> Dict[str, Any]:
         """Fetch data from the API and structure it for sensors."""
@@ -103,7 +106,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 
                 for name, result in exception_map.items():
                     if isinstance(result, Exception):
-                        _LOGGER.warning("Failed to fetch %s: %s", name, result)
+                        _LOGGER.warning(
+                            "Failed to fetch %s: %s",
+                            name,
+                            result,
+                            extra={"data_type": name, "residential_unit": api.residential_unit, "error_type": type(result).__name__}
+                        )
                         # Set to default empty value based on expected type
                         if name in ("filter_status", "unit_of_measures"):
                             exception_map[name] = []
@@ -205,16 +213,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "last_successful_sync": last_successful_sync,
                 }
         except MijntedAuthenticationError as err:
-            _LOGGER.error("Authentication error: %s", err)
+            _LOGGER.error(
+                "Authentication error: %s",
+                err,
+                extra={"entry_id": entry.entry_id, "error_type": "MijntedAuthenticationError"}
+            )
             raise UpdateFailed(f"Authentication failed: {err}") from err
         except MijntedConnectionError as err:
-            _LOGGER.error("Connection error: %s", err)
+            _LOGGER.error(
+                "Connection error: %s",
+                err,
+                extra={"entry_id": entry.entry_id, "error_type": "MijntedConnectionError"}
+            )
             raise UpdateFailed(f"Connection failed: {err}") from err
         except MijntedApiError as err:
-            _LOGGER.error("API error: %s", err)
+            _LOGGER.error(
+                "API error: %s",
+                err,
+                extra={"entry_id": entry.entry_id, "error_type": "MijntedApiError"}
+            )
             raise UpdateFailed(f"API error: {err}") from err
         except Exception as err:
-            _LOGGER.exception("Unexpected error communicating with API: %s", err)
+            _LOGGER.exception(
+                "Unexpected error communicating with API: %s",
+                err,
+                extra={"entry_id": entry.entry_id, "error_type": type(err).__name__}
+            )
             raise UpdateFailed(f"Unexpected error: {err}") from err
 
     polling_interval_seconds = entry.data.get("polling_interval", DEFAULT_POLLING_INTERVAL.total_seconds())

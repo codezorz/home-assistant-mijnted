@@ -139,23 +139,43 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input["refresh_token"] = api.refresh_token
         except MijntedAuthenticationError as err:
             error_msg = str(err) if err else "Authentication failed"
-            _LOGGER.debug("Authentication validation failed: %s", error_msg)
+            _LOGGER.debug(
+                "Authentication validation failed: %s",
+                error_msg,
+                extra={"error_type": "MijntedAuthenticationError"}
+            )
             raise InvalidAuth(f"Invalid credentials: {error_msg}") from err
         except MijntedTimeoutError as err:
             error_msg = str(err) if err else "Request timed out"
-            _LOGGER.debug("Timeout during validation: %s", error_msg)
+            _LOGGER.debug(
+                "Timeout during validation: %s",
+                error_msg,
+                extra={"error_type": "MijntedTimeoutError"}
+            )
             raise CannotConnect(f"Connection timeout: {error_msg}. Please check your internet connection and try again.") from err
         except MijntedConnectionError as err:
             error_msg = str(err) if err else "Connection failed"
-            _LOGGER.debug("Connection validation failed: %s", error_msg)
+            _LOGGER.debug(
+                "Connection validation failed: %s",
+                error_msg,
+                extra={"error_type": "MijntedConnectionError"}
+            )
             raise CannotConnect(f"Unable to connect to MijnTed API: {error_msg}. Please check your internet connection.") from err
         except MijntedApiError as err:
             error_msg = str(err) if err else "API error"
-            _LOGGER.debug("API validation failed: %s", error_msg)
+            _LOGGER.debug(
+                "API validation failed: %s",
+                error_msg,
+                extra={"error_type": "MijntedApiError"}
+            )
             raise CannotConnect(f"MijnTed API error: {error_msg}. Please try again later.") from err
         except aiohttp.ClientError as err:
             error_msg = str(err) if err else "Network error"
-            _LOGGER.debug("HTTP client error during validation: %s", error_msg)
+            _LOGGER.debug(
+                "HTTP client error during validation: %s",
+                error_msg,
+                extra={"error_type": "aiohttp.ClientError"}
+            )
             raise CannotConnect(f"Network error: {error_msg}. Please check your internet connection.") from err
 
 
