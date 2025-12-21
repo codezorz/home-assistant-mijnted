@@ -16,6 +16,9 @@ from .sensors import (
     MijnTedLastYearUsageSensor,
     MijnTedLastSuccessfulSyncSensor,
     MijnTedDeviceSensor,
+    MijnTedLastMonthUsageSensor,
+    MijnTedLastMonthAverageUsageSensor,
+    MijnTedLastMonthAverageUsageLastYearSensor,
 )
 
 
@@ -44,6 +47,9 @@ async def async_setup_entry(
         MijnTedThisYearUsageSensor(coordinator),
         MijnTedLastYearUsageSensor(coordinator),
         MijnTedLastSuccessfulSyncSensor(coordinator),
+        MijnTedLastMonthUsageSensor(coordinator),
+        MijnTedLastMonthAverageUsageSensor(coordinator),
+        MijnTedLastMonthAverageUsageLastYearSensor(coordinator),
     ]
     
     # Add individual device sensors dynamically

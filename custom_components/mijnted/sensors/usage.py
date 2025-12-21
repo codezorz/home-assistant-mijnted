@@ -12,7 +12,7 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
     
     def __init__(self, coordinator):
         """Initialize the this month usage sensor."""
-        super().__init__(coordinator, "energy_usage", "this month usage")
+        super().__init__(coordinator, "this_month_usage", "this month usage")
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
 
@@ -207,6 +207,14 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                     if not DataUtil.is_current_month(month_year):
                         attributes["data_for_previous_month"] = True
                     
+                    # Add latest month's total usage
+                    latest_month_total = latest_month.get("totalEnergyUsage")
+                    if latest_month_total is not None:
+                        try:
+                            attributes["latest_month_usage"] = float(latest_month_total)
+                        except (ValueError, TypeError):
+                            pass
+                    
                     # Extract month number to find same month in last year
                     month_num = DataUtil.extract_month_number(month_year)
                     
@@ -223,7 +231,7 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                             last_year_avg = last_year_month.get("averageEnergyUseForBillingUnit")
                             if last_year_avg is not None:
                                 try:
-                                    attributes["last_year_average_usage"] = float(last_year_avg)
+                                    attributes["latest_month_average_usage_last_year"] = float(last_year_avg)
                                 except (ValueError, TypeError):
                                     pass
                             
@@ -231,17 +239,360 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                             last_year_total = last_year_month.get("totalEnergyUsage")
                             if last_year_total is not None:
                                 try:
-                                    attributes["last_year_usage"] = float(last_year_total)
+                                    attributes["latest_month_last_year_usage"] = float(last_year_total)
                                 except (ValueError, TypeError):
                                     pass
                 
-                # Add average usage for billing unit from this month
+                # Add average usage for billing unit from latest month
                 avg_usage = latest_month.get("averageEnergyUseForBillingUnit")
                 if avg_usage is not None:
                     try:
-                        attributes["average_usage"] = float(avg_usage)
+                        attributes["latest_month_average_usage"] = float(avg_usage)
                     except (ValueError, TypeError):
                         pass
+        
+        return attributes
+
+
+class MijnTedLastMonthUsageSensor(MijnTedSensor):
+    """Sensor for last month's usage (from last year comparison)."""
+    
+    def __init__(self, coordinator):
+        """Initialize the last month usage sensor."""
+        super().__init__(coordinator, "latest_month_last_year_usage", "last month usage")
+        self._attr_icon = "mdi:lightning-bolt"
+        self._attr_suggested_display_precision = 0
+
+    def _find_latest_valid_month(self, usage_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Find the most recent month with totalEnergyUsage > 0 and averageEnergyUseForBillingUnit != null."""
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        # Parse monthYear format (e.g., "11.2025") and sort by date (most recent first)
+        valid_months = []
+        for month in monthly_usages:
+            if not isinstance(month, dict):
+                continue
+            
+            total_usage = month.get("totalEnergyUsage", 0)
+            avg_usage = month.get("averageEnergyUseForBillingUnit")
+            
+            # Check if this month has valid data
+            if (isinstance(total_usage, (int, float)) and float(total_usage) > 0 and 
+                avg_usage is not None):
+                month_year = month.get("monthYear", "")
+                parsed = DataUtil.parse_month_year(month_year)
+                if parsed:
+                    month_num, year = parsed
+                    # Create a sortable key (year * 100 + month)
+                    sort_key = year * 100 + month_num
+                    valid_months.append((sort_key, month))
+        
+        # Sort by date descending (most recent first) and return the first valid one
+        if valid_months:
+            valid_months.sort(key=lambda x: x[0], reverse=True)
+            return valid_months[0][1]
+        
+        return None
+
+    def _find_month_by_identifier(self, usage_data: Dict[str, Any], month_identifier: str) -> Optional[Dict[str, Any]]:
+        """Find a specific month entry by monthYear identifier."""
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        for month in monthly_usages:
+            if isinstance(month, dict) and month.get("monthYear") == month_identifier:
+                return month
+        
+        return None
+
+    @property
+    def state(self) -> Optional[float]:
+        """Return the last year usage for the latest month."""
+        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
+        if not isinstance(energy_usage_data, dict):
+            return None
+        
+        latest_month = self._find_latest_valid_month(energy_usage_data)
+        if not latest_month:
+            return None
+        
+        month_year = latest_month.get("monthYear")
+        if not month_year:
+            return None
+        
+        # Extract month number to find same month in last year
+        month_num = DataUtil.extract_month_number(month_year)
+        if not month_num:
+            return None
+        
+        # Get last year usage data
+        usage_last_year = self.coordinator.data.get("usage_last_year", {})
+        if not isinstance(usage_last_year, dict):
+            return None
+        
+        # Find the same month in last year
+        last_year = datetime.now().year - 1
+        last_year_month_identifier = f"{month_num}.{last_year}"
+        last_year_month = self._find_month_by_identifier(usage_last_year, last_year_month_identifier)
+        
+        if last_year_month:
+            last_year_total = last_year_month.get("totalEnergyUsage")
+            if last_year_total is not None:
+                try:
+                    return float(last_year_total)
+                except (ValueError, TypeError):
+                    pass
+        
+        return None
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MIJNTED
+    
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.TOTAL
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes."""
+        attributes: Dict[str, Any] = {}
+        
+        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
+        if isinstance(energy_usage_data, dict):
+            latest_month = self._find_latest_valid_month(energy_usage_data)
+            if latest_month:
+                month_year = latest_month.get("monthYear")
+                if month_year:
+                    attributes["month"] = month_year
+        
+        return attributes
+
+
+class MijnTedLastMonthAverageUsageSensor(MijnTedSensor):
+    """Sensor for last month's average usage."""
+    
+    def __init__(self, coordinator):
+        """Initialize the last month average usage sensor."""
+        super().__init__(coordinator, "latest_month_average_usage", "last month average usage")
+        self._attr_icon = "mdi:chart-line"
+        self._attr_suggested_display_precision = 2
+
+    def _find_latest_valid_month(self, usage_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Find the most recent month with totalEnergyUsage > 0 and averageEnergyUseForBillingUnit != null."""
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        # Parse monthYear format (e.g., "11.2025") and sort by date (most recent first)
+        valid_months = []
+        for month in monthly_usages:
+            if not isinstance(month, dict):
+                continue
+            
+            total_usage = month.get("totalEnergyUsage", 0)
+            avg_usage = month.get("averageEnergyUseForBillingUnit")
+            
+            # Check if this month has valid data
+            if (isinstance(total_usage, (int, float)) and float(total_usage) > 0 and 
+                avg_usage is not None):
+                month_year = month.get("monthYear", "")
+                parsed = DataUtil.parse_month_year(month_year)
+                if parsed:
+                    month_num, year = parsed
+                    # Create a sortable key (year * 100 + month)
+                    sort_key = year * 100 + month_num
+                    valid_months.append((sort_key, month))
+        
+        # Sort by date descending (most recent first) and return the first valid one
+        if valid_months:
+            valid_months.sort(key=lambda x: x[0], reverse=True)
+            return valid_months[0][1]
+        
+        return None
+
+    @property
+    def state(self) -> Optional[float]:
+        """Return the average usage for the latest month."""
+        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
+        if not isinstance(energy_usage_data, dict):
+            return None
+        
+        latest_month = self._find_latest_valid_month(energy_usage_data)
+        if not latest_month:
+            return None
+        
+        avg_usage = latest_month.get("averageEnergyUseForBillingUnit")
+        if avg_usage is not None:
+            try:
+                return float(avg_usage)
+            except (ValueError, TypeError):
+                pass
+        
+        return None
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MIJNTED
+    
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.MEASUREMENT
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes."""
+        attributes: Dict[str, Any] = {}
+        
+        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
+        if isinstance(energy_usage_data, dict):
+            latest_month = self._find_latest_valid_month(energy_usage_data)
+            if latest_month:
+                month_year = latest_month.get("monthYear")
+                if month_year:
+                    attributes["month"] = month_year
+        
+        return attributes
+
+
+class MijnTedLastMonthAverageUsageLastYearSensor(MijnTedSensor):
+    """Sensor for last month's average usage from last year."""
+    
+    def __init__(self, coordinator):
+        """Initialize the last month average usage last year sensor."""
+        super().__init__(coordinator, "latest_month_average_usage_last_year", "last month average usage last year")
+        self._attr_icon = "mdi:chart-line-variant"
+        self._attr_suggested_display_precision = 2
+
+    def _find_latest_valid_month(self, usage_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Find the most recent month with totalEnergyUsage > 0 and averageEnergyUseForBillingUnit != null."""
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        # Parse monthYear format (e.g., "11.2025") and sort by date (most recent first)
+        valid_months = []
+        for month in monthly_usages:
+            if not isinstance(month, dict):
+                continue
+            
+            total_usage = month.get("totalEnergyUsage", 0)
+            avg_usage = month.get("averageEnergyUseForBillingUnit")
+            
+            # Check if this month has valid data
+            if (isinstance(total_usage, (int, float)) and float(total_usage) > 0 and 
+                avg_usage is not None):
+                month_year = month.get("monthYear", "")
+                parsed = DataUtil.parse_month_year(month_year)
+                if parsed:
+                    month_num, year = parsed
+                    # Create a sortable key (year * 100 + month)
+                    sort_key = year * 100 + month_num
+                    valid_months.append((sort_key, month))
+        
+        # Sort by date descending (most recent first) and return the first valid one
+        if valid_months:
+            valid_months.sort(key=lambda x: x[0], reverse=True)
+            return valid_months[0][1]
+        
+        return None
+
+    def _find_month_by_identifier(self, usage_data: Dict[str, Any], month_identifier: str) -> Optional[Dict[str, Any]]:
+        """Find a specific month entry by monthYear identifier."""
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        for month in monthly_usages:
+            if isinstance(month, dict) and month.get("monthYear") == month_identifier:
+                return month
+        
+        return None
+
+    @property
+    def state(self) -> Optional[float]:
+        """Return the last year average usage for the latest month."""
+        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
+        if not isinstance(energy_usage_data, dict):
+            return None
+        
+        latest_month = self._find_latest_valid_month(energy_usage_data)
+        if not latest_month:
+            return None
+        
+        month_year = latest_month.get("monthYear")
+        if not month_year:
+            return None
+        
+        # Extract month number to find same month in last year
+        month_num = DataUtil.extract_month_number(month_year)
+        if not month_num:
+            return None
+        
+        # Get last year usage data
+        usage_last_year = self.coordinator.data.get("usage_last_year", {})
+        if not isinstance(usage_last_year, dict):
+            return None
+        
+        # Find the same month in last year
+        last_year = datetime.now().year - 1
+        last_year_month_identifier = f"{month_num}.{last_year}"
+        last_year_month = self._find_month_by_identifier(usage_last_year, last_year_month_identifier)
+        
+        if last_year_month:
+            last_year_avg = last_year_month.get("averageEnergyUseForBillingUnit")
+            if last_year_avg is not None:
+                try:
+                    return float(last_year_avg)
+                except (ValueError, TypeError):
+                    pass
+        
+        return None
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MIJNTED
+    
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.MEASUREMENT
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes."""
+        attributes: Dict[str, Any] = {}
+        
+        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
+        if isinstance(energy_usage_data, dict):
+            latest_month = self._find_latest_valid_month(energy_usage_data)
+            if latest_month:
+                month_year = latest_month.get("monthYear")
+                if month_year:
+                    attributes["month"] = month_year
         
         return attributes
 
@@ -255,7 +606,7 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         Args:
             coordinator: Data update coordinator
         """
-        super().__init__(coordinator, "filter", "total usage")
+        super().__init__(coordinator, "total_usage", "total usage")
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_state_class = SensorStateClass.TOTAL
         self._attr_suggested_display_precision = 0
