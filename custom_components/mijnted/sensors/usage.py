@@ -4,7 +4,7 @@ from datetime import datetime
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
-from ..utils import DataUtil
+from ..utils import DataUtil, DateUtil
 from ..const import UNIT_MIJNTED, YEAR_TRANSITION_MULTIPLIER
 
 
@@ -173,7 +173,7 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                     usage_last_year = data.get("usage_last_year", {})
                     if isinstance(usage_last_year, dict) and month_num:
                         # Find the same month in last year (e.g., if current is "11.2025", find "11.2024")
-                        last_year = datetime.now().year - 1
+                        last_year = DateUtil.get_last_year()
                         last_year_month_identifier = f"{month_num}.{last_year}"
                         last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
                         
@@ -244,7 +244,7 @@ class MijnTedLatestMonthLastYearUsageSensor(MijnTedSensor):
             return None
         
         # Find the same month in last year
-        last_year = datetime.now().year - 1
+        last_year = DateUtil.get_last_year()
         last_year_month_identifier = f"{month_num}.{last_year}"
         last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
         
@@ -390,7 +390,7 @@ class MijnTedLatestMonthLastYearAverageUsageSensor(MijnTedSensor):
             return None
         
         # Find the same month in last year
-        last_year = datetime.now().year - 1
+        last_year = DateUtil.get_last_year()
         last_year_month_identifier = f"{month_num}.{last_year}"
         last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
         

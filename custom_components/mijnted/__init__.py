@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from .api import MijntedApi, MijntedApiError, MijntedAuthenticationError, MijntedConnectionError
 from .const import DOMAIN, DEFAULT_POLLING_INTERVAL
-from .utils import TimestampUtil, ApiUtil
+from .utils import TimestampUtil, ApiUtil, DateUtil
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 
                 # Fetch all data in parallel where possible for better performance
                 # Group independent calls together
-                last_year = datetime.now().year - 1
+                last_year = DateUtil.get_last_year()
                 
                 # First batch: Independent calls that can run in parallel
                 (

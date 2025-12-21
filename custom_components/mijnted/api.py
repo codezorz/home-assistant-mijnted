@@ -17,6 +17,7 @@ from .const import (
     HTTP_STATUS_OK,
     HTTP_STATUS_UNAUTHORIZED,
 )
+from .utils import ListUtil, DateUtil
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -108,7 +109,7 @@ class MijntedApi:
     async def refresh_access_token(self) -> str:
         """Refresh the access token using the refresh token.
         
-        Retries up to 2 times with 10 second wait between attempts for connection errors.
+        Retries up to 3 times with 10 second wait between attempts for connection errors.
         
         Returns:
             New access token string
@@ -254,8 +255,9 @@ class MijntedApi:
         )
         
         if residential_units:
-            if isinstance(residential_units, list) and len(residential_units) > 0:
-                return residential_units[0]
+            first_item = ListUtil.get_first_item(residential_units)
+            if first_item is not None:
+                return first_item
             elif isinstance(residential_units, str):
                 return residential_units
         return None
@@ -507,8 +509,9 @@ class MijntedApi:
         """
         url = f"{self.base_url}/address/deliveryTypes/{self.residential_unit}"
         result = await self._make_request("GET", url)
-        if isinstance(result, list) and len(result) > 0:
-            self.delivery_type = result[0]
+        first_item = ListUtil.get_first_item(result)
+        if first_item is not None:
+            self.delivery_type = first_item
             return result
         return []
 
@@ -595,7 +598,7 @@ class MijntedApi:
         Returns:
             Dictionary containing last year's energy usage data
         """
-        last_year = self._get_current_year() - 1
+        last_year = DateUtil.get_last_year()
         url = f"{self.base_url}/residentialUnitUsage/{last_year}/{self.residential_unit}/{self.delivery_type}"
         return await self._make_request("GET", url)
 

@@ -4,7 +4,7 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
-from ..utils import TimestampUtil
+from ..utils import TimestampUtil, ListUtil
 
 
 class MijnTedLastUpdateSensor(MijnTedSensor):
@@ -159,9 +159,9 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
             return None
         
         unit_of_measures = data.get("unit_of_measures", [])
-        if isinstance(unit_of_measures, list) and len(unit_of_measures) > 0:
+        first_item = ListUtil.get_first_item(unit_of_measures)
+        if first_item is not None:
             # Get the first item's displayName
-            first_item = unit_of_measures[0]
             if isinstance(first_item, dict):
                 return first_item.get("displayName")
         return None
