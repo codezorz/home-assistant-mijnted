@@ -37,7 +37,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         MijnTedDeliveryTypesSensor(coordinator),
         MijnTedResidentialUnitDetailSensor(coordinator),
         MijnTedUnitOfMeasuresSensor(coordinator),
-        MijnTedThisYearTotalUsageSensor(coordinator),
         MijnTedThisYearUsageSensor(coordinator),
         MijnTedLastYearUsageSensor(coordinator),
     ]
@@ -390,24 +389,34 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
     @property
     def state(self) -> Optional[float]:
         """Return the state of the sensor."""
-        # Get the latest month's usage value (the last available value for this year)
-        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
-        if isinstance(energy_usage_data, dict):
-            latest_month = self._find_latest_valid_month(energy_usage_data)
-            if latest_month:
-                total_usage = latest_month.get("totalEnergyUsage")
-                if total_usage is not None:
-                    try:
-                        return float(total_usage)
-                    except (ValueError, TypeError):
-                        pass
+        # Calculate: total usage - this year usage = unmeasured usage (this month till now)
+        # Get total usage from filter_status (sum of all device readings)
+        total_usage = None
+        filter_status = self.coordinator.data.get('filter_status')
+        if isinstance(filter_status, list):
+            total = sum(
+                float(device.get("currentReadingValue", 0))
+                for device in filter_status
+                if isinstance(device, dict)
+            )
+            total_usage = total if total > 0 else None
         
-        # Fallback to old behavior if latest month not found
-        energy_usage = self.coordinator.data.get("energy_usage")
-        if isinstance(energy_usage, (int, float)):
-            return float(energy_usage)
-        elif isinstance(energy_usage, dict):
-            return float(energy_usage.get("total", 0))
+        # Get this year usage from usage_insight
+        this_year_usage = None
+        usage_insight = self.coordinator.data.get("usage_insight", {})
+        if isinstance(usage_insight, dict):
+            usage = usage_insight.get("usage")
+            if usage is not None:
+                try:
+                    this_year_usage = float(usage)
+                except (ValueError, TypeError):
+                    pass
+        
+        # Calculate this month usage: total - this year
+        if total_usage is not None and this_year_usage is not None:
+            this_month_usage = total_usage - this_year_usage
+            return this_month_usage if this_month_usage >= 0 else None
+        
         return None
 
     @property
@@ -652,47 +661,6 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
         if isinstance(unit_of_measures, list):
             return {"unit_of_measures": unit_of_measures}
         return {}
-
-class MijnTedThisYearTotalUsageSensor(MijnTedSensor):
-    """Sensor for this year's total usage (sum of all months)."""
-    
-    def __init__(self, coordinator):
-        """Initialize the this year total usage sensor."""
-        super().__init__(coordinator, "usage_this_year", "usage this year")
-        self._attr_icon = "mdi:chart-line"
-
-    @property
-    def state(self) -> Optional[float]:
-        """Return the state of the sensor."""
-        usage_data = self.coordinator.data.get("usage_this_year", {})
-        # API returns {"monthlyEnergyUsages": [...], "averageEnergyUseForBillingUnit": 0}
-        if isinstance(usage_data, dict):
-            monthly_usages = usage_data.get("monthlyEnergyUsages", [])
-            if monthly_usages:
-                total = sum(
-                    float(month.get("totalEnergyUsage", 0))
-                    for month in monthly_usages
-                    if isinstance(month, dict)
-                )
-                return total if total > 0 else None
-            return float(usage_data.get("total", 0))
-        return float(usage_data) if isinstance(usage_data, (int, float)) else None
-
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class."""
-        return SensorStateClass.TOTAL
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return UNIT_MIJNTED
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
-        usage_data = self.coordinator.data.get("usage_this_year", {})
-        return usage_data if isinstance(usage_data, dict) else {}
 
 class MijnTedThisYearUsageSensor(MijnTedSensor):
     """Sensor for this year's total usage with month breakdown."""
