@@ -6,6 +6,6 @@
     "codeowners": ["@codezorz"],
     "iot_class": "cloud_polling",
     "config_flow": true,
-    "requirements": ["aiohttp", "async-timeout", "PyJWT"],
-    "version": "1.0.0"
+    "requirements": ["aiohttp", "PyJWT"],
+    "version": "1.0.5"
 }
