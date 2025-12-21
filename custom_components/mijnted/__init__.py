@@ -1,16 +1,14 @@
 from datetime import timedelta, datetime
 from typing import Any, Dict, Optional
+import asyncio
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from .api import MijntedApi
+from .api import MijntedApi, MijntedApiError, MijntedAuthenticationError, MijntedConnectionError
 from .const import DOMAIN, DEFAULT_POLLING_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
-
-# Import config flow to register it
-from . import config_flow
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry."""
@@ -55,21 +53,73 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         }
                     )
                 
-                # Fetch all data
-                energy_usage_data = await api.get_energy_usage()
-                last_update_data = await api.get_last_data_update()
-                filter_status_data = await api.get_filter_status()
-                usage_insight_data = await api.get_usage_insight()
+                # Fetch all data in parallel where possible for better performance
+                # Group independent calls together
                 last_year = datetime.now().year - 1
-                usage_insight_last_year_data = await api.get_usage_insight(last_year)
-                active_model_data = await api.get_active_model()
-                residential_unit_detail_data = await api.get_residential_unit_detail()
-                usage_last_year_data = await api.get_usage_last_year()
-                usage_per_room_data = await api.get_usage_per_room()
-                unit_of_measures_data = await api.get_unit_of_measures()
+                
+                # First batch: Independent calls that can run in parallel
+                (
+                    energy_usage_data,
+                    last_update_data,
+                    filter_status_data,
+                    usage_insight_data,
+                    usage_insight_last_year_data,
+                    active_model_data,
+                    residential_unit_detail_data,
+                    usage_last_year_data,
+                    usage_per_room_data,
+                    unit_of_measures_data,
+                ) = await asyncio.gather(
+                    api.get_energy_usage(),
+                    api.get_last_data_update(),
+                    api.get_filter_status(),
+                    api.get_usage_insight(),
+                    api.get_usage_insight(last_year),
+                    api.get_active_model(),
+                    api.get_residential_unit_detail(),
+                    api.get_usage_last_year(),
+                    api.get_usage_per_room(),
+                    api.get_unit_of_measures(),
+                    return_exceptions=True,
+                )
                 
                 # Get all delivery types (already fetched during authenticate)
                 delivery_types = await api.get_delivery_types()
+                
+                # Handle exceptions from parallel calls
+                exception_map = {
+                    "energy_usage": energy_usage_data,
+                    "last_update": last_update_data,
+                    "filter_status": filter_status_data,
+                    "usage_insight": usage_insight_data,
+                    "usage_insight_last_year": usage_insight_last_year_data,
+                    "active_model": active_model_data,
+                    "residential_unit_detail": residential_unit_detail_data,
+                    "usage_last_year": usage_last_year_data,
+                    "usage_per_room": usage_per_room_data,
+                    "unit_of_measures": unit_of_measures_data,
+                }
+                
+                for name, result in exception_map.items():
+                    if isinstance(result, Exception):
+                        _LOGGER.warning("Failed to fetch %s: %s", name, result)
+                        # Set to default empty value based on expected type
+                        if name in ("filter_status", "unit_of_measures"):
+                            exception_map[name] = []
+                        else:
+                            exception_map[name] = {}
+                
+                # Update variables with potentially corrected values
+                energy_usage_data = exception_map["energy_usage"]
+                last_update_data = exception_map["last_update"]
+                filter_status_data = exception_map["filter_status"]
+                usage_insight_data = exception_map["usage_insight"]
+                usage_insight_last_year_data = exception_map["usage_insight_last_year"]
+                active_model_data = exception_map["active_model"]
+                residential_unit_detail_data = exception_map["residential_unit_detail"]
+                usage_last_year_data = exception_map["usage_last_year"]
+                usage_per_room_data = exception_map["usage_per_room"]
+                unit_of_measures_data = exception_map["unit_of_measures"]
                 
                 # Parse and structure the data for sensors
                 # Energy usage: API returns {"monthlyEnergyUsages": [...], "averageEnergyUseForBillingUnit": 0}
@@ -154,8 +204,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "room_usage": room_usage,
                     "unit_of_measures": unit_of_measures_data,
                 }
+        except MijntedAuthenticationError as err:
+            _LOGGER.error("Authentication error: %s", err)
+            raise UpdateFailed(f"Authentication failed: {err}") from err
+        except MijntedConnectionError as err:
+            _LOGGER.error("Connection error: %s", err)
+            raise UpdateFailed(f"Connection failed: {err}") from err
+        except MijntedApiError as err:
+            _LOGGER.error("API error: %s", err)
+            raise UpdateFailed(f"API error: {err}") from err
         except Exception as err:
-            raise UpdateFailed(f"Error communicating with API: {err}")
+            _LOGGER.exception("Unexpected error communicating with API: %s", err)
+            raise UpdateFailed(f"Unexpected error: {err}") from err
 
     polling_interval_seconds = entry.data.get("polling_interval", DEFAULT_POLLING_INTERVAL.total_seconds())
     update_interval = timedelta(seconds=int(polling_interval_seconds))

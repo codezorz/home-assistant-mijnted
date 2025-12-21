@@ -59,6 +59,10 @@
         "name": "Filter"
       }
     }
+  },
+  "room_codes": {
+    "KA": "bedroom",
+    "W": "living room"
   }
 }
 
