@@ -2,6 +2,7 @@
 from typing import Any, Dict, Optional
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
 from ..utils import TimestampUtil
 
@@ -9,7 +10,7 @@ from ..utils import TimestampUtil
 class MijnTedLastUpdateSensor(MijnTedSensor):
     """Sensor for last update timestamp."""
     
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the last update sensor.
         
         Args:
@@ -23,7 +24,11 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
     @property
     def state(self) -> Optional[str]:
         """Return the state of the sensor."""
-        last_update = self.coordinator.data.get('last_update')
+        data = self.coordinator.data
+        if not data:
+            return None
+        
+        last_update = data.get('last_update')
         if isinstance(last_update, dict):
             date_str = last_update.get("lastSyncDate") or last_update.get("date")
         else:
@@ -37,7 +42,7 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
 class MijnTedActiveModelSensor(MijnTedSensor):
     """Sensor for active model information."""
     
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the active model sensor.
         
         Args:
@@ -54,13 +59,16 @@ class MijnTedActiveModelSensor(MijnTedSensor):
         Returns:
             Active model string, or None if not available
         """
-        return self.coordinator.data.get("active_model")
+        data = self.coordinator.data
+        if not data:
+            return None
+        return data.get("active_model")
 
 
 class MijnTedDeliveryTypesSensor(MijnTedSensor):
     """Sensor for delivery types."""
     
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the delivery types sensor.
         
         Args:
@@ -77,7 +85,11 @@ class MijnTedDeliveryTypesSensor(MijnTedSensor):
         Returns:
             Comma-separated list of delivery types, or None if empty
         """
-        delivery_types = self.coordinator.data.get("delivery_types", [])
+        data = self.coordinator.data
+        if not data:
+            return None
+        
+        delivery_types = data.get("delivery_types", [])
         if not delivery_types:
             return None
         # Convert to strings in case they're integers
@@ -87,7 +99,7 @@ class MijnTedDeliveryTypesSensor(MijnTedSensor):
 class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
     """Sensor for residential unit details."""
     
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the residential unit detail sensor.
         
         Args:
@@ -104,7 +116,10 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
         Returns:
             Residential unit identifier, or None if not available
         """
-        return self.coordinator.data.get("residential_unit")
+        data = self.coordinator.data
+        if not data:
+            return None
+        return data.get("residential_unit")
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -113,13 +128,16 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
         Returns:
             Dictionary containing all residential unit detail data
         """
-        return self.coordinator.data.get("residential_unit_detail", {})
+        data = self.coordinator.data
+        if not data:
+            return {}
+        return data.get("residential_unit_detail", {})
 
 
 class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
     """Sensor for unit of measures information."""
     
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the unit of measures sensor.
         
         Args:
@@ -136,7 +154,11 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
         Returns:
             Display name of first unit of measure, or None if not available
         """
-        unit_of_measures = self.coordinator.data.get("unit_of_measures", [])
+        data = self.coordinator.data
+        if not data:
+            return None
+        
+        unit_of_measures = data.get("unit_of_measures", [])
         if isinstance(unit_of_measures, list) and len(unit_of_measures) > 0:
             # Get the first item's displayName
             first_item = unit_of_measures[0]
@@ -151,7 +173,11 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
         Returns:
             Dictionary containing unit of measures list
         """
-        unit_of_measures = self.coordinator.data.get("unit_of_measures", [])
+        data = self.coordinator.data
+        if not data:
+            return {}
+        
+        unit_of_measures = data.get("unit_of_measures", [])
         if isinstance(unit_of_measures, list):
             return {"unit_of_measures": unit_of_measures}
         return {}
@@ -160,7 +186,7 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
 class MijnTedLastSuccessfulSyncSensor(MijnTedSensor):
     """Sensor for the timestamp of the last successful data sync."""
     
-    def __init__(self, coordinator):
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the last successful sync sensor.
         
         Args:
