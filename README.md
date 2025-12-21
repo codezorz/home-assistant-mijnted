@@ -78,6 +78,9 @@ These credentials are used to authenticate with the MijnTed API. During the inte
 Once configured, the integration will create several sensors in Home Assistant:
 
 - **This Month Usage** - Current month's energy usage (calculated from total minus measured months)
+- **Latest Month Last Year Usage** - Last year's usage for the latest available month (computed comparison)
+- **Latest Month Average Usage** - Average usage for the latest available month
+- **Latest Month Last Year Average Usage** - Last year's average usage for the latest available month (computed comparison)
 - **Last Update** - Timestamp of the last data synchronization from the API
 - **Last Successful Sync** - Timestamp of the last successful data synchronization from the API
 - **Total Usage** - Sum of all device readings (cumulative filter status)
