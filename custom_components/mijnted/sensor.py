@@ -168,6 +168,7 @@ async def async_setup_entry(
         MijnTedUnitOfMeasuresSensor(coordinator),
         MijnTedThisYearUsageSensor(coordinator),
         MijnTedLastYearUsageSensor(coordinator),
+        MijnTedLastSuccessfulUpdateSensor(coordinator),
     ]
     
     # Add individual device sensors dynamically
@@ -202,6 +203,9 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         self._name = name
         # Normalize to lowercase to avoid duplicate ID issues with case differences
         self._attr_unique_id = f"{DOMAIN}_{sensor_type.lower()}"
+        # Store last known value for when sensor becomes unavailable
+        self._last_known_value = None
+        self._last_known_state = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -252,6 +256,33 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             Formatted sensor name with "MijnTed" prefix
         """
         return f"MijnTed {self._name}"
+    
+    @property
+    def available(self) -> bool:
+        """Return True if sensor has fresh data from coordinator.
+        
+        Returns:
+            True if coordinator last update was successful, False otherwise
+        """
+        return self.coordinator.last_update_success
+    
+    def _get_last_successful_update(self) -> Optional[str]:
+        """Get the timestamp of the last successful update from coordinator data.
+        
+        Returns:
+            ISO timestamp string or None if not available
+        """
+        return self.coordinator.data.get("last_successful_update")
+    
+    def _update_last_known_value(self, value: Any) -> None:
+        """Update the last known value when fresh data is available.
+        
+        Args:
+            value: The current state value
+        """
+        if value is not None:
+            self._last_known_value = value
+            self._last_known_state = value
 
 class MijnTedDeviceSensor(MijnTedSensor):
     """Sensor for Mijnted devices."""
@@ -320,12 +351,17 @@ class MijnTedDeviceSensor(MijnTedSensor):
         """Return the state of the sensor.
         
         Returns:
-            Current reading value from device data
+            Current reading value from device data, or last known value if unavailable
         """
         device_data = self._device_data
         if device_data:
-            return device_data.get("currentReadingValue")
-        return None
+            value = device_data.get("currentReadingValue")
+            if value is not None:
+                self._update_last_known_value(value)
+                return value
+        
+        # Return last known value if available
+        return self._last_known_value
 
     @property
     def unit_of_measurement(self) -> str:
@@ -344,17 +380,24 @@ class MijnTedDeviceSensor(MijnTedSensor):
         """Return entity specific state attributes.
         
         Returns:
-            Dictionary containing room, device_id, and measurement_device_id
+            Dictionary containing room, device_id, measurement_device_id, and last_successful_update
         """
+        attributes: Dict[str, Any] = {}
+        
         device_data = self._device_data
         if device_data:
-            return {
+            attributes.update({
                 "room": device_data.get("room"),
                 "device_id": device_data.get("deviceId"),
                 "measurement_device_id": device_data.get("measurementDeviceId"),
-            }
-        return {}
-
+            })
+        
+        # Add last_successful_update timestamp
+        last_successful_update = self._get_last_successful_update()
+        if last_successful_update:
+            attributes["last_successful_update"] = last_successful_update
+        
+        return attributes
 
 class MijnTedThisMonthUsageSensor(MijnTedSensor):
     """Sensor for this month's usage."""
@@ -494,7 +537,7 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         """Return the state of the sensor.
         
         Returns:
-            This month's usage calculated from total minus measured months, or None if not available
+            This month's usage calculated from total minus measured months, or last known value if unavailable
         """
         # Get total usage from filter_status (sum of all device readings - cumulative)
         total_usage = None
@@ -508,7 +551,8 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
             total_usage = total if total > 0 else None
         
         if total_usage is None:
-            return None
+            # Return last known value if available
+            return self._last_known_value
         
         # Try to calculate using monthly breakdown (handles year transitions correctly)
         current_year = datetime.now().year
@@ -519,6 +563,7 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
             # Use monthly breakdown: total - sum of measured months = unmeasured usage
             this_month_usage = total_usage - measured_months_total
             if this_month_usage >= 0:
+                self._update_last_known_value(this_month_usage)
                 return this_month_usage
         
         # Fallback: Use usage_insight (works during normal months, but breaks at year transition)
@@ -539,15 +584,17 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         if this_year_usage is not None and this_year_usage > 0:
             this_month_usage = total_usage - this_year_usage
             # Sanity check: if difference is more than 2x this_year_usage, likely year transition issue
-            # In that case, return None to indicate data isn't ready yet
+            # In that case, return last known value to wait for monthly data to be available
             if this_month_usage >= 0:
                 if this_year_usage > 0 and this_month_usage > (this_year_usage * YEAR_TRANSITION_MULTIPLIER):
                     # Suspiciously large difference - likely year transition issue
-                    # Return None to wait for monthly data to be available
-                    return None
+                    # Return last known value to wait for monthly data to be available
+                    return self._last_known_value
+                self._update_last_known_value(this_month_usage)
                 return this_month_usage
         
-        return None
+        # Return last known value if available
+        return self._last_known_value
 
     @property
     def unit_of_measurement(self) -> str:
@@ -631,6 +678,11 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                         attributes["average_usage"] = float(avg_usage)
                     except (ValueError, TypeError):
                         pass
+        
+        # Add last_successful_update timestamp
+        last_successful_update = self._get_last_successful_update()
+        if last_successful_update:
+            attributes["last_successful_update"] = last_successful_update
         
         return attributes
 
@@ -721,7 +773,7 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         """Return the state of the sensor.
         
         Returns:
-            Sum of all device readings, or None if no valid data
+            Sum of all device readings, or last known value if unavailable
         """
         filter_status = self.coordinator.data.get('filter_status')
         # API returns an array of device objects
@@ -732,10 +784,27 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
                 for device in filter_status
                 if isinstance(device, dict)
             )
-            return total if total > 0 else None
+            if total > 0:
+                self._update_last_known_value(total)
+                return total
         elif isinstance(filter_status, dict):
-            return filter_status.get("filterStatus") or filter_status.get("status")
-        return float(filter_status) if isinstance(filter_status, (int, float)) else None
+            value = filter_status.get("filterStatus") or filter_status.get("status")
+            if value is not None:
+                try:
+                    value = float(value)
+                    if value > 0:
+                        self._update_last_known_value(value)
+                        return value
+                except (ValueError, TypeError):
+                    pass
+        elif isinstance(filter_status, (int, float)):
+            value = float(filter_status)
+            if value > 0:
+                self._update_last_known_value(value)
+                return value
+        
+        # Return last known value if available
+        return self._last_known_value
 
     @property
     def unit_of_measurement(self) -> str:
@@ -784,6 +853,11 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         last_year_total = self._calculate_last_year_total()
         if last_year_total is not None:
             attributes["last_year_usage"] = last_year_total
+        
+        # Add last_successful_update timestamp
+        last_successful_update = self._get_last_successful_update()
+        if last_successful_update:
+            attributes["last_successful_update"] = last_successful_update
         
         return attributes
 
@@ -917,16 +991,19 @@ class MijnTedThisYearUsageSensor(MijnTedSensor):
     
     @property
     def state(self) -> Optional[float]:
-        """Return the state of the sensor from usageInsight."""
+        """Return the state of the sensor from usageInsight, or last known value if unavailable."""
         usage_insight = self.coordinator.data.get("usage_insight", {})
         if isinstance(usage_insight, dict):
             usage = usage_insight.get("usage")
             if usage is not None:
                 try:
-                    return float(usage)
+                    value = float(usage)
+                    self._update_last_known_value(value)
+                    return value
                 except (ValueError, TypeError):
                     pass
-        return None
+        # Return last known value if available
+        return self._last_known_value
     
     @property
     def state_class(self) -> SensorStateClass:
@@ -961,6 +1038,11 @@ class MijnTedThisYearUsageSensor(MijnTedSensor):
         if month_breakdown:
             attributes["monthly_breakdown"] = month_breakdown
         
+        # Add last_successful_update timestamp
+        last_successful_update = self._get_last_successful_update()
+        if last_successful_update:
+            attributes["last_successful_update"] = last_successful_update
+        
         return attributes
 
 class MijnTedLastYearUsageSensor(MijnTedSensor):
@@ -978,20 +1060,23 @@ class MijnTedLastYearUsageSensor(MijnTedSensor):
     
     @property
     def state(self) -> Optional[float]:
-        """Return the state of the sensor from usageInsight.
+        """Return the state of the sensor from usageInsight, or last known value if unavailable.
         
         Returns:
-            Total usage for last year, or None if not available
+            Total usage for last year, or last known value if unavailable
         """
         usage_insight = self.coordinator.data.get("usage_insight_last_year", {})
         if isinstance(usage_insight, dict):
             usage = usage_insight.get("usage")
             if usage is not None:
                 try:
-                    return float(usage)
+                    value = float(usage)
+                    self._update_last_known_value(value)
+                    return value
                 except (ValueError, TypeError):
                     pass
-        return None
+        # Return last known value if available
+        return self._last_known_value
     
     @property
     def state_class(self) -> SensorStateClass:
@@ -1018,4 +1103,32 @@ class MijnTedLastYearUsageSensor(MijnTedSensor):
         if month_breakdown:
             attributes["monthly_breakdown"] = month_breakdown
         
+        # Add last_successful_update timestamp
+        last_successful_update = self._get_last_successful_update()
+        if last_successful_update:
+            attributes["last_successful_update"] = last_successful_update
+        
         return attributes
+
+class MijnTedLastSuccessfulUpdateSensor(MijnTedSensor):
+    """Sensor for the timestamp of the last successful data update."""
+    
+    def __init__(self, coordinator):
+        """Initialize the last successful update sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
+        super().__init__(coordinator, "last_successful_update", "last successful update")
+        self._attr_icon = "mdi:clock-check"
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def state(self) -> Optional[str]:
+        """Return the state of the sensor.
+        
+        Returns:
+            ISO timestamp string of last successful update, or None if not available
+        """
+        return self._get_last_successful_update()
