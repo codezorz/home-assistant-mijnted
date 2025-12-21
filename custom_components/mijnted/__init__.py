@@ -220,10 +220,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             raise UpdateFailed(f"Authentication failed: {err}") from err
         except MijntedConnectionError as err:
+            # Get cached data from coordinator if available
+            cached_data = None
+            if entry.entry_id in hass.data.get(DOMAIN, {}):
+                coordinator = hass.data[DOMAIN][entry.entry_id]
+                if coordinator.data:
+                    cached_data = coordinator.data
+            
+            # Check if token is expired
+            token_expired = api.is_token_expired()
+            
+            if token_expired:
+                # Token is expired, cannot use cached data - must fail
+                _LOGGER.error(
+                    "Connection error with expired token: %s",
+                    err,
+                    extra={"entry_id": entry.entry_id, "error_type": "MijntedConnectionError", "token_expired": True}
+                )
+                raise UpdateFailed(f"Connection failed: {err}") from err
+            
+            # Token is still valid, try to return cached data
+            if cached_data:
+                _LOGGER.warning(
+                    "Connection error, returning cached data (token still valid): %s",
+                    err,
+                    extra={"entry_id": entry.entry_id, "error_type": "MijntedConnectionError", "using_cached_data": True}
+                )
+                return cached_data
+            
+            # No cached data available, must fail
             _LOGGER.error(
-                "Connection error: %s",
+                "Connection error with no cached data available: %s",
                 err,
-                extra={"entry_id": entry.entry_id, "error_type": "MijntedConnectionError"}
+                extra={"entry_id": entry.entry_id, "error_type": "MijntedConnectionError", "has_cached_data": False}
             )
             raise UpdateFailed(f"Connection failed: {err}") from err
         except MijntedApiError as err:
