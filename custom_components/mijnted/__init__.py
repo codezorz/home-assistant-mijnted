@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from typing import Any, Dict, Optional
 import asyncio
 import logging
@@ -188,6 +188,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         else:
                             room_usage[f"room_{i}"] = item
                 
+                # Track successful update timestamp (ISO 8601 format with Z suffix for UTC)
+                now = datetime.now(timezone.utc)
+                last_successful_update = now.replace(microsecond=0).isoformat() + "Z"
+                
                 return {
                     "energy_usage": energy_usage_total,
                     "energy_usage_data": energy_usage_data,  # Keep full data for sensors that need it
@@ -203,6 +207,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "usage_last_year": usage_last_year,
                     "room_usage": room_usage,
                     "unit_of_measures": unit_of_measures_data,
+                    "last_successful_update": last_successful_update,
                 }
         except MijntedAuthenticationError as err:
             _LOGGER.error("Authentication error: %s", err)
