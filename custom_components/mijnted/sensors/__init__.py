@@ -6,6 +6,9 @@ from .usage import (
     MijnTedTotalUsageSensor,
     MijnTedThisYearUsageSensor,
     MijnTedLastYearUsageSensor,
+    MijnTedLastMonthUsageSensor,
+    MijnTedLastMonthAverageUsageSensor,
+    MijnTedLastMonthAverageUsageLastYearSensor,
 )
 from .diagnostics import (
     MijnTedLastUpdateSensor,
@@ -23,6 +26,9 @@ __all__ = [
     "MijnTedTotalUsageSensor",
     "MijnTedThisYearUsageSensor",
     "MijnTedLastYearUsageSensor",
+    "MijnTedLastMonthUsageSensor",
+    "MijnTedLastMonthAverageUsageSensor",
+    "MijnTedLastMonthAverageUsageLastYearSensor",
     "MijnTedLastUpdateSensor",
     "MijnTedActiveModelSensor",
     "MijnTedDeliveryTypesSensor",
