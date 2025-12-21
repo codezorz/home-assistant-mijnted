@@ -386,11 +386,45 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
             pass
         return None
 
+    def _calculate_measured_months_total(self, usage_data: Dict[str, Any], current_year: int) -> Optional[float]:
+        """Calculate the sum of all measured months for the current year from monthly breakdown."""
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        total = 0.0
+        has_valid_data = False
+        
+        for month in monthly_usages:
+            if not isinstance(month, dict):
+                continue
+            
+            month_year = month.get("monthYear", "")
+            if not month_year:
+                continue
+            
+            # Check if this month is for the current year
+            try:
+                parts = month_year.split(".")
+                if len(parts) == 2:
+                    year = int(parts[1])
+                    if year == current_year:
+                        total_usage = month.get("totalEnergyUsage", 0)
+                        if isinstance(total_usage, (int, float)) and float(total_usage) > 0:
+                            total += float(total_usage)
+                            has_valid_data = True
+            except (ValueError, IndexError):
+                continue
+        
+        return total if has_valid_data else None
+
     @property
     def state(self) -> Optional[float]:
         """Return the state of the sensor."""
-        # Calculate: total usage - this year usage = unmeasured usage (this month till now)
-        # Get total usage from filter_status (sum of all device readings)
+        # Get total usage from filter_status (sum of all device readings - cumulative)
         total_usage = None
         filter_status = self.coordinator.data.get('filter_status')
         if isinstance(filter_status, list):
@@ -401,7 +435,22 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
             )
             total_usage = total if total > 0 else None
         
-        # Get this year usage from usage_insight
+        if total_usage is None:
+            return None
+        
+        # Try to calculate using monthly breakdown (handles year transitions correctly)
+        current_year = datetime.now().year
+        energy_usage_data = self.coordinator.data.get("energy_usage_data", {})
+        measured_months_total = self._calculate_measured_months_total(energy_usage_data, current_year)
+        
+        if measured_months_total is not None:
+            # Use monthly breakdown: total - sum of measured months = unmeasured usage
+            this_month_usage = total_usage - measured_months_total
+            if this_month_usage >= 0:
+                return this_month_usage
+        
+        # Fallback: Use usage_insight (works during normal months, but breaks at year transition)
+        # This is kept for backward compatibility and when monthly data isn't available
         this_year_usage = None
         usage_insight = self.coordinator.data.get("usage_insight", {})
         if isinstance(usage_insight, dict):
@@ -412,10 +461,19 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                 except (ValueError, TypeError):
                     pass
         
-        # Calculate this month usage: total - this year
-        if total_usage is not None and this_year_usage is not None:
+        # Only use this calculation if we have valid data and it makes sense
+        # At year transition, this_year_usage might be very low, causing incorrect high values
+        # So we validate: if the difference is suspiciously large, don't trust it
+        if this_year_usage is not None and this_year_usage > 0:
             this_month_usage = total_usage - this_year_usage
-            return this_month_usage if this_month_usage >= 0 else None
+            # Sanity check: if difference is more than 2x this_year_usage, likely year transition issue
+            # In that case, return None to indicate data isn't ready yet
+            if this_month_usage >= 0:
+                if this_year_usage > 0 and this_month_usage > (this_year_usage * 2):
+                    # Suspiciously large difference - likely year transition issue
+                    # Return None to wait for monthly data to be available
+                    return None
+                return this_month_usage
         
         return None
 
@@ -428,6 +486,19 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
     def state_class(self) -> SensorStateClass:
         """Return the state class."""
         return SensorStateClass.TOTAL
+
+    def _is_current_month(self, month_year: str) -> bool:
+        """Check if the given month_year string represents the current month."""
+        try:
+            parts = month_year.split(".")
+            if len(parts) == 2:
+                month_num = int(parts[0])
+                year = int(parts[1])
+                now = datetime.now()
+                return month_num == now.month and year == now.year
+        except (ValueError, IndexError):
+            pass
+        return False
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -443,6 +514,11 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                 month_year = latest_month.get("monthYear")
                 if month_year:
                     attributes["month"] = month_year
+                    
+                    # Check if this is the current month or previous month
+                    is_current = self._is_current_month(month_year)
+                    if not is_current:
+                        attributes["data_for_previous_month"] = True
                     
                     # Extract month number to find same month in last year
                     month_num = self._extract_month_number(month_year)
