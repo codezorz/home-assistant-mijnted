@@ -12,6 +12,8 @@ from .const import (
     RESIDENTIAL_UNITS_CLAIM,
     RESIDENTIAL_UNITS_CLAIM_ALT,
     USER_AGENT,
+    HTTP_STATUS_OK,
+    HTTP_STATUS_UNAUTHORIZED,
 )
 
 
@@ -117,7 +119,7 @@ class MijntedApi:
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         try:
             async with self.session.post(self.auth_url, data=data, timeout=timeout) as response:
-                    if response.status == 200:
+                    if response.status == HTTP_STATUS_OK:
                         result = await response.json()
                         self.access_token = result.get("access_token")
                         id_token = result.get("id_token")
@@ -171,7 +173,7 @@ class MijntedApi:
                             error_text,
                             extra={"status_code": response.status, "has_residential_unit": bool(self.residential_unit)}
                         )
-                        if response.status == 401:
+                        if response.status == HTTP_STATUS_UNAUTHORIZED:
                             raise MijntedAuthenticationError(f"Authentication failed: {error_text}")
                         raise MijntedApiError(f"Token refresh failed: {response.status} - {error_text}")
         except (TimeoutError, asyncio.TimeoutError) as err:
@@ -352,9 +354,9 @@ class MijntedApi:
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         try:
             async with self.session.request(method, url, headers=self._headers(), timeout=timeout, **kwargs) as response:
-                    if response.status == 200:
+                    if response.status == HTTP_STATUS_OK:
                         return await self._parse_response(response)
-                    elif response.status == 401:
+                    elif response.status == HTTP_STATUS_UNAUTHORIZED:
                         # Token expired, try to refresh
                         _LOGGER.info(
                             "Access token expired, refreshing...",
@@ -363,7 +365,7 @@ class MijntedApi:
                         await self.refresh_access_token()
                         # Retry the request with new token
                         async with self.session.request(method, url, headers=self._headers(), timeout=timeout, **kwargs) as retry_response:
-                            if retry_response.status == 200:
+                            if retry_response.status == HTTP_STATUS_OK:
                                 return await self._parse_response(retry_response)
                             else:
                                 error_text = await retry_response.text()
@@ -373,14 +375,14 @@ class MijntedApi:
                                     error_text,
                                     extra={"url": url, "method": method, "status_code": retry_response.status, "residential_unit": self.residential_unit}
                                 )
-                                if retry_response.status == 401:
+                                if retry_response.status == HTTP_STATUS_UNAUTHORIZED:
                                     raise MijntedAuthenticationError(
                                         f"Authentication failed after token refresh: {error_text}"
                                     )
                                 raise MijntedApiError(
                                     f"API request failed: {retry_response.status} - {error_text}"
                                 )
-                    elif response.status == 401:
+                    elif response.status == HTTP_STATUS_UNAUTHORIZED:
                         error_text = await response.text()
                         _LOGGER.error(
                             "API request unauthorized: %s",

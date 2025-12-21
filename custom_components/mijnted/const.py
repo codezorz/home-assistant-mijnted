@@ -16,9 +16,14 @@ RESIDENTIAL_UNITS_CLAIM = "https://ted-prod-function-app.azurewebsites.net/resid
 RESIDENTIAL_UNITS_CLAIM_ALT = "extension_ResidentialUnits"
 USER_AGENT = "HomeAssistant/MijnTed"
 
+# HTTP status codes
+HTTP_STATUS_OK = 200
+HTTP_STATUS_UNAUTHORIZED = 401
+
 # Polling interval constants
 MIN_POLLING_INTERVAL = 900  # 15 minutes in seconds
 MAX_POLLING_INTERVAL = 86400  # 24 hours in seconds
 
 # Sensor calculation constants
 YEAR_TRANSITION_MULTIPLIER = 2.0  # Multiplier for detecting year transition issues
+YEAR_MONTH_SORT_MULTIPLIER = 100  # Multiplier for creating sortable year-month keys (year * 100 + month)
