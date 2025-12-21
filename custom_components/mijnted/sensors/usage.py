@@ -205,12 +205,12 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         return attributes
 
 
-class MijnTedLastMonthUsageSensor(MijnTedSensor):
-    """Sensor for last month's usage (from last year comparison)."""
+class MijnTedLatestMonthLastYearUsageSensor(MijnTedSensor):
+    """Sensor for last year's usage for the latest month."""
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the last month usage sensor."""
-        super().__init__(coordinator, "latest_month_last_year_usage", "last month usage")
+        """Initialize the latest month last year usage sensor."""
+        super().__init__(coordinator, "latest_month_last_year_usage", "latest month last year usage")
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
 
@@ -288,12 +288,12 @@ class MijnTedLastMonthUsageSensor(MijnTedSensor):
         return attributes
 
 
-class MijnTedLastMonthAverageUsageSensor(MijnTedSensor):
-    """Sensor for last month's average usage."""
+class MijnTedLatestMonthAverageUsageSensor(MijnTedSensor):
+    """Sensor for latest month's average usage."""
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the last month average usage sensor."""
-        super().__init__(coordinator, "latest_month_average_usage", "last month average usage")
+        """Initialize the latest month average usage sensor."""
+        super().__init__(coordinator, "latest_month_average_usage", "latest month average usage")
         self._attr_icon = "mdi:chart-line"
         self._attr_suggested_display_precision = 2
 
@@ -351,12 +351,12 @@ class MijnTedLastMonthAverageUsageSensor(MijnTedSensor):
         return attributes
 
 
-class MijnTedLastMonthAverageUsageLastYearSensor(MijnTedSensor):
-    """Sensor for last month's average usage from last year."""
+class MijnTedLatestMonthLastYearAverageUsageSensor(MijnTedSensor):
+    """Sensor for last year's average usage for the latest month."""
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the last month average usage last year sensor."""
-        super().__init__(coordinator, "latest_month_average_usage_last_year", "last month average usage last year")
+        """Initialize the latest month last year average usage sensor."""
+        super().__init__(coordinator, "latest_month_average_last_year_usage", "latest month last year average usage")
         self._attr_icon = "mdi:chart-line-variant"
         self._attr_suggested_display_precision = 2
 
