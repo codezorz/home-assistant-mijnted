@@ -12,6 +12,8 @@ UNIT_MIJNTED = "Units"
 
 # API constants
 REQUEST_TIMEOUT = 10  # seconds
+TOKEN_REFRESH_MAX_RETRIES = 3  # Maximum number of retry attempts for token refresh
+TOKEN_REFRESH_RETRY_DELAY = 10  # Delay in seconds between token refresh retry attempts
 RESIDENTIAL_UNITS_CLAIM = "https://ted-prod-function-app.azurewebsites.net/residential_units"
 RESIDENTIAL_UNITS_CLAIM_ALT = "extension_ResidentialUnits"
 USER_AGENT = "HomeAssistant/MijnTed"
