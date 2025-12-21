@@ -270,6 +270,7 @@ class MijnTedDeviceSensor(MijnTedSensor):
         )
         self.device_number = device_number
         self._attr_icon = "mdi:radiator"
+        self._attr_suggested_display_precision = 0
         # unique_id will be set dynamically in the property based on room name
 
     @property
@@ -362,6 +363,7 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         """Initialize the this month usage sensor."""
         super().__init__(coordinator, "energy_usage", "this month usage")
         self._attr_icon = "mdi:lightning-bolt"
+        self._attr_suggested_display_precision = 0
 
     def _find_latest_valid_month(self, usage_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Find the most recent month with totalEnergyUsage > 0 and averageEnergyUseForBillingUnit != null."""
@@ -712,6 +714,7 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         super().__init__(coordinator, "filter", "total usage")
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_suggested_display_precision = 0
 
     @property
     def state(self) -> Optional[float]:
@@ -910,6 +913,7 @@ class MijnTedThisYearUsageSensor(MijnTedSensor):
         """Initialize the this year usage sensor."""
         super().__init__(coordinator, "this_year_usage", "this year usage")
         self._attr_icon = "mdi:chart-line"
+        self._attr_suggested_display_precision = 0
     
     @property
     def state(self) -> Optional[float]:
@@ -970,6 +974,7 @@ class MijnTedLastYearUsageSensor(MijnTedSensor):
         """
         super().__init__(coordinator, "last_year_usage", "last year usage")
         self._attr_icon = "mdi:chart-line"
+        self._attr_suggested_display_precision = 0
     
     @property
     def state(self) -> Optional[float]:
