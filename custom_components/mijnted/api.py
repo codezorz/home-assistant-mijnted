@@ -4,7 +4,7 @@ import logging
 import asyncio
 import jwt
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable, Awaitable
 from .const import BASE_URL, AUTH_URL
 
 _LOGGER = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ class MijntedApiError(Exception):
     pass
 
 class MijntedApi:
-    def __init__(self, client_id: str, refresh_token: Optional[str] = None, access_token: Optional[str] = None, residential_unit: Optional[str] = None):
+    def __init__(self, client_id: str, refresh_token: Optional[str] = None, access_token: Optional[str] = None, residential_unit: Optional[str] = None, token_update_callback: Optional[Callable[[str, Optional[str], Optional[str]], Awaitable[None]]] = None):
         self.client_id = client_id
         self.refresh_token = refresh_token
         self.access_token = access_token
@@ -24,6 +24,7 @@ class MijntedApi:
         self.residential_unit = residential_unit
         self.delivery_type: Optional[str] = None
         self.residential_units_claim = "https://ted-prod-function-app.azurewebsites.net/residential_units"
+        self.token_update_callback = token_update_callback
 
     async def __aenter__(self):
         if self.session is None:
@@ -78,6 +79,17 @@ class MijntedApi:
                                 await self._extract_residential_unit_from_id_token(id_token)
                             if not self.residential_unit:
                                 await self._extract_residential_unit_from_token()
+                        
+                        # Notify callback if tokens were updated
+                        if new_refresh_token and self.token_update_callback:
+                            try:
+                                await self.token_update_callback(
+                                    self.refresh_token,
+                                    self.access_token,
+                                    self.residential_unit
+                                )
+                            except Exception as err:
+                                _LOGGER.warning("Error in token update callback: %s", err)
                         
                         return self.access_token
                     else:

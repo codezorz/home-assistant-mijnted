@@ -1,5 +1,5 @@
 from datetime import timedelta, datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -15,6 +15,19 @@ from . import config_flow
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry."""
     
+    async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str]) -> None:
+        """Callback to persist updated tokens to config entry."""
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                "refresh_token": refresh_token,
+                "access_token": access_token,
+                "residential_unit": residential_unit
+            }
+        )
+        _LOGGER.debug("Updated tokens in config entry")
+    
     async def async_update_data() -> Dict[str, Any]:
         """Fetch data from the API and structure it for sensors."""
         # Create a new API instance for each update to ensure fresh session
@@ -22,14 +35,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             client_id=entry.data["client_id"],
             refresh_token=entry.data["refresh_token"],
             access_token=entry.data.get("access_token"),
-            residential_unit=entry.data.get("residential_unit")
+            residential_unit=entry.data.get("residential_unit"),
+            token_update_callback=token_update_callback
         )
         
         try:
             async with api:
                 await api.authenticate()
                 
-                # Update stored tokens if they were refreshed
+                # Update stored tokens if they were refreshed (fallback check in case callback didn't fire)
                 if api.refresh_token != entry.data.get("refresh_token") or api.access_token != entry.data.get("access_token"):
                     hass.config_entries.async_update_entry(
                         entry,
