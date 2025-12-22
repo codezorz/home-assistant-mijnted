@@ -49,9 +49,6 @@ class MijntedApi:
         self.base_url = BASE_URL
         self.delivery_type: Optional[str] = None
         self.token_update_callback = token_update_callback
-        self._in_context_manager = False
-        
-        # Initialize auth handler (will be set up with session in __aenter__)
         self.auth: Optional[MijntedAuth] = None
         self._auth_init_params = {
             "client_id": self.client_id,
@@ -95,7 +92,6 @@ class MijntedApi:
         """Async context manager entry."""
         if self.session is None:
             self.session = aiohttp.ClientSession()
-        self._in_context_manager = True
         self.auth = MijntedAuth(
             session=self.session,
             **self._auth_init_params
@@ -104,7 +100,6 @@ class MijntedApi:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
-        self._in_context_manager = False
         await self.close()
 
     async def refresh_access_token(self) -> str:
@@ -184,14 +179,6 @@ class MijntedApi:
                                 raise MijntedApiError(
                                     f"API request failed: {retry_response.status} - {error_text}"
                                 )
-                    elif response.status == HTTP_STATUS_UNAUTHORIZED:
-                        error_text = await response.text()
-                        _LOGGER.error(
-                            "API request unauthorized: %s",
-                            error_text,
-                            extra={"url": url, "method": method, "status_code": response.status, "residential_unit": self.residential_unit}
-                        )
-                        raise MijntedAuthenticationError(f"Authentication failed: {error_text}")
                     else:
                         error_text = await response.text()
                         _LOGGER.error(

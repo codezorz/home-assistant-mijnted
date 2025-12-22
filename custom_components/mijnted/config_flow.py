@@ -65,7 +65,6 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                # Ensure polling_interval is set with default if not provided
                 if "polling_interval" not in user_input:
                     user_input["polling_interval"] = int(DEFAULT_POLLING_INTERVAL.total_seconds())
                 await self._validate_input(user_input)

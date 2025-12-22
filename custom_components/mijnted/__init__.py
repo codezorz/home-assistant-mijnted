@@ -15,14 +15,8 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry."""
     
-    callback_called = False
-    
     async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str], refresh_token_expires_at: Optional[datetime] = None) -> None:
         """Callback to persist updated tokens to config entry."""
-        nonlocal callback_called
-        callback_called = True
-        
-        # Convert datetime to ISO string for storage
         refresh_token_expires_at_str = None
         if refresh_token_expires_at:
             refresh_token_expires_at_str = refresh_token_expires_at.isoformat()
@@ -48,12 +42,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     async def async_update_data() -> Dict[str, Any]:
         """Fetch data from the API and structure it for sensors."""
-        nonlocal callback_called
-        callback_called = False
-        
-        original_refresh_token = entry.data.get("refresh_token")
-        original_access_token = entry.data.get("access_token")
-        
         refresh_token_expires_at = None
         refresh_token_expires_at_str = entry.data.get("refresh_token_expires_at")
         if refresh_token_expires_at_str:
@@ -82,7 +70,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async with api:
                 await api.authenticate()
                 
-                if not callback_called and (api.refresh_token != original_refresh_token or api.access_token != original_access_token):
+                original_refresh_token = entry.data.get("refresh_token")
+                original_access_token = entry.data.get("access_token")
+                
+                if (api.refresh_token != original_refresh_token or 
+                    api.access_token != original_access_token or
+                    api.residential_unit != entry.data.get("residential_unit")):
                     refresh_token_expires_at_str = None
                     if api.refresh_token_expires_at:
                         refresh_token_expires_at_str = api.refresh_token_expires_at.isoformat()
@@ -126,20 +119,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 
                 delivery_types = await api.get_delivery_types()
                 
-                exception_map = {
-                    "energy_usage": energy_usage_data,
-                    "last_update": last_update_data,
-                    "filter_status": filter_status_data,
-                    "usage_insight": usage_insight_data,
-                    "usage_insight_last_year": usage_insight_last_year_data,
-                    "active_model": active_model_data,
-                    "residential_unit_detail": residential_unit_detail_data,
-                    "usage_last_year": usage_last_year_data,
-                    "usage_per_room": usage_per_room_data,
-                    "unit_of_measures": unit_of_measures_data,
-                }
-                
-                for name, result in exception_map.items():
+                def handle_result(name: str, result: Any, default_empty: Any) -> Any:
+                    """Handle result from gather, converting exceptions to defaults."""
                     if isinstance(result, Exception):
                         _LOGGER.warning(
                             "Failed to fetch %s: %s",
@@ -147,21 +128,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             result,
                             extra={"data_type": name, "residential_unit": api.residential_unit, "error_type": type(result).__name__}
                         )
-                        if name in ("filter_status", "unit_of_measures"):
-                            exception_map[name] = []
-                        else:
-                            exception_map[name] = {}
+                        return default_empty
+                    return result
                 
-                energy_usage_data = exception_map["energy_usage"]
-                last_update_data = exception_map["last_update"]
-                filter_status_data = exception_map["filter_status"]
-                usage_insight_data = exception_map["usage_insight"]
-                usage_insight_last_year_data = exception_map["usage_insight_last_year"]
-                active_model_data = exception_map["active_model"]
-                residential_unit_detail_data = exception_map["residential_unit_detail"]
-                usage_last_year_data = exception_map["usage_last_year"]
-                usage_per_room_data = exception_map["usage_per_room"]
-                unit_of_measures_data = exception_map["unit_of_measures"]
+                energy_usage_data = handle_result("energy_usage", energy_usage_data, {})
+                last_update_data = handle_result("last_update", last_update_data, {})
+                filter_status_data = handle_result("filter_status", filter_status_data, [])
+                usage_insight_data = handle_result("usage_insight", usage_insight_data, {})
+                usage_insight_last_year_data = handle_result("usage_insight_last_year", usage_insight_last_year_data, {})
+                active_model_data = handle_result("active_model", active_model_data, {})
+                residential_unit_detail_data = handle_result("residential_unit_detail", residential_unit_detail_data, {})
+                usage_last_year_data = handle_result("usage_last_year", usage_last_year_data, {})
+                usage_per_room_data = handle_result("usage_per_room", usage_per_room_data, {})
+                unit_of_measures_data = handle_result("unit_of_measures", unit_of_measures_data, [])
                 
                 energy_usage_total = 0.0
                 if isinstance(energy_usage_data, dict):
