@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Callable, Awaitable, List
 from .const import (
     BASE_URL,
@@ -27,7 +27,7 @@ from .exceptions import (
 
 
 class MijntedApi:
-    def __init__(self, client_id: str, refresh_token: Optional[str] = None, access_token: Optional[str] = None, residential_unit: Optional[str] = None, token_update_callback: Optional[Callable[[str, Optional[str], Optional[str]], Awaitable[None]]] = None):
+    def __init__(self, client_id: str, refresh_token: Optional[str] = None, access_token: Optional[str] = None, residential_unit: Optional[str] = None, refresh_token_expires_at: Optional[datetime] = None, token_update_callback: Optional[Callable[[str, Optional[str], Optional[str], Optional[datetime]], Awaitable[None]]] = None):
         """Initialize Mijnted API client.
         
         Args:
@@ -35,7 +35,8 @@ class MijntedApi:
             refresh_token: Refresh token for authentication
             access_token: Access token (optional, will be refreshed if needed)
             residential_unit: Residential unit identifier
-            token_update_callback: Callback for token updates
+            refresh_token_expires_at: UTC datetime when refresh token expires
+            token_update_callback: Callback for token updates (includes expiration time)
             
         Raises:
             ValueError: If client_id is empty
@@ -57,18 +58,13 @@ class MijntedApi:
             "refresh_token": refresh_token,
             "access_token": access_token,
             "residential_unit": residential_unit,
+            "refresh_token_expires_at": refresh_token_expires_at,
             "token_update_callback": token_update_callback,
         }
 
     def _ensure_session(self) -> None:
-        """Ensure a session exists, creating one if necessary.
-        
-        Note: This method should typically only be called from within the async context manager.
-        Creating a session outside the context manager may lead to resource leaks.
-        """
         if self.session is None:
             self.session = aiohttp.ClientSession()
-            # Initialize auth if session was just created
             if self.auth is None:
                 self.auth = MijntedAuth(
                     session=self.session,
@@ -89,21 +85,17 @@ class MijntedApi:
     def residential_unit(self) -> Optional[str]:
         """Get the current residential unit from auth handler."""
         return self.auth.residential_unit if self.auth else self._auth_init_params.get("residential_unit")
+    
+    @property
+    def refresh_token_expires_at(self) -> Optional[datetime]:
+        """Get the refresh token expiration time from auth handler."""
+        return self.auth.refresh_token_expires_at if self.auth else self._auth_init_params.get("refresh_token_expires_at")
 
     async def __aenter__(self):
-        """Async context manager entry.
-        
-        Creates and manages the aiohttp session lifecycle. The session is created here
-        and will be automatically closed when exiting the context manager.
-        
-        Returns:
-            Self instance with ensured session
-        """
+        """Async context manager entry."""
         if self.session is None:
             self.session = aiohttp.ClientSession()
         self._in_context_manager = True
-        
-        # Initialize auth handler with session
         self.auth = MijntedAuth(
             session=self.session,
             **self._auth_init_params
@@ -111,22 +103,12 @@ class MijntedApi:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit.
-        
-        Ensures the session is properly closed, even if an exception occurred.
-        
-        Args:
-            exc_type: Exception type if any
-            exc_val: Exception value if any
-            exc_tb: Exception traceback if any
-        """
+        """Async context manager exit."""
         self._in_context_manager = False
         await self.close()
 
     async def refresh_access_token(self) -> str:
         """Refresh the access token using the refresh token.
-        
-        Delegates to the auth handler.
         
         Returns:
             New access token string
@@ -137,8 +119,6 @@ class MijntedApi:
     def is_token_expired(self, token: Optional[str] = None) -> bool:
         """Check if a token is expired.
         
-        Delegates to the auth handler.
-        
         Args:
             token: Token to check (defaults to self.access_token)
             
@@ -146,64 +126,31 @@ class MijntedApi:
             True if token is expired or invalid, False if valid
         """
         if self.auth is None:
-            # Fallback if auth not initialized
             if token is None:
                 token = self._auth_init_params.get("access_token")
             if not token:
                 return True
-            # Simple check without JWT decode
             return False
         return self.auth.is_token_expired(token)
     
     async def authenticate(self) -> None:
-        """Authenticate with the Mijnted API using refresh token.
-        
-        Checks if existing access token is valid, otherwise refreshes it.
-        Also fetches delivery types after successful authentication.
-        """
+        """Authenticate with the Mijnted API using refresh token."""
         self._ensure_session()
         await self.auth.authenticate()
         await self.get_delivery_types()
 
     async def _parse_response(self, response: aiohttp.ClientResponse) -> Dict[str, Any]:
-        """Parse API response handling both JSON and plain text.
-        
-        Args:
-            response: aiohttp response object
-            
-        Returns:
-            Parsed response data as dictionary
-        """
         content_type = response.headers.get("Content-Type", "").lower()
         if "application/json" in content_type:
             return await response.json()
         
-        # Handle plain text responses (e.g., dates)
         text_response = await response.text()
-        # Try to parse as JSON first, fallback to text
         try:
             return json.loads(text_response)
         except (json.JSONDecodeError, ValueError):
-            # Return as plain text wrapped in a dict
             return {"value": text_response}
 
     async def _make_request(self, method: str, url: str, **kwargs) -> Dict[str, Any]:
-        """Make an API request with proper error handling and automatic token refresh.
-        
-        Args:
-            method: HTTP method (GET, POST, etc.)
-            url: Request URL
-            **kwargs: Additional arguments passed to aiohttp request
-            
-        Returns:
-            Parsed response data as dictionary
-            
-        Raises:
-            MijntedAuthenticationError: If authentication fails
-            MijntedTimeoutError: If request times out
-            MijntedConnectionError: If network error occurs
-            MijntedApiError: For other API errors
-        """
         self._ensure_session()
         if not self.auth or not self.auth.access_token:
             await self.authenticate()
@@ -214,13 +161,11 @@ class MijntedApi:
                     if response.status == HTTP_STATUS_OK:
                         return await self._parse_response(response)
                     elif response.status == HTTP_STATUS_UNAUTHORIZED:
-                        # Token expired, try to refresh
                         _LOGGER.info(
                             "Access token expired, refreshing...",
                             extra={"url": url, "method": method, "residential_unit": self.residential_unit}
                         )
                         await self.auth.refresh_access_token()
-                        # Retry the request with new token
                         async with self.session.request(method, url, headers=self._headers(), timeout=timeout, **kwargs) as retry_response:
                             if retry_response.status == HTTP_STATUS_OK:
                                 return await self._parse_response(retry_response)
@@ -282,11 +227,6 @@ class MijntedApi:
 
     @staticmethod
     def _get_current_year() -> int:
-        """Get the current year.
-        
-        Returns:
-            Current year as integer
-        """
         return datetime.now().year
 
     async def get_delivery_types(self) -> List[Any]:
@@ -300,8 +240,7 @@ class MijntedApi:
         first_item = ListUtil.get_first_item(result)
         if first_item is not None:
             self.delivery_type = first_item
-            return result
-        return []
+        return result if isinstance(result, list) else []
 
     async def get_energy_usage(self) -> Dict[str, Any]:
         """Get energy usage data for the current year.
@@ -334,11 +273,8 @@ class MijntedApi:
         """
         url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{self._get_current_year()}"
         result = await self._make_request("GET", url)
-        # API returns a JSON array directly (not wrapped)
-        # _make_request returns the JSON as-is when content-type is application/json
         if isinstance(result, list):
             return result
-        # Fallback: if somehow wrapped, try to extract
         if isinstance(result, dict) and "value" in result:
             value = result["value"]
             return value if isinstance(value, list) else []
@@ -409,33 +345,21 @@ class MijntedApi:
         current_year = self._get_current_year()
         url = f"{self.base_url}/unitOfMeasures/{self.residential_unit}/{self.delivery_type}/{current_year}"
         result = await self._make_request("GET", url)
-        # API returns a JSON array directly
         if isinstance(result, list):
             return result
-        # Fallback: if somehow wrapped, try to extract
         if isinstance(result, dict) and "value" in result:
             value = result["value"]
             return value if isinstance(value, list) else []
         return []
 
     def _headers(self) -> Dict[str, str]:
-        """Get headers for API requests.
-        
-        Returns:
-            Dictionary containing Authorization and User-Agent headers
-        """
         return {
             "Authorization": f"Bearer {self.auth.access_token if self.auth else ''}",
             "User-Agent": USER_AGENT,
         }
 
     async def close(self) -> None:
-        """Close the API session.
-        
-        Safely closes the aiohttp session if it exists. This method is called
-        automatically when exiting the async context manager, but can also be
-        called manually if needed.
-        """
+        """Close the API session."""
         if self.session:
             await self.session.close()
             self.session = None

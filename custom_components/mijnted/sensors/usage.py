@@ -19,15 +19,6 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
 
 
     def _calculate_measured_months_total(self, usage_data: Dict[str, Any], current_year: int) -> Optional[float]:
-        """Calculate the sum of all measured months for the current year.
-        
-        Args:
-            usage_data: Dictionary containing monthly energy usage data
-            current_year: Year to calculate for
-            
-        Returns:
-            Total usage for measured months, or None if no valid data
-        """
         if not isinstance(usage_data, dict):
             return None
         
@@ -477,11 +468,6 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         return UNIT_MIJNTED
     
     def _calculate_last_year_total(self) -> Optional[float]:
-        """Calculate total usage from last year's monthly data.
-        
-        Returns:
-            Total usage for last year, or None if no valid data
-        """
         data = self.coordinator.data
         if not data:
             return None

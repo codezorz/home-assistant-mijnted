@@ -25,6 +25,7 @@
     "error": {
       "cannot_connect": "Failed to connect, please try again",
       "invalid_auth": "Invalid authentication",
+      "grant_expired": "Refresh token has expired. Please re-authenticate to continue using the integration.",
       "unknown": "Unexpected error",
       "access_token_payload_missing": "Access token payload is missing",
       "failed_delivery_types": "Failed to get delivery types",

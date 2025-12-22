@@ -6,7 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from .api import MijntedApi
-from .exceptions import MijntedApiError, MijntedAuthenticationError, MijntedConnectionError
+from .exceptions import MijntedApiError, MijntedAuthenticationError, MijntedGrantExpiredError, MijntedConnectionError
 from .const import DOMAIN, DEFAULT_POLLING_INTERVAL
 from .utils import TimestampUtil, ApiUtil, DateUtil
 
@@ -15,43 +15,66 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry."""
     
-    # Track if callback was called during this update cycle to prevent duplicate config entry updates
     callback_called = False
     
-    async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str]) -> None:
+    async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str], refresh_token_expires_at: Optional[datetime] = None) -> None:
         """Callback to persist updated tokens to config entry."""
         nonlocal callback_called
         callback_called = True
+        
+        # Convert datetime to ISO string for storage
+        refresh_token_expires_at_str = None
+        if refresh_token_expires_at:
+            refresh_token_expires_at_str = refresh_token_expires_at.isoformat()
+        
         hass.config_entries.async_update_entry(
             entry,
             data={
                 **entry.data,
                 "refresh_token": refresh_token,
                 "access_token": access_token,
-                "residential_unit": residential_unit
+                "residential_unit": residential_unit,
+                "refresh_token_expires_at": refresh_token_expires_at_str
             }
         )
         _LOGGER.debug(
             "Updated tokens in config entry",
-            extra={"entry_id": entry.entry_id, "has_residential_unit": bool(residential_unit)}
+            extra={
+                "entry_id": entry.entry_id,
+                "has_residential_unit": bool(residential_unit),
+                "refresh_token_expires_at": refresh_token_expires_at_str
+            }
         )
     
     async def async_update_data() -> Dict[str, Any]:
         """Fetch data from the API and structure it for sensors."""
         nonlocal callback_called
-        # Reset flag for this update cycle
         callback_called = False
         
-        # Store original token values to compare against after authentication
         original_refresh_token = entry.data.get("refresh_token")
         original_access_token = entry.data.get("access_token")
         
-        # Create a new API instance for each update to ensure fresh session
+        refresh_token_expires_at = None
+        refresh_token_expires_at_str = entry.data.get("refresh_token_expires_at")
+        if refresh_token_expires_at_str:
+            try:
+                refresh_token_expires_at = datetime.fromisoformat(refresh_token_expires_at_str.replace('Z', '+00:00'))
+                if refresh_token_expires_at.tzinfo is None:
+                    refresh_token_expires_at = refresh_token_expires_at.replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError) as err:
+                _LOGGER.warning(
+                    "Could not parse refresh_token_expires_at from config: %s",
+                    refresh_token_expires_at_str,
+                    extra={"entry_id": entry.entry_id},
+                    exc_info=True
+                )
+        
         api = MijntedApi(
             client_id=entry.data["client_id"],
             refresh_token=entry.data["refresh_token"],
             access_token=entry.data.get("access_token"),
             residential_unit=entry.data.get("residential_unit"),
+            refresh_token_expires_at=refresh_token_expires_at,
             token_update_callback=token_update_callback
         )
         
@@ -59,24 +82,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async with api:
                 await api.authenticate()
                 
-                # Update stored tokens if they were refreshed (fallback check in case callback didn't fire)
-                # Only update if callback wasn't called, to prevent duplicate updates
                 if not callback_called and (api.refresh_token != original_refresh_token or api.access_token != original_access_token):
+                    refresh_token_expires_at_str = None
+                    if api.refresh_token_expires_at:
+                        refresh_token_expires_at_str = api.refresh_token_expires_at.isoformat()
+                    
                     hass.config_entries.async_update_entry(
                         entry,
                         data={
                             **entry.data,
                             "refresh_token": api.refresh_token,
                             "access_token": api.access_token,
-                            "residential_unit": api.residential_unit
+                            "residential_unit": api.residential_unit,
+                            "refresh_token_expires_at": refresh_token_expires_at_str
                         }
                     )
                 
-                # Fetch all data in parallel where possible for better performance
-                # Group independent calls together
                 last_year = DateUtil.get_last_year()
-                
-                # First batch: Independent calls that can run in parallel
                 (
                     energy_usage_data,
                     last_update_data,
@@ -102,10 +124,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     return_exceptions=True,
                 )
                 
-                # Get all delivery types (already fetched during authenticate)
                 delivery_types = await api.get_delivery_types()
                 
-                # Handle exceptions from parallel calls
                 exception_map = {
                     "energy_usage": energy_usage_data,
                     "last_update": last_update_data,
@@ -127,13 +147,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             result,
                             extra={"data_type": name, "residential_unit": api.residential_unit, "error_type": type(result).__name__}
                         )
-                        # Set to default empty value based on expected type
                         if name in ("filter_status", "unit_of_measures"):
                             exception_map[name] = []
                         else:
                             exception_map[name] = {}
                 
-                # Update variables with potentially corrected values
                 energy_usage_data = exception_map["energy_usage"]
                 last_update_data = exception_map["last_update"]
                 filter_status_data = exception_map["filter_status"]
@@ -145,9 +163,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 usage_per_room_data = exception_map["usage_per_room"]
                 unit_of_measures_data = exception_map["unit_of_measures"]
                 
-                # Parse and structure the data for sensors
-                # Energy usage: API returns {"monthlyEnergyUsages": [...], "averageEnergyUseForBillingUnit": 0}
-                # Calculate total from monthly data
                 energy_usage_total = 0.0
                 if isinstance(energy_usage_data, dict):
                     monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
@@ -158,36 +173,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             if isinstance(month, dict)
                         )
                 
-                # Last update: API returns plain text "18/12/2025" wrapped in {"value": "..."}
                 last_update = ApiUtil.extract_value(last_update_data, "")
-                
-                # Filter status: API returns array of device objects
-                # Keep the array as-is for processing
                 filter_status = filter_status_data if isinstance(filter_status_data, list) else []
-                
-                # Active model: API returns plain text "F71" wrapped in {"value": "..."}
                 active_model = ApiUtil.extract_value(active_model_data, None)
                 
-                # Extract usage data
-                # energy_usage_data is for current year
                 usage_this_year = energy_usage_data if isinstance(energy_usage_data, dict) else {}
                 usage_last_year = usage_last_year_data if isinstance(usage_last_year_data, dict) else {}
                 
-                # Extract room usage - structure as dict with room names as keys
-                # API returns: {"rooms": ["KA", "KA", "W", "W"], "currentYear": {"values": [129.0, 0.0, 0.0, 633.0]}, ...}
                 room_usage = {}
                 if isinstance(usage_per_room_data, dict):
                     rooms = usage_per_room_data.get("rooms", [])
                     current_year_data = usage_per_room_data.get("currentYear", {})
                     values = current_year_data.get("values", [])
                     
-                    # Combine values for rooms with the same name
                     for i, room_name in enumerate(rooms):
                         if i < len(values):
                             value = values[i]
                             if room_name in room_usage:
-                                # Room already exists, add the value (or take max, depending on what makes sense)
-                                # For now, we'll sum them if there are duplicates
                                 if isinstance(room_usage[room_name], (int, float)):
                                     room_usage[room_name] = float(room_usage[room_name]) + float(value)
                                 else:
@@ -195,7 +197,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             else:
                                 room_usage[room_name] = float(value)
                 elif isinstance(usage_per_room_data, list):
-                    # Fallback: if it's a list, convert to dict
                     for i, item in enumerate(usage_per_room_data):
                         if isinstance(item, dict):
                             room_name = item.get("room") or item.get("roomName") or item.get("name") or item.get("id")
@@ -206,13 +207,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         else:
                             room_usage[f"room_{i}"] = item
                 
-                # Track successful sync timestamp (ISO 8601 format with Z suffix for UTC)
                 now = datetime.now(timezone.utc)
                 last_successful_sync = TimestampUtil.format_datetime_to_timestamp(now)
                 
                 return {
                     "energy_usage": energy_usage_total,
-                    "energy_usage_data": energy_usage_data,  # Keep full data for sensors that need it
+                    "energy_usage_data": energy_usage_data,
                     "last_update": last_update,
                     "filter_status": filter_status,
                     "usage_insight": usage_insight_data,
@@ -227,6 +227,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "unit_of_measures": unit_of_measures_data,
                     "last_successful_sync": last_successful_sync,
                 }
+        except MijntedGrantExpiredError as err:
+            _LOGGER.warning(
+                "Refresh token grant has expired. Triggering re-authentication flow: %s",
+                err,
+                extra={"entry_id": entry.entry_id, "error_type": "MijntedGrantExpiredError"}
+            )
+            flows_in_progress = [
+                flow
+                for flow in hass.config_entries.flow.async_progress()
+                if flow.get("handler") == DOMAIN
+                and flow.get("context", {}).get("entry_id") == entry.entry_id
+                and flow.get("context", {}).get("source") == "reauth"
+            ]
+            
+            if not flows_in_progress:
+                hass.async_create_task(
+                    hass.config_entries.flow.async_init(
+                        DOMAIN,
+                        context={"source": "reauth", "entry_id": entry.entry_id},
+                        data=entry.data,
+                    )
+                )
+            else:
+                _LOGGER.debug(
+                    "Reauth flow already in progress, skipping duplicate trigger",
+                    extra={"entry_id": entry.entry_id}
+                )
+            raise UpdateFailed(
+                "Refresh token has expired. Please re-authenticate using the configuration flow."
+            ) from err
         except MijntedAuthenticationError as err:
             _LOGGER.error(
                 "Authentication error: %s",
@@ -235,18 +265,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             raise UpdateFailed(f"Authentication failed: {err}") from err
         except MijntedConnectionError as err:
-            # Get cached data from coordinator if available
             cached_data = None
             if entry.entry_id in hass.data.get(DOMAIN, {}):
                 coordinator = hass.data[DOMAIN][entry.entry_id]
                 if coordinator.data:
                     cached_data = coordinator.data
             
-            # Check if token is expired
             token_expired = api.is_token_expired()
             
             if token_expired:
-                # Token is expired, cannot use cached data - must fail
                 _LOGGER.error(
                     "Connection error with expired token: %s",
                     err,
@@ -254,7 +281,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
                 raise UpdateFailed(f"Connection failed: {err}") from err
             
-            # Token is still valid, try to return cached data
             if cached_data:
                 _LOGGER.warning(
                     "Connection error, returning cached data (token still valid): %s",
@@ -263,7 +289,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
                 return cached_data
             
-            # No cached data available, must fail
             _LOGGER.error(
                 "Connection error with no cached data available: %s",
                 err,

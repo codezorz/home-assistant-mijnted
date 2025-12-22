@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 import jwt
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, Callable, Awaitable
 from .const import (
     AUTH_URL,
@@ -13,11 +13,13 @@ from .const import (
     RESIDENTIAL_UNITS_CLAIM_ALT,
     HTTP_STATUS_OK,
     HTTP_STATUS_UNAUTHORIZED,
+    REFRESH_TOKEN_PROACTIVE_REFRESH_THRESHOLD_SECONDS,
 )
 from .utils import ListUtil
 from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
+    MijntedGrantExpiredError,
     MijntedConnectionError,
     MijntedTimeoutError,
 )
@@ -35,7 +37,8 @@ class MijntedAuth:
         refresh_token: Optional[str] = None,
         access_token: Optional[str] = None,
         residential_unit: Optional[str] = None,
-        token_update_callback: Optional[Callable[[str, Optional[str], Optional[str]], Awaitable[None]]] = None
+        refresh_token_expires_at: Optional[datetime] = None,
+        token_update_callback: Optional[Callable[[str, Optional[str], Optional[str], Optional[datetime]], Awaitable[None]]] = None
     ):
         """Initialize Mijnted authentication handler.
         
@@ -45,7 +48,8 @@ class MijntedAuth:
             refresh_token: Refresh token for authentication
             access_token: Access token (optional, will be refreshed if needed)
             residential_unit: Residential unit identifier
-            token_update_callback: Callback for token updates
+            refresh_token_expires_at: UTC datetime when refresh token expires
+            token_update_callback: Callback for token updates (includes expiration time)
         """
         if not client_id or not client_id.strip():
             raise ValueError("client_id is required and cannot be empty")
@@ -55,13 +59,12 @@ class MijntedAuth:
         self.refresh_token = refresh_token
         self.access_token = access_token
         self.residential_unit = residential_unit
+        self.refresh_token_expires_at = refresh_token_expires_at
         self.auth_url = AUTH_URL
         self.token_update_callback = token_update_callback
     
     async def refresh_access_token(self) -> str:
         """Refresh the access token using the refresh token.
-        
-        Retries up to 3 times with 10 second wait between attempts for connection errors.
         
         Returns:
             New access token string
@@ -75,8 +78,6 @@ class MijntedAuth:
         if not self.refresh_token:
             raise MijntedAuthenticationError("No refresh token available")
         
-        # Azure AD B2C refresh token flow
-        # Request access_token by including the client_id in scope
         data = {
             "client_id": self.client_id,
             "grant_type": "refresh_token",
@@ -86,7 +87,7 @@ class MijntedAuth:
         
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         
-        for attempt in range(TOKEN_REFRESH_MAX_RETRIES + 1):  # 0, 1, 2 = 3 total attempts
+        for attempt in range(TOKEN_REFRESH_MAX_RETRIES + 1):
             try:
                 async with self.session.post(self.auth_url, data=data, timeout=timeout) as response:
                     if response.status == HTTP_STATUS_OK:
@@ -94,6 +95,7 @@ class MijntedAuth:
                         self.access_token = result.get("access_token")
                         id_token = result.get("id_token")
                         new_refresh_token = result.get("refresh_token")
+                        refresh_token_expires_in = result.get("refresh_token_expires_in")
                         
                         # If no access_token, try using id_token (some flows return only id_token)
                         if not self.access_token and id_token:
@@ -106,25 +108,51 @@ class MijntedAuth:
                         if not self.access_token:
                             raise MijntedAuthenticationError("Access token missing in response")
                         
-                        # Update refresh token if a new one is provided
                         if new_refresh_token:
                             self.refresh_token = new_refresh_token
                         
-                        # Extract residential unit from token if not already set
+                        new_refresh_token_expires_at = None
+                        if refresh_token_expires_in is not None:
+                            try:
+                                expires_in_seconds = int(refresh_token_expires_in)
+                                new_refresh_token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
+                                _LOGGER.debug(
+                                    "Refresh token expires in %d seconds (at %s)",
+                                    expires_in_seconds,
+                                    new_refresh_token_expires_at.isoformat(),
+                                    extra={"has_residential_unit": bool(self.residential_unit)}
+                                )
+                            except (ValueError, TypeError) as err:
+                                _LOGGER.warning(
+                                    "Could not parse refresh_token_expires_in: %s",
+                                    refresh_token_expires_in,
+                                    extra={"has_residential_unit": bool(self.residential_unit)},
+                                    exc_info=True
+                                )
+                        
+                        if new_refresh_token and not new_refresh_token_expires_at:
+                            new_refresh_token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=86400)
+                            _LOGGER.debug(
+                                "No refresh_token_expires_in in response, assuming 24 hours",
+                                extra={"has_residential_unit": bool(self.residential_unit)}
+                            )
+                        
+                        if new_refresh_token_expires_at:
+                            self.refresh_token_expires_at = new_refresh_token_expires_at
+                        
                         if not self.residential_unit:
-                            # Try from id_token first, then access_token
                             if id_token:
                                 await self._extract_residential_unit_from_id_token(id_token)
                             if not self.residential_unit:
                                 self._extract_residential_unit_from_token()
                         
-                        # Notify callback if tokens were updated (always call if callback exists, as access_token is always updated)
                         if self.token_update_callback:
                             try:
                                 await self.token_update_callback(
                                     self.refresh_token,
                                     self.access_token,
-                                    self.residential_unit
+                                    self.residential_unit,
+                                    self.refresh_token_expires_at
                                 )
                             except Exception as err:
                                 _LOGGER.warning(
@@ -136,13 +164,35 @@ class MijntedAuth:
                         
                         return self.access_token
                     else:
-                        error_text = await response.text()
+                        error_text = ""
+                        error_code = ""
+                        error_description = ""
+                        
+                        try:
+                            error_json = await response.json()
+                            error_code = error_json.get("error", "")
+                            error_description = error_json.get("error_description", "")
+                            error_text = str(error_json)
+                        except (ValueError, KeyError, Exception):
+                            error_text = await response.text()
+                        
                         _LOGGER.error(
                             "Token refresh failed: %s - %s",
                             response.status,
                             error_text,
                             extra={"status_code": response.status, "has_residential_unit": bool(self.residential_unit)}
                         )
+                        
+                        if (response.status == HTTP_STATUS_UNAUTHORIZED or response.status == 400) and error_code == "invalid_grant":
+                            if "grant has expired" in error_description.lower() or "grant has expired" in error_text.lower():
+                                _LOGGER.warning(
+                                    "Refresh token grant has expired. Re-authentication required.",
+                                    extra={"has_residential_unit": bool(self.residential_unit)}
+                                )
+                                raise MijntedGrantExpiredError(
+                                    f"Refresh token grant has expired. Please re-authenticate: {error_description or error_text}"
+                                )
+                        
                         if response.status == HTTP_STATUS_UNAUTHORIZED:
                             raise MijntedAuthenticationError(f"Authentication failed: {error_text}")
                         raise MijntedApiError(f"Token refresh failed: {response.status} - {error_text}")
@@ -154,7 +204,6 @@ class MijntedAuth:
                 )
                 raise MijntedTimeoutError("Timeout during token refresh") from err
             except aiohttp.ClientError as err:
-                # Log as WARNING for temporary network errors
                 _LOGGER.warning(
                     "Network error during token refresh (attempt %d/%d): %s",
                     attempt + 1,
@@ -162,7 +211,6 @@ class MijntedAuth:
                     err,
                     extra={"auth_url": self.auth_url, "attempt": attempt + 1, "max_retries": TOKEN_REFRESH_MAX_RETRIES + 1}
                 )
-                # Retry if we haven't exhausted attempts
                 if attempt < TOKEN_REFRESH_MAX_RETRIES:
                     _LOGGER.info(
                         "Retrying token refresh in %d seconds...",
@@ -171,7 +219,6 @@ class MijntedAuth:
                     )
                     await asyncio.sleep(TOKEN_REFRESH_RETRY_DELAY)
                     continue
-                # All retries exhausted
                 _LOGGER.warning(
                     "Token refresh failed after %d attempts: %s",
                     TOKEN_REFRESH_MAX_RETRIES + 1,
@@ -180,22 +227,12 @@ class MijntedAuth:
                 )
                 raise MijntedConnectionError(f"Network error during token refresh: {err}") from err
             except (MijntedAuthenticationError, MijntedApiError):
-                # Don't retry authentication or API errors
                 raise
             except Exception as err:
                 _LOGGER.exception("Unexpected error during token refresh: %s", err)
                 raise MijntedApiError(f"Unexpected error during token refresh: {err}") from err
     
     def _extract_residential_unit_from_payload(self, payload: Dict[str, Any]) -> Optional[str]:
-        """Extract residential unit from JWT payload.
-        
-        Args:
-            payload: Decoded JWT payload dictionary
-            
-        Returns:
-            Residential unit string if found, None otherwise
-        """
-        # Try multiple possible claim names
         residential_units = (
             payload.get(RESIDENTIAL_UNITS_CLAIM) or
             payload.get(RESIDENTIAL_UNITS_CLAIM_ALT)
@@ -210,11 +247,6 @@ class MijntedAuth:
         return None
     
     async def _extract_residential_unit_from_id_token(self, id_token: str) -> None:
-        """Extract residential unit from the id token.
-        
-        Args:
-            id_token: JWT ID token string
-        """
         try:
             payload = jwt.decode(id_token, options={"verify_signature": False})
             residential_unit = self._extract_residential_unit_from_payload(payload)
@@ -234,10 +266,6 @@ class MijntedAuth:
             )
     
     def _extract_residential_unit_from_token(self) -> None:
-        """Extract residential unit from the access token.
-        
-        Updates self.residential_unit if found in token payload.
-        """
         if not self.access_token:
             return
         
@@ -278,45 +306,67 @@ class MijntedAuth:
             if exp:
                 exp_time = datetime.fromtimestamp(exp, tz=timezone.utc)
                 return exp_time <= datetime.now(timezone.utc)
-            # No expiration claim, consider it expired for safety
             return True
         except (jwt.DecodeError, Exception):
-            # Token is invalid or can't be decoded
             return True
+    
+    def should_proactively_refresh_token(self) -> bool:
+        """Check if refresh token should be proactively refreshed.
+        
+        Returns:
+            True if proactive refresh is needed, False otherwise
+        """
+        if not self.refresh_token_expires_at:
+            return True
+        
+        now = datetime.now(timezone.utc)
+        time_remaining = (self.refresh_token_expires_at - now).total_seconds()
+        
+        if time_remaining < REFRESH_TOKEN_PROACTIVE_REFRESH_THRESHOLD_SECONDS:
+            _LOGGER.info(
+                "Refresh token within proactive refresh threshold (%.1f hours remaining), refreshing now",
+                time_remaining / 3600,
+                extra={"has_residential_unit": bool(self.residential_unit)}
+            )
+            return True
+        
+        return False
     
     async def authenticate(self) -> None:
         """Authenticate with the Mijnted API using refresh token.
         
-        Checks if existing access token is valid, otherwise refreshes it.
+        Proactively refreshes refresh token if close to expiration, otherwise
+        checks if access token is valid and refreshes if needed.
         """
-        # If we have an access token, check if it's still valid
+        if self.should_proactively_refresh_token():
+            _LOGGER.debug(
+                "Proactively refreshing refresh token before expiration",
+                extra={"has_residential_unit": bool(self.residential_unit), "expires_at": self.refresh_token_expires_at.isoformat() if self.refresh_token_expires_at else None}
+            )
+            await self.refresh_access_token()
+            return
+        
         if self.access_token:
             try:
-                # Try to decode and check expiration
                 payload = jwt.decode(self.access_token, options={"verify_signature": False})
                 exp = payload.get("exp")
                 if exp:
-                    # JWT exp is in UTC, compare with UTC now
                     exp_time = datetime.fromtimestamp(exp, tz=timezone.utc)
                     if exp_time > datetime.now(timezone.utc):
-                        # Token is still valid, extract residential unit if needed
                         if not self.residential_unit:
                             self._extract_residential_unit_from_token()
                         return
             except jwt.DecodeError:
-                # Token is invalid, need to refresh
                 _LOGGER.debug(
                     "Access token decode failed, refreshing token",
                     extra={"has_access_token": bool(self.access_token), "has_residential_unit": bool(self.residential_unit)}
                 )
             except Exception as err:
-                # Token is invalid, need to refresh
                 _LOGGER.debug(
                     "Access token validation failed: %s",
                     err,
                     extra={"has_access_token": bool(self.access_token), "has_residential_unit": bool(self.residential_unit)}
                 )
         
-        # Refresh the access token
         await self.refresh_access_token()
 
