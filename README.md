@@ -2,23 +2,6 @@
 
 This custom component integrates MijnTed devices with Home Assistant, allowing you to monitor your energy usage and other related data within your smart home setup.
 
-## Features
-
-- Authenticate with MijnTed API using refresh token
-- Retrieve energy usage data (current month, current year, and last year)
-- Get last data update timestamp
-- Monitor filter status and device readings
-- Track usage per room/device
-- Get active model information
-- Retrieve residential unit details
-- Get unit of measures information
-- Configurable automatic data refresh (default: 1 hour)
-- Usage sensors display with zero decimal precision for cleaner UI
-- Sensors retain last known values when data becomes unavailable
-- Track last successful sync timestamp for all sensors
-- Automatic retry logic for token refresh with connection error handling
-- Intelligent caching: returns cached data on temporary connection errors when token is still valid
-
 ## Installation
 
 1. Copy the `custom_components/mijnted` folder to your Home Assistant's `custom_components` directory.
@@ -54,7 +37,7 @@ To set up the MijnTed integration, you'll need:
 **Client ID:**
 1. Log in to the [MijnTed website](https://mijnted.nl)
 2. Open your browser's developer console (F12)
-3. Search for a request to `https://auth.mijnted.nl/authorize` or `https://mytedprod.b2clogin.com`
+3. Search for a request to `https://mytedprod.b2clogin.com`
 4. In the URL, find the `client_id` parameter
 5. The value after `client_id=` is your client ID
 
@@ -95,11 +78,6 @@ Once configured, the integration will create several sensors in Home Assistant:
 - **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)
 
 All usage sensors display values with zero decimal places for a cleaner interface.
-
-**Data Availability:**
-- Sensors retain their last known value when data becomes temporarily unavailable
-- The `available` property indicates whether the sensor has fresh data or is showing cached values
-- All sensors include a `last_successful_sync` attribute showing when data was last successfully synchronized
 
 You can use these sensors in your automations, scripts, and dashboards to monitor and analyze your energy consumption. The sensors include additional attributes with detailed information that can be accessed in templates and automations.
 
@@ -148,8 +126,6 @@ To set up a development environment:
 1. Clone the repository
 2. The integration can be tested directly in Home Assistant by copying the `custom_components/mijnted` folder to your Home Assistant's `custom_components` directory
 3. Restart Home Assistant to load the custom component
-
-For running unit tests (optional), you'll need to set up a Python environment with Home Assistant and pytest. Note that this requires Python 3.13.x and can be complex on Windows due to build tool requirements.
 
 The integration uses the following dependencies:
 - `aiohttp` - For async HTTP requests
