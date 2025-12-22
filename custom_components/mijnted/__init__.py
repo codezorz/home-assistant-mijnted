@@ -250,7 +250,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if coordinator.data:
                     cached_data = coordinator.data
             
-            token_expired = api.is_token_expired()
+            token_expired = api.auth.is_token_expired() if api.auth else True
             
             if token_expired:
                 _LOGGER.error(

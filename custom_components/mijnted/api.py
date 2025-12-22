@@ -102,32 +102,6 @@ class MijntedApi:
         """Async context manager exit."""
         await self.close()
 
-    async def refresh_access_token(self) -> str:
-        """Refresh the access token using the refresh token.
-        
-        Returns:
-            New access token string
-        """
-        self._ensure_session()
-        return await self.auth.refresh_access_token()
-    
-    def is_token_expired(self, token: Optional[str] = None) -> bool:
-        """Check if a token is expired.
-        
-        Args:
-            token: Token to check (defaults to self.access_token)
-            
-        Returns:
-            True if token is expired or invalid, False if valid
-        """
-        if self.auth is None:
-            if token is None:
-                token = self._auth_init_params.get("access_token")
-            if not token:
-                return True
-            return False
-        return self.auth.is_token_expired(token)
-    
     async def authenticate(self) -> None:
         """Authenticate with the Mijnted API using refresh token."""
         self._ensure_session()
@@ -160,6 +134,7 @@ class MijntedApi:
                             "Access token expired, refreshing...",
                             extra={"url": url, "method": method, "residential_unit": self.residential_unit}
                         )
+                        self._ensure_session()
                         await self.auth.refresh_access_token()
                         async with self.session.request(method, url, headers=self._headers(), timeout=timeout, **kwargs) as retry_response:
                             if retry_response.status == HTTP_STATUS_OK:
