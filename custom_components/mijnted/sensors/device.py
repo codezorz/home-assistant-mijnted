@@ -23,7 +23,6 @@ class MijnTedDeviceSensor(MijnTedSensor):
         self.device_number = device_number
         self._attr_icon = "mdi:radiator"
         self._attr_suggested_display_precision = 0
-        # unique_id will be set dynamically in the property based on room name
 
     @property
     def _device_data(self) -> Optional[Dict[str, Any]]:
