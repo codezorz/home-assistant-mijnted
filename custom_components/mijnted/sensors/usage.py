@@ -424,6 +424,69 @@ class MijnTedLatestMonthLastYearAverageUsageSensor(MijnTedSensor):
         return attributes
 
 
+class MijnTedLatestMonthUsageSensor(MijnTedSensor):
+    """Sensor for latest month's actual usage."""
+    
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+        """Initialize the latest month usage sensor."""
+        super().__init__(coordinator, "latest_month_usage", "latest month usage")
+        self._attr_icon = "mdi:chart-line"
+        self._attr_suggested_display_precision = 0
+
+    @property
+    def state(self) -> Optional[float]:
+        """Return the usage for the latest month."""
+        data = self.coordinator.data
+        if not data:
+            return None
+        
+        energy_usage_data = data.get("energy_usage_data", {})
+        if not isinstance(energy_usage_data, dict):
+            return None
+        
+        latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
+        if not latest_month:
+            return None
+        
+        total_usage = latest_month.get("totalEnergyUsage")
+        if total_usage is not None:
+            try:
+                return float(total_usage)
+            except (ValueError, TypeError):
+                pass
+        
+        return None
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MIJNTED
+    
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.MEASUREMENT
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes."""
+        attributes: Dict[str, Any] = {}
+        
+        data = self.coordinator.data
+        if not data:
+            return attributes
+        
+        energy_usage_data = data.get("energy_usage_data", {})
+        if isinstance(energy_usage_data, dict):
+            latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
+            if latest_month:
+                month_year = latest_month.get("monthYear")
+                if month_year:
+                    attributes["month"] = month_year
+        
+        return attributes
+
+
 class MijnTedTotalUsageSensor(MijnTedSensor):
     """Sensor for total device readings from all devices."""
     
