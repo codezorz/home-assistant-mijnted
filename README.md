@@ -34,22 +34,29 @@ To set up the MijnTed integration, you'll need:
 
 ### Obtaining Your Credentials
 
-**Client ID:**
-1. Log in to the [MijnTed website](https://mijnted.nl)
-2. Open your browser's developer console (F12)
-3. Search for a request to `https://mytedprod.b2clogin.com`
-4. In the URL, find the `client_id` parameter
-5. The value after `client_id=` is your client ID
+Both the **Client ID** and **Refresh Token** can be extracted from the same request:
 
-**Refresh Token:**
 1. Log in to the [MijnTed website](https://mijnted.nl)
 2. Open your browser's developer console (F12)
 3. Go to the Network tab
-4. Look for a POST request to `mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token`
-5. Click on the request and check the Response tab - the refresh token will be in the JSON response
-6. Alternatively, you can check the Application/Storage tab for cookies or local storage containing authentication tokens
+4. Look for a POST request to `https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token`
+5. Click on the request and go to the "Payload" or "Request" tab (depending on your browser)
+6. In the form parameters, you'll find:
+   - **Client ID**: The value of the `client_id` parameter (typically a UUID format)
+   - **Refresh Token**: The value of the `refresh_token` parameter
 
-For example, the client ID might look like: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (a UUID format) or a similar alphanumeric string.
+The request will look something like this:
+```
+POST https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token
+
+Form Data:
+- client_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+- refresh_token: ...
+- grant_type: refresh_token
+- scope: openid offline_access ...
+```
+
+**Note:** The client ID is typically a UUID format (e.g., `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). The refresh token is a longer string that may change when you log in again.
 
 **Polling Interval (Optional):**
 - Default: 3600 seconds (1 hour)
