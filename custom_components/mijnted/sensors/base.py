@@ -97,22 +97,12 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         )
     
     def _get_last_successful_sync(self) -> Optional[str]:
-        """Get the timestamp of the last successful sync from coordinator data.
-        
-        Returns:
-            ISO timestamp string or None if not available
-        """
         data = self.coordinator.data
         if not data:
             return None
         return data.get("last_successful_sync")
     
     def _update_last_known_value(self, value: Any) -> None:
-        """Update the last known value when fresh data is available.
-        
-        Args:
-            value: The current state value
-        """
         if value is not None:
             self._last_known_value = value
             self._last_known_state = value

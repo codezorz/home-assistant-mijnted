@@ -27,11 +27,6 @@ class MijnTedDeviceSensor(MijnTedSensor):
 
     @property
     def _device_data(self) -> Optional[Dict[str, Any]]:
-        """Get device data from coordinator.
-        
-        Returns:
-            Device data dictionary if found, None otherwise
-        """
         data = self.coordinator.data
         if not data:
             return None

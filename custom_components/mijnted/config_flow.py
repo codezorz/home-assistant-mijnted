@@ -10,6 +10,7 @@ from .api import MijntedApi
 from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
+    MijntedGrantExpiredError,
     MijntedConnectionError,
     MijntedTimeoutError,
 )
@@ -98,7 +99,6 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                # Ensure polling_interval is set with default if not provided
                 if "polling_interval" not in user_input:
                     user_input["polling_interval"] = int(DEFAULT_POLLING_INTERVAL.total_seconds())
                 await self._validate_input(user_input)
@@ -134,9 +134,18 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             async with api:
                 await api.authenticate()
-                # Store the updated refresh token if it was refreshed
                 if api.refresh_token != user_input["refresh_token"]:
                     user_input["refresh_token"] = api.refresh_token
+                if api.refresh_token_expires_at:
+                    user_input["refresh_token_expires_at"] = api.refresh_token_expires_at.isoformat()
+        except MijntedGrantExpiredError as err:
+            error_msg = str(err) if err else "Refresh token grant has expired"
+            _LOGGER.debug(
+                "Grant expiration during validation: %s",
+                error_msg,
+                extra={"error_type": "MijntedGrantExpiredError"}
+            )
+            raise InvalidAuth(f"Refresh token has expired. Please re-authenticate: {error_msg}") from err
         except MijntedAuthenticationError as err:
             error_msg = str(err) if err else "Authentication failed"
             _LOGGER.debug(
@@ -189,13 +198,11 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
-            # Update config entry with new polling interval
             updated_data = {**self.config_entry.data, **user_input}
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
                 data=updated_data,
             )
-            # Reload the entry to apply changes
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
             return self.async_create_entry(title="", data={})
 
