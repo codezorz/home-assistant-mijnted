@@ -27,16 +27,18 @@ from .exceptions import (
 
 
 class MijntedApi:
-    def __init__(self, client_id: str, refresh_token: Optional[str] = None, access_token: Optional[str] = None, residential_unit: Optional[str] = None, refresh_token_expires_at: Optional[datetime] = None, token_update_callback: Optional[Callable[[str, Optional[str], Optional[str], Optional[datetime]], Awaitable[None]]] = None):
+    def __init__(self, hass, client_id: str, refresh_token: Optional[str] = None, access_token: Optional[str] = None, residential_unit: Optional[str] = None, refresh_token_expires_at: Optional[datetime] = None, token_update_callback: Optional[Callable[[str, Optional[str], Optional[str], Optional[datetime]], Awaitable[None]]] = None, credentials_callback: Optional[Callable[[], Awaitable[tuple]]] = None):
         """Initialize Mijnted API client.
         
         Args:
+            hass: Home Assistant instance (required for executor jobs)
             client_id: MijnTed client ID (required)
             refresh_token: Refresh token for authentication
             access_token: Access token (optional, will be refreshed if needed)
             residential_unit: Residential unit identifier
             refresh_token_expires_at: UTC datetime when refresh token expires
             token_update_callback: Callback for token updates (includes expiration time)
+            credentials_callback: Callback to retrieve (username, password) tuple when re-authentication is needed
             
         Raises:
             ValueError: If client_id is empty
@@ -44,6 +46,7 @@ class MijntedApi:
         if not client_id or not client_id.strip():
             raise ValueError("client_id is required and cannot be empty")
         
+        self.hass = hass
         self.client_id = client_id.strip()
         self.session: Optional[aiohttp.ClientSession] = None
         self.base_url = BASE_URL
@@ -51,12 +54,14 @@ class MijntedApi:
         self.token_update_callback = token_update_callback
         self.auth: Optional[MijntedAuth] = None
         self._auth_init_params = {
+            "hass": self.hass,
             "client_id": self.client_id,
             "refresh_token": refresh_token,
             "access_token": access_token,
             "residential_unit": residential_unit,
             "refresh_token_expires_at": refresh_token_expires_at,
             "token_update_callback": token_update_callback,
+            "credentials_callback": credentials_callback,
         }
 
     def _ensure_session(self) -> None:

@@ -6,6 +6,6 @@
     "codeowners": ["@codezorz"],
     "iot_class": "cloud_polling",
     "config_flow": true,
-    "requirements": ["aiohttp", "PyJWT"],
+    "requirements": ["aiohttp", "PyJWT", "pkce", "requests"],
     "version": "1.0.15"
 }
