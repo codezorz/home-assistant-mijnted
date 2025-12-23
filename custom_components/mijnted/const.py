@@ -32,3 +32,15 @@ REFRESH_TOKEN_PROACTIVE_REFRESH_THRESHOLD_SECONDS = 43200  # 12 hours in seconds
 # Sensor calculation constants
 YEAR_TRANSITION_MULTIPLIER = 2.0  # Multiplier for detecting year transition issues
 YEAR_MONTH_SORT_MULTIPLIER = 100  # Multiplier for creating sortable year-month keys (year * 100 + month)
+
+# Azure B2C authentication constants
+AUTH_TENANT_NAME = "mytedprod"
+AUTH_TENANT_ID = "mytedprod.onmicrosoft.com"
+AUTH_POLICY = "B2C_1_user"
+AUTH_BASE_URL = f"https://{AUTH_TENANT_NAME}.b2clogin.com/{AUTH_TENANT_ID}/{AUTH_POLICY}"
+AUTH_AUTHORIZE_URL = f"{AUTH_BASE_URL}/oauth2/v2.0/authorize"
+AUTH_TOKEN_URL = f"{AUTH_BASE_URL}/oauth2/v2.0/token"
+AUTH_LOGIN_URL = f"{AUTH_BASE_URL}/SelfAsserted"
+AUTH_CONFIRM_URL = f"{AUTH_BASE_URL}/api/CombinedSigninAndSignup/confirmed"
+AUTH_REDIRECT_URI = "https://mijnted.nl/"
+AUTH_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

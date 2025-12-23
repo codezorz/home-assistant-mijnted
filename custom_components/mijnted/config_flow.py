@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional
+from datetime import datetime
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -6,7 +7,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.const import CONF_CLIENT_ID
 from homeassistant.exceptions import HomeAssistantError
 from .const import DOMAIN, DEFAULT_POLLING_INTERVAL, MIN_POLLING_INTERVAL, MAX_POLLING_INTERVAL
-from .api import MijntedApi
+from .auth import MijntedAuth
 from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
@@ -35,7 +36,6 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._client_id: Optional[str] = None
-        self._refresh_token: Optional[str] = None
 
     @staticmethod
     async def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
@@ -48,7 +48,8 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return vol.Schema(
             {
                 vol.Required(CONF_CLIENT_ID): str,
-                vol.Required("refresh_token"): str,
+                vol.Required("username"): str,
+                vol.Required("password"): str,
                 vol.Optional(
                     "polling_interval",
                     default=DEFAULT_POLLING_INTERVAL.total_seconds()
@@ -126,17 +127,44 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _validate_input(self, user_input: Dict[str, Any]) -> None:
         """Validate the user input."""
+        # Create session with explicit cookie jar to ensure cookies are maintained between requests
+        connector = aiohttp.TCPConnector()
+        cookie_jar = aiohttp.CookieJar()
+        session = aiohttp.ClientSession(connector=connector, cookie_jar=cookie_jar)
         try:
-            api = MijntedApi(
-                client_id=user_input[CONF_CLIENT_ID],
-                refresh_token=user_input["refresh_token"]
+            auth = MijntedAuth(
+                hass=self.hass,
+                session=session,
+                client_id=user_input[CONF_CLIENT_ID]
             )
-            async with api:
-                await api.authenticate()
-                if api.refresh_token != user_input["refresh_token"]:
-                    user_input["refresh_token"] = api.refresh_token
-                if api.refresh_token_expires_at:
-                    user_input["refresh_token_expires_at"] = api.refresh_token_expires_at.isoformat()
+            tokens = await auth.async_authenticate_with_credentials(
+                username=user_input["username"],
+                password=user_input["password"]
+            )
+            
+            user_input["refresh_token"] = tokens.get("refresh_token")
+            user_input["access_token"] = tokens.get("access_token") or tokens.get("id_token")
+            
+            refresh_token_expires_at = tokens.get("refresh_token_expires_at")
+            if refresh_token_expires_at:
+                if isinstance(refresh_token_expires_at, datetime):
+                    user_input["refresh_token_expires_at"] = refresh_token_expires_at.isoformat()
+                else:
+                    user_input["refresh_token_expires_at"] = refresh_token_expires_at
+            
+            if not user_input.get("refresh_token"):
+                raise InvalidAuth("Failed to obtain refresh token")
+            
+            if not user_input.get("access_token"):
+                raise InvalidAuth("Failed to obtain access token")
+            
+            auth.access_token = user_input["access_token"]
+            auth.refresh_token = user_input["refresh_token"]
+            id_token = tokens.get("id_token")
+            if id_token:
+                await auth._extract_residential_unit_from_id_token(id_token)
+            if auth.residential_unit:
+                user_input["residential_unit"] = auth.residential_unit
         except MijntedGrantExpiredError as err:
             error_msg = str(err) if err else "Refresh token grant has expired"
             _LOGGER.debug(
@@ -185,6 +213,8 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 extra={"error_type": "aiohttp.ClientError"}
             )
             raise CannotConnect(f"Network error: {error_msg}. Please check your internet connection.") from err
+        finally:
+            await session.close()
 
 
 class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):

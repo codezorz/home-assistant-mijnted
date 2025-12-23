@@ -138,4 +138,6 @@ To set up a development environment:
 The integration uses the following dependencies:
 - `aiohttp` - For async HTTP requests
 - `PyJWT` - For JWT token decoding
+- `pkce` - For PKCE code generation in OAuth flow
+- `requests` - For synchronous HTTP requests during authentication
 

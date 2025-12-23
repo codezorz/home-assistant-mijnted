@@ -1,5 +1,5 @@
 from datetime import timedelta, datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 import asyncio
 import logging
 from homeassistant.config_entries import ConfigEntry
@@ -40,6 +40,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             }
         )
     
+    async def credentials_callback() -> Tuple[str, str]:
+        """Callback to retrieve credentials from config entry for re-authentication."""
+        username = entry.data.get("username")
+        password = entry.data.get("password")
+        if not username or not password:
+            raise MijntedAuthenticationError("Username and password not found in config entry")
+        return (username, password)
+    
     async def async_update_data() -> Dict[str, Any]:
         """Fetch data from the API and structure it for sensors."""
         refresh_token_expires_at = None
@@ -58,12 +66,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
         
         api = MijntedApi(
+            hass=hass,
             client_id=entry.data["client_id"],
             refresh_token=entry.data["refresh_token"],
             access_token=entry.data.get("access_token"),
             residential_unit=entry.data.get("residential_unit"),
             refresh_token_expires_at=refresh_token_expires_at,
-            token_update_callback=token_update_callback
+            token_update_callback=token_update_callback,
+            credentials_callback=credentials_callback
         )
         
         try:
