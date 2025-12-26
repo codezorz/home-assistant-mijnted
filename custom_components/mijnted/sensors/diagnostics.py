@@ -22,7 +22,11 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
 
     @property
     def state(self) -> Optional[str]:
-        """Return the state of the sensor."""
+        """Return the last update timestamp.
+        
+        Returns:
+            ISO timestamp string of last sync date, or None if not available
+        """
         data = self.coordinator.data
         if not data:
             return None

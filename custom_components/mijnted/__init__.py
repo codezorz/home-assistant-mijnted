@@ -8,7 +8,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import MijntedApi
 from .exceptions import MijntedApiError, MijntedAuthenticationError, MijntedGrantExpiredError, MijntedConnectionError
 from .const import DOMAIN, DEFAULT_POLLING_INTERVAL
-from .utils import TimestampUtil, ApiUtil, DateUtil
+from .utils import ApiUtil, DateUtil, TimestampUtil
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -260,7 +260,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 if coordinator.data:
                     cached_data = coordinator.data
             
-            token_expired = api.auth.is_token_expired() if api.auth else True
+            token_expired = api.auth.is_access_token_expired() if api.auth else True
             
             if token_expired:
                 _LOGGER.error(

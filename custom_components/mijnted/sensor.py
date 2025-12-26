@@ -53,8 +53,7 @@ async def async_setup_entry(
         MijnTedLatestMonthUsageSensor(coordinator),
     ]
     
-    # Add individual device sensors dynamically
-    # Note: Room usage sensors are not created here as device sensors already include room information
+    # Room usage sensors are not created here as device sensors already include room information
     filter_status = coordinator.data.get("filter_status", [])
     if isinstance(filter_status, list):
         seen_devices = set()

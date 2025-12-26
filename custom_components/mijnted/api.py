@@ -5,13 +5,15 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Callable, Awaitable, List
 from .const import (
-    BASE_URL,
+    API_BASE_URL,
     REQUEST_TIMEOUT,
     USER_AGENT,
     HTTP_STATUS_OK,
     HTTP_STATUS_UNAUTHORIZED,
+    CONTENT_TYPE_JSON,
+    AUTHORIZATION_SCHEME_BEARER,
 )
-from .utils import ListUtil, DateUtil
+from .utils import ApiUtil, DateUtil, ListUtil
 from .auth import MijntedAuth
 
 
@@ -49,7 +51,7 @@ class MijntedApi:
         self.hass = hass
         self.client_id = client_id.strip()
         self.session: Optional[aiohttp.ClientSession] = None
-        self.base_url = BASE_URL
+        self.base_url = API_BASE_URL
         self.delivery_type: Optional[str] = None
         self.token_update_callback = token_update_callback
         self.auth: Optional[MijntedAuth] = None
@@ -108,14 +110,14 @@ class MijntedApi:
         await self.close()
 
     async def authenticate(self) -> None:
-        """Authenticate with the Mijnted API using refresh token."""
+        """Authenticate with the Mijnted API using refresh token and fetch delivery types."""
         self._ensure_session()
         await self.auth.authenticate()
         await self.get_delivery_types()
 
     async def _parse_response(self, response: aiohttp.ClientResponse) -> Dict[str, Any]:
         content_type = response.headers.get("Content-Type", "").lower()
-        if "application/json" in content_type:
+        if CONTENT_TYPE_JSON in content_type:
             return await response.json()
         
         text_response = await response.text()
@@ -135,7 +137,7 @@ class MijntedApi:
                     if response.status == HTTP_STATUS_OK:
                         return await self._parse_response(response)
                     elif response.status == HTTP_STATUS_UNAUTHORIZED:
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             "Access token expired, refreshing...",
                             extra={"url": url, "method": method, "residential_unit": self.residential_unit}
                         )
@@ -217,10 +219,6 @@ class MijntedApi:
         """
         current_year = self._get_current_year()
         url = f"{self.base_url}/residentialUnitUsage/{current_year}/{self.residential_unit}/{self.delivery_type}"
-        _LOGGER.debug(
-            "Fetching energy usage",
-            extra={"residential_unit": self.residential_unit, "year": current_year, "delivery_type": self.delivery_type}
-        )
         return await self._make_request("GET", url)
 
     async def get_last_data_update(self) -> Dict[str, Any]:
@@ -242,10 +240,8 @@ class MijntedApi:
         result = await self._make_request("GET", url)
         if isinstance(result, list):
             return result
-        if isinstance(result, dict) and "value" in result:
-            value = result["value"]
-            return value if isinstance(value, list) else []
-        return []
+        value = ApiUtil.extract_value(result, [])
+        return value if isinstance(value, list) else []
 
     async def get_usage_insight(self, year: Optional[int] = None) -> Dict[str, Any]:
         """Get usage insight information for a specific year.
@@ -259,10 +255,6 @@ class MijntedApi:
         if year is None:
             year = self._get_current_year()
         url = f"{self.base_url}/usageInsight/{year}/{self.residential_unit}/{self.delivery_type}"
-        _LOGGER.debug(
-            "Fetching usage insight",
-            extra={"residential_unit": self.residential_unit, "year": year, "delivery_type": self.delivery_type}
-        )
         return await self._make_request("GET", url)
 
     async def get_active_model(self) -> Dict[str, Any]:
@@ -314,14 +306,12 @@ class MijntedApi:
         result = await self._make_request("GET", url)
         if isinstance(result, list):
             return result
-        if isinstance(result, dict) and "value" in result:
-            value = result["value"]
-            return value if isinstance(value, list) else []
-        return []
+        value = ApiUtil.extract_value(result, [])
+        return value if isinstance(value, list) else []
 
     def _headers(self) -> Dict[str, str]:
         return {
-            "Authorization": f"Bearer {self.auth.access_token if self.auth else ''}",
+            "Authorization": f"{AUTHORIZATION_SCHEME_BEARER} {self.auth.access_token if self.auth else ''}",
             "User-Agent": USER_AGENT,
         }
 

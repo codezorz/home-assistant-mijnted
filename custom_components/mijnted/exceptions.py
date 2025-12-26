@@ -13,8 +13,9 @@ class MijntedAuthenticationError(MijntedApiError):
 class MijntedGrantExpiredError(MijntedAuthenticationError):
     """Exception for when the OAuth grant (refresh token) has expired.
     
-    This occurs when the refresh token itself expires (typically after 24 hours).
-    The user must re-authenticate to obtain a new refresh token.
+    This occurs when the refresh token itself expires and automatic refresh
+    using stored credentials fails after retries. The user must re-authenticate
+    to obtain a new refresh token.
     """
     pass
 

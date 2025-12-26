@@ -30,11 +30,12 @@ This custom component integrates MijnTed devices with Home Assistant, allowing y
 To set up the MijnTed integration, you'll need:
 
 1. Your MijnTed client ID
-2. Your MijnTed refresh token
+2. Your MijnTed username (email address)
+3. Your MijnTed password
 
-### Obtaining Your Credentials
+### Obtaining Your Client ID
 
-Both the **Client ID** and **Refresh Token** can be extracted from the same request:
+The **Client ID** can be extracted from a browser network request:
 
 1. Log in to the [MijnTed website](https://mijnted.nl)
 2. Open your browser's developer console (F12)
@@ -43,7 +44,6 @@ Both the **Client ID** and **Refresh Token** can be extracted from the same requ
 5. Click on the request and go to the "Payload" or "Request" tab (depending on your browser)
 6. In the form parameters, you'll find:
    - **Client ID**: The value of the `client_id` parameter (typically a UUID format)
-   - **Refresh Token**: The value of the `refresh_token` parameter
 
 The request will look something like this:
 ```
@@ -56,14 +56,14 @@ Form Data:
 - scope: openid offline_access ...
 ```
 
-**Note:** The client ID is typically a UUID format (e.g., `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). The refresh token is a longer string that may change when you log in again.
+**Note:** The client ID is typically a UUID format (e.g., `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
 
 **Polling Interval (Optional):**
 - Default: 3600 seconds (1 hour)
-- Range: 900-86400 seconds (15 minutes to 24 hours)
+- Range: 3600-86400 seconds (1 hour to 24 hours)
 - You can configure this during setup or leave it at the default
 
-These credentials are used to authenticate with the MijnTed API. During the integration setup in Home Assistant, you'll be prompted to enter these details.
+During the integration setup in Home Assistant, you'll be prompted to enter your client ID, username, and password. The integration will automatically handle authentication using OAuth 2.0 and store the refresh token for future use.
 
 ## Usage
 
@@ -94,17 +94,18 @@ You can use these sensors in your automations, scripts, and dashboards to monito
 The integration uses a custom `MijntedApi` class to interact with the MijnTed API. Key methods include:
 
 - `authenticate()`: Authenticates with the MijnTed API using refresh token and retrieves/refreshes access token
-- `refresh_access_token()`: Refreshes the access token using the refresh token
 - `get_energy_usage()`: Fetches the current year's energy usage data
 - `get_last_data_update()`: Retrieves the timestamp of the last data update
 - `get_filter_status()`: Gets filter status and device readings
-- `get_usage_insight()`: Retrieves usage insights
+- `get_usage_insight(year)`: Retrieves usage insights for a specific year (defaults to current year)
 - `get_active_model()`: Gets the active model information
 - `get_delivery_types()`: Retrieves available delivery types for the residential unit
 - `get_residential_unit_detail()`: Gets detailed residential unit information
 - `get_usage_last_year()`: Fetches last year's energy usage data
 - `get_usage_per_room()`: Gets usage data per room for the current year
 - `get_unit_of_measures()`: Gets unit of measurement information
+
+**Note:** Token refresh is handled automatically by the internal `MijntedAuth` class when access tokens expire. The API automatically retries requests with a refreshed token if authentication fails.
 
 ## Troubleshooting
 

@@ -3,7 +3,7 @@ from homeassistant.const import Platform
 from datetime import timedelta
 
 DOMAIN = "mijnted"
-BASE_URL = "https://ted-prod-function-app.azurewebsites.net/api"
+API_BASE_URL = "https://ted-prod-function-app.azurewebsites.net/api"
 AUTH_URL = "https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token"
 LOGGER = logging.getLogger(__package__)
 PLATFORMS = [Platform.SENSOR]
@@ -14,20 +14,24 @@ UNIT_MIJNTED = "Units"
 REQUEST_TIMEOUT = 10  # seconds
 TOKEN_REFRESH_MAX_RETRIES = 3  # Maximum number of retry attempts for token refresh
 TOKEN_REFRESH_RETRY_DELAY = 10  # Delay in seconds between token refresh retry attempts
-RESIDENTIAL_UNITS_CLAIM = "https://ted-prod-function-app.azurewebsites.net/residential_units"
-RESIDENTIAL_UNITS_CLAIM_ALT = "extension_ResidentialUnits"
-USER_AGENT = "HomeAssistant/MijnTed"
+# ID token claim constants
+ID_TOKEN_CLAIM_RESIDENTIAL_UNITS = "extension_ResidentialUnits"
+ID_TOKEN_CLAIM_OCCUPANT_ID = "extension_OccupantID"
+ID_TOKEN_CLAIM_BILLING_UNITS = "extension_BillingUnits"
+ID_TOKEN_CLAIM_USER_ROLE = "extension_UserRole"
 
 # HTTP status codes
 HTTP_STATUS_OK = 200
+HTTP_STATUS_BAD_REQUEST = 400
 HTTP_STATUS_UNAUTHORIZED = 401
 
 # Polling interval constants
-MIN_POLLING_INTERVAL = 900  # 15 minutes in seconds
+MIN_POLLING_INTERVAL = 3600  # 1 hour in seconds
 MAX_POLLING_INTERVAL = 86400  # 24 hours in seconds
 
 # Refresh token expiration constants
-REFRESH_TOKEN_PROACTIVE_REFRESH_THRESHOLD_SECONDS = 43200  # 12 hours in seconds - refresh when less time remains
+REFRESH_TOKEN_PROACTIVE_REFRESH_THRESHOLD_SECONDS = 900  # 15 minutes in seconds - refresh when less time remains
+REFRESH_TOKEN_DEFAULT_EXPIRATION_SECONDS = 86400  # 24 hours in seconds - default expiration when not provided
 
 # Sensor calculation constants
 YEAR_TRANSITION_MULTIPLIER = 2.0  # Multiplier for detecting year transition issues
@@ -44,3 +48,21 @@ AUTH_LOGIN_URL = f"{AUTH_BASE_URL}/SelfAsserted"
 AUTH_CONFIRM_URL = f"{AUTH_BASE_URL}/api/CombinedSigninAndSignup/confirmed"
 AUTH_REDIRECT_URI = "https://mijnted.nl/"
 AUTH_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# OAuth 2.0 constants
+OAUTH_SCOPE = "openid profile offline_access"
+OAUTH_GRANT_TYPE_AUTHORIZATION_CODE = "authorization_code"
+OAUTH_GRANT_TYPE_REFRESH_TOKEN = "refresh_token"
+OAUTH_RESPONSE_TYPE_CODE = "code"
+OAUTH_CODE_CHALLENGE_METHOD = "S256"
+OAUTH_RESPONSE_MODE = "query"
+OAUTH_ERROR_INVALID_GRANT = "invalid_grant"
+OAUTH_REQUEST_TYPE_RESPONSE = "RESPONSE"
+OAUTH_REMEMBER_ME_FALSE = "false"
+
+# HTTP headers and content types
+CONTENT_TYPE_JSON = "application/json"
+CONTENT_TYPE_FORM_URLENCODED = "application/x-www-form-urlencoded; charset=UTF-8"
+HEADER_X_REQUESTED_WITH = "XMLHttpRequest"
+AUTHORIZATION_SCHEME_BEARER = "Bearer"
+USER_AGENT = "HomeAssistant/MijnTed"
