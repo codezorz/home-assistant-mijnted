@@ -46,16 +46,18 @@ class MijnTedDeviceSensor(MijnTedSensor):
         """
         device_data = self._device_data
         if device_data and device_data.get("room"):
-            # Normalize room name: lowercase and replace spaces/special chars with underscore
             room = device_data.get("room", "").lower().replace(" ", "_")
-            # Remove any other special characters that might cause issues
             room = "".join(c if c.isalnum() or c == "_" else "_" for c in room)
             return f"{DOMAIN}_device_{room}_{self.device_number}"
         return f"{DOMAIN}_device_{self.device_number}"
 
     @property
     def name(self) -> str:
-        """Return the name of the sensor."""
+        """Return the name of the sensor.
+        
+        Returns:
+            Formatted sensor name with room name if available, otherwise device number
+        """
         device_data = self._device_data
         if device_data and device_data.get("room"):
             room_code = device_data['room']
@@ -79,12 +81,15 @@ class MijnTedDeviceSensor(MijnTedSensor):
                 self._update_last_known_value(value)
                 return value
         
-        # Return last known value if available
         return self._last_known_value
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit of measurement string from device data, or empty string if not available
+        """
         device_data = self._device_data
         if device_data:
             unit = device_data.get("unitOfMeasure", "")

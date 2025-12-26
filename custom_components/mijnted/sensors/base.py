@@ -43,7 +43,6 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         
         residential_unit = data.get("residential_unit", "unknown")
         
-        # Build device name from address if available
         residential_unit_detail = data.get("residential_unit_detail", {})
         device_name = "MijnTed"
         

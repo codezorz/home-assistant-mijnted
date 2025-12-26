@@ -37,7 +37,6 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
             if not month_year:
                 continue
             
-            # Check if this month is for the current year
             parsed = DataUtil.parse_month_year(month_year)
             if parsed:
                 _, year = parsed
@@ -65,7 +64,6 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         total_usage = DataUtil.calculate_filter_status_total(filter_status)
         
         if total_usage is None:
-            # Return last known value if available
             return self._last_known_value
         
         # Try to calculate using monthly breakdown (handles year transitions correctly)
@@ -74,7 +72,6 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         measured_months_total = self._calculate_measured_months_total(energy_usage_data, current_year)
         
         if measured_months_total is not None:
-            # Use monthly breakdown: total - sum of measured months = unmeasured usage
             this_month_usage = total_usage - measured_months_total
             if this_month_usage >= 0:
                 self._update_last_known_value(this_month_usage)
@@ -92,32 +89,34 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                 except (ValueError, TypeError):
                     pass
         
-        # Only use this calculation if we have valid data and it makes sense
         # At year transition, this_year_usage might be very low, causing incorrect high values
         # So we validate: if the difference is suspiciously large, don't trust it
         if this_year_usage is not None and this_year_usage > 0:
             this_month_usage = total_usage - this_year_usage
-            # Sanity check: if difference is more than 2x this_year_usage, likely year transition issue
-            # In that case, return last known value to wait for monthly data to be available
             if this_month_usage >= 0:
                 if this_year_usage > 0 and this_month_usage > (this_year_usage * YEAR_TRANSITION_MULTIPLIER):
-                    # Suspiciously large difference - likely year transition issue
-                    # Return last known value to wait for monthly data to be available
                     return self._last_known_value
                 self._update_last_known_value(this_month_usage)
                 return this_month_usage
         
-        # Return last known value if available
         return self._last_known_value
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit string constant for MijnTed measurements
+        """
         return UNIT_MIJNTED
     
     @property
     def state_class(self) -> SensorStateClass:
-        """Return the state class."""
+        """Return the state class.
+        
+        Returns:
+            SensorStateClass.TOTAL for cumulative usage sensors
+        """
         return SensorStateClass.TOTAL
 
 
@@ -130,7 +129,6 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         """
         attributes: Dict[str, Any] = {}
         
-        # Get current year usage data
         data = self.coordinator.data
         if not data:
             return attributes
@@ -139,16 +137,13 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
         if isinstance(energy_usage_data, dict):
             latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
             if latest_month:
-                # Add the month identifier
                 month_year = latest_month.get("monthYear")
                 if month_year:
                     attributes["month"] = month_year
                     
-                    # Check if this is the current month or previous month
                     if not DataUtil.is_current_month(month_year):
                         attributes["data_for_previous_month"] = True
                     
-                    # Add latest month's total usage
                     latest_month_total = latest_month.get("totalEnergyUsage")
                     if latest_month_total is not None:
                         try:
@@ -156,10 +151,8 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                         except (ValueError, TypeError):
                             pass
                     
-                    # Extract month number to find same month in last year
                     month_num = DataUtil.extract_month_number(month_year)
                     
-                    # Get last year usage data
                     usage_last_year = data.get("usage_last_year", {})
                     if isinstance(usage_last_year, dict) and month_num:
                         # Find the same month in last year (e.g., if current is "11.2025", find "11.2024")
@@ -168,7 +161,6 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                         last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
                         
                         if last_year_month:
-                            # Add last year's average usage from the same month
                             last_year_avg = last_year_month.get("averageEnergyUseForBillingUnit")
                             if last_year_avg is not None:
                                 try:
@@ -176,7 +168,6 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                                 except (ValueError, TypeError):
                                     pass
                             
-                            # Add last year's total usage from the same month
                             last_year_total = last_year_month.get("totalEnergyUsage")
                             if last_year_total is not None:
                                 try:
@@ -184,7 +175,6 @@ class MijnTedThisMonthUsageSensor(MijnTedSensor):
                                 except (ValueError, TypeError):
                                     pass
                 
-                # Add average usage for billing unit from latest month
                 avg_usage = latest_month.get("averageEnergyUseForBillingUnit")
                 if avg_usage is not None:
                     try:
@@ -250,7 +240,11 @@ class MijnTedLatestMonthLastYearUsageSensor(MijnTedSensor):
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit string constant for MijnTed measurements
+        """
         return UNIT_MIJNTED
     
     @property
@@ -260,7 +254,11 @@ class MijnTedLatestMonthLastYearUsageSensor(MijnTedSensor):
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing month identifier and related data
+        """
         attributes: Dict[str, Any] = {}
         
         data = self.coordinator.data
@@ -313,17 +311,29 @@ class MijnTedLatestMonthAverageUsageSensor(MijnTedSensor):
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit string constant for MijnTed measurements
+        """
         return UNIT_MIJNTED
     
     @property
     def state_class(self) -> SensorStateClass:
-        """Return the state class."""
+        """Return the state class.
+        
+        Returns:
+            SensorStateClass.MEASUREMENT for average/measurement sensors
+        """
         return SensorStateClass.MEASUREMENT
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing month identifier and related data
+        """
         attributes: Dict[str, Any] = {}
         
         data = self.coordinator.data
@@ -396,17 +406,29 @@ class MijnTedLatestMonthLastYearAverageUsageSensor(MijnTedSensor):
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit string constant for MijnTed measurements
+        """
         return UNIT_MIJNTED
     
     @property
     def state_class(self) -> SensorStateClass:
-        """Return the state class."""
+        """Return the state class.
+        
+        Returns:
+            SensorStateClass.MEASUREMENT for average/measurement sensors
+        """
         return SensorStateClass.MEASUREMENT
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing month identifier and related data
+        """
         attributes: Dict[str, Any] = {}
         
         data = self.coordinator.data
@@ -459,17 +481,29 @@ class MijnTedLatestMonthUsageSensor(MijnTedSensor):
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit string constant for MijnTed measurements
+        """
         return UNIT_MIJNTED
     
     @property
     def state_class(self) -> SensorStateClass:
-        """Return the state class."""
+        """Return the state class.
+        
+        Returns:
+            SensorStateClass.MEASUREMENT for average/measurement sensors
+        """
         return SensorStateClass.MEASUREMENT
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes."""
+        """Return entity specific state attributes.
+        
+        Returns:
+            Dictionary containing month identifier and related data
+        """
         attributes: Dict[str, Any] = {}
         
         data = self.coordinator.data
@@ -518,7 +552,6 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
             self._update_last_known_value(total)
             return total
         
-        # Return last known value if available
         return self._last_known_value
 
     @property
@@ -567,7 +600,6 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
             attributes["devices"] = filter_status
             attributes["device_count"] = len(filter_status)
         
-        # Add last year's total usage
         last_year_total = self._calculate_last_year_total()
         if last_year_total is not None:
             attributes["last_year_usage"] = last_year_total
@@ -596,12 +628,15 @@ class MijnTedThisYearUsageSensor(MijnTedSensor):
         if value is not None:
             self._update_last_known_value(value)
             return value
-        # Return last known value if available
         return self._last_known_value
     
     @property
     def state_class(self) -> SensorStateClass:
-        """Return the state class."""
+        """Return the state class.
+        
+        Returns:
+            SensorStateClass.TOTAL for cumulative usage sensors
+        """
         return SensorStateClass.TOTAL
     
     @property
@@ -626,11 +661,9 @@ class MijnTedThisYearUsageSensor(MijnTedSensor):
         if not data:
             return attributes
         
-        # Add all properties from usageInsight
         usage_insight = data.get("usage_insight", {})
         attributes.update(DataUtil.extract_usage_insight_attributes(usage_insight))
         
-        # Add monthly breakdown from residentialUnitUsage
         usage_data = data.get("usage_this_year", {})
         month_breakdown = DataUtil.extract_monthly_breakdown(usage_data)
         if month_breakdown:
@@ -668,22 +701,33 @@ class MijnTedLastYearUsageSensor(MijnTedSensor):
         if value is not None:
             self._update_last_known_value(value)
             return value
-        # Return last known value if available
         return self._last_known_value
     
     @property
     def state_class(self) -> SensorStateClass:
-        """Return the state class."""
+        """Return the state class.
+        
+        Returns:
+            SensorStateClass.TOTAL for cumulative usage sensors
+        """
         return SensorStateClass.TOTAL
     
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
+        """Return the unit of measurement.
+        
+        Returns:
+            Unit string constant for MijnTed measurements
+        """
         return UNIT_MIJNTED
     
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes from usageInsight and residentialUnitUsage."""
+        """Return entity specific state attributes from usageInsight and residentialUnitUsage.
+        
+        Returns:
+            Dictionary containing usage insight attributes and residential unit usage data
+        """
         attributes: Dict[str, Any] = {}
         
         data = self.coordinator.data

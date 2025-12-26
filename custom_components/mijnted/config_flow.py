@@ -162,7 +162,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             auth.refresh_token = user_input["refresh_token"]
             id_token = tokens.get("id_token")
             if id_token:
-                await auth._extract_residential_unit_from_id_token(id_token)
+                await auth._populate_claims_from_id_token(id_token)
             if auth.residential_unit:
                 user_input["residential_unit"] = auth.residential_unit
         except MijntedGrantExpiredError as err:
