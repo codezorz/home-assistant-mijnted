@@ -20,6 +20,6 @@ __all__ = [
     "ResponseParserUtil",
     "RetryUtil",
     "TimestampUtil",
-    "TranslationUtil",
+    "TranslationUtil"
 ]
 

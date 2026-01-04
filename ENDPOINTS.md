@@ -140,6 +140,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 - `residential_unit` (path): The residential unit ID
 - `delivery_type` (path): The delivery type ID
 - `year` (path): The year
+- `fromDate` (query, optional): Date in format `YYYY-MM-DD` (e.g., `2026-01-03`). When provided, returns device readings for the specified date or older. The date must be equal to or older than the last update date. If not provided, returns the latest device statuses.
 
 **Response**: JSON array of device status objects
 ```json
@@ -167,7 +168,14 @@ All data endpoints require authentication via Bearer token in the `Authorization
 ]
 ```
 
-**Example**: `GET /api/deviceStatuses/123456/1/2025`
+**Examples**:
+- `GET /api/deviceStatuses/123456/1/2025` - Get latest device statuses
+- `GET /api/deviceStatuses/150257/1/2026?fromDate=2026-01-03` - Get device readings for a specific date
+
+**Notes**:
+- The `fromDate` parameter allows retrieving historical device readings for a specific date
+- The date must be equal to or older than the last update date (`lastSyncDate`)
+- When `fromDate` is not provided, the endpoint returns the most recent device statuses
 
 ---
 

@@ -1,250 +1,61 @@
-from typing import Any, Dict, Optional
-from datetime import datetime
+from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+import logging
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.components.recorder.models import StatisticMetaData, StatisticData, StatisticMeanType
 from .base import MijnTedSensor
 from ..utils import DataUtil, DateUtil
-from ..const import UNIT_MIJNTED, YEAR_TRANSITION_MULTIPLIER
+from ..const import UNIT_MIJNTED, DOMAIN, DEFAULT_START_VALUE, ENTITY_REGISTRATION_DELAY_SECONDS
+
+_LOGGER = logging.getLogger(__name__)
 
 
-class MijnTedThisMonthUsageSensor(MijnTedSensor):
-    """Sensor for this month's usage."""
+class MijnTedMonthlyUsageSensor(MijnTedSensor):
+    """Sensor for monthly usage extracted from coordinator data."""
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the this month usage sensor."""
-        super().__init__(coordinator, "this_month_usage", "this month usage")
+        """Initialize the monthly usage sensor."""
+        super().__init__(coordinator, "monthly_usage", "monthly usage")
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
-
-
-
-    def _calculate_measured_months_total(self, usage_data: Dict[str, Any], current_year: int) -> Optional[float]:
-        if not isinstance(usage_data, dict):
-            return None
-        
-        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
-        if not monthly_usages:
-            return None
-        
-        total = 0.0
-        has_valid_data = False
-        
-        for month in monthly_usages:
-            if not isinstance(month, dict):
-                continue
-            
-            month_year = month.get("monthYear", "")
-            if not month_year:
-                continue
-            
-            parsed = DataUtil.parse_month_year(month_year)
-            if parsed:
-                _, year = parsed
-                if year == current_year:
-                    total_usage = month.get("totalEnergyUsage", 0)
-                    if isinstance(total_usage, (int, float)) and float(total_usage) > 0:
-                        total += float(total_usage)
-                        has_valid_data = True
-        
-        return total if has_valid_data else None
+        self._injected_periods: set[str] = set()
 
     @property
     def state(self) -> Optional[float]:
-        """Return the state of the sensor.
-        
-        Returns:
-            This month's usage calculated from total minus measured months, or last known value if unavailable
-        """
-        data = self.coordinator.data
-        if not data:
+        """Return the state calculated from current data."""
+        current = self._build_current_data()
+        if not current:
             return self._last_known_value
         
-        # Get total usage from filter_status (sum of all device readings - cumulative)
-        filter_status = data.get('filter_status')
-        total_usage = DataUtil.calculate_filter_status_total(filter_status)
-        
-        if total_usage is None:
+        last_update_date = current.get("last_update_date", "")
+        if not last_update_date:
             return self._last_known_value
         
-        # Try to calculate using monthly breakdown (handles year transitions correctly)
-        current_year = datetime.now().year
-        energy_usage_data = data.get("energy_usage_data", {})
-        measured_months_total = self._calculate_measured_months_total(energy_usage_data, current_year)
+        total_usage_start = current.get("total_usage_start", 0)
+        total_usage_end = current.get("total_usage_end", 0)
+        current_month = current.get("month_id", "")
         
-        if measured_months_total is not None:
-            this_month_usage = total_usage - measured_months_total
-            if this_month_usage >= 0:
-                self._update_last_known_value(this_month_usage)
-                return this_month_usage
-        
-        # Fallback: Use usage_insight (works during normal months, but breaks at year transition)
-        # This is kept for backward compatibility and when monthly data isn't available
-        this_year_usage = None
-        usage_insight = data.get("usage_insight", {})
-        if isinstance(usage_insight, dict):
-            usage = usage_insight.get("usage")
-            if usage is not None:
-                try:
-                    this_year_usage = float(usage)
-                except (ValueError, TypeError):
-                    pass
-        
-        # At year transition, this_year_usage might be very low, causing incorrect high values
-        # So we validate: if the difference is suspiciously large, don't trust it
-        if this_year_usage is not None and this_year_usage > 0:
-            this_month_usage = total_usage - this_year_usage
-            if this_month_usage >= 0:
-                if this_year_usage > 0 and this_month_usage > (this_year_usage * YEAR_TRANSITION_MULTIPLIER):
-                    return self._last_known_value
-                self._update_last_known_value(this_month_usage)
-                return this_month_usage
+        try:
+            start = float(total_usage_start) if total_usage_start is not None else DEFAULT_START_VALUE
+            end = float(total_usage_end) if total_usage_end is not None else DEFAULT_START_VALUE
+            
+            parsed = DataUtil.parse_month_year(current_month) if current_month else None
+            if parsed and parsed[0] == 1:
+                value = end
+            else:
+                value = end - start
+            
+            self._update_last_known_value(value)
+            return value
+        except (ValueError, TypeError):
+            pass
         
         return self._last_known_value
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement.
-        
-        Returns:
-            Unit string constant for MijnTed measurements
-        """
-        return UNIT_MIJNTED
-    
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class.
-        
-        Returns:
-            SensorStateClass.TOTAL for cumulative usage sensors
-        """
-        return SensorStateClass.TOTAL
-
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes.
-        
-        Returns:
-            Dictionary containing month data, averages, and last year comparisons
-        """
-        attributes: Dict[str, Any] = {}
-        
-        data = self.coordinator.data
-        if not data:
-            return attributes
-        
-        energy_usage_data = data.get("energy_usage_data", {})
-        if isinstance(energy_usage_data, dict):
-            latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-            if latest_month:
-                month_year = latest_month.get("monthYear")
-                if month_year:
-                    attributes["month"] = month_year
-                    
-                    if not DataUtil.is_current_month(month_year):
-                        attributes["data_for_previous_month"] = True
-                    
-                    latest_month_total = latest_month.get("totalEnergyUsage")
-                    if latest_month_total is not None:
-                        try:
-                            attributes["latest_month_usage"] = float(latest_month_total)
-                        except (ValueError, TypeError):
-                            pass
-                    
-                    month_num = DataUtil.extract_month_number(month_year)
-                    
-                    usage_last_year = data.get("usage_last_year", {})
-                    if isinstance(usage_last_year, dict) and month_num:
-                        # Find the same month in last year (e.g., if current is "11.2025", find "11.2024")
-                        last_year = DateUtil.get_last_year()
-                        last_year_month_identifier = f"{month_num}.{last_year}"
-                        last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
-                        
-                        if last_year_month:
-                            last_year_avg = last_year_month.get("averageEnergyUseForBillingUnit")
-                            if last_year_avg is not None:
-                                try:
-                                    attributes["latest_month_average_usage_last_year"] = float(last_year_avg)
-                                except (ValueError, TypeError):
-                                    pass
-                            
-                            last_year_total = last_year_month.get("totalEnergyUsage")
-                            if last_year_total is not None:
-                                try:
-                                    attributes["latest_month_last_year_usage"] = float(last_year_total)
-                                except (ValueError, TypeError):
-                                    pass
-                
-                avg_usage = latest_month.get("averageEnergyUseForBillingUnit")
-                if avg_usage is not None:
-                    try:
-                        attributes["latest_month_average_usage"] = float(avg_usage)
-                    except (ValueError, TypeError):
-                        pass
-        
-        return attributes
-
-
-class MijnTedLatestMonthLastYearUsageSensor(MijnTedSensor):
-    """Sensor for last year's usage for the latest month."""
-    
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the latest month last year usage sensor."""
-        super().__init__(coordinator, "latest_month_last_year_usage", "latest month last year usage")
-        self._attr_icon = "mdi:lightning-bolt"
-        self._attr_suggested_display_precision = 0
-
-    @property
-    def state(self) -> Optional[float]:
-        """Return the last year usage for the latest month."""
-        data = self.coordinator.data
-        if not data:
-            return None
-        
-        energy_usage_data = data.get("energy_usage_data", {})
-        if not isinstance(energy_usage_data, dict):
-            return None
-        
-        latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-        if not latest_month:
-            return None
-        
-        month_year = latest_month.get("monthYear")
-        if not month_year:
-            return None
-        
-        # Extract month number to find same month in last year
-        month_num = DataUtil.extract_month_number(month_year)
-        if not month_num:
-            return None
-        
-        # Get last year usage data
-        usage_last_year = data.get("usage_last_year", {})
-        if not isinstance(usage_last_year, dict):
-            return None
-        
-        # Find the same month in last year
-        last_year = DateUtil.get_last_year()
-        last_year_month_identifier = f"{month_num}.{last_year}"
-        last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
-        
-        if last_year_month:
-            last_year_total = last_year_month.get("totalEnergyUsage")
-            if last_year_total is not None:
-                try:
-                    return float(last_year_total)
-                except (ValueError, TypeError):
-                    pass
-        
-        return None
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement.
-        
-        Returns:
-            Unit string constant for MijnTed measurements
-        """
+        """Return the unit of measurement."""
         return UNIT_MIJNTED
     
     @property
@@ -252,271 +63,467 @@ class MijnTedLatestMonthLastYearUsageSensor(MijnTedSensor):
         """Return the state class."""
         return SensorStateClass.TOTAL
 
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes.
+    async def _async_inject_statistics(self) -> None:
+        """Inject statistics for monthly usage - inject each month's total usage value."""
+        history = self._build_history_data()
+        if not history:
+            return
         
-        Returns:
-            Dictionary containing month identifier and related data
-        """
-        attributes: Dict[str, Any] = {}
+        if not self._validate_statistics_injection():
+            return
         
-        data = self.coordinator.data
-        if not data:
-            return attributes
+        statistics = []
         
-        energy_usage_data = data.get("energy_usage_data", {})
-        if isinstance(energy_usage_data, dict):
-            latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-            if latest_month:
-                month_year = latest_month.get("monthYear")
-                if month_year:
-                    attributes["month"] = month_year
-        
-        return attributes
-
-
-class MijnTedLatestMonthAverageUsageSensor(MijnTedSensor):
-    """Sensor for latest month's average usage."""
-    
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the latest month average usage sensor."""
-        super().__init__(coordinator, "latest_month_average_usage", "latest month average usage")
-        self._attr_icon = "mdi:chart-line"
-        self._attr_suggested_display_precision = 0
-
-    @property
-    def state(self) -> Optional[float]:
-        """Return the average usage for the latest month."""
-        data = self.coordinator.data
-        if not data:
-            return None
-        
-        energy_usage_data = data.get("energy_usage_data", {})
-        if not isinstance(energy_usage_data, dict):
-            return None
-        
-        latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-        if not latest_month:
-            return None
-        
-        avg_usage = latest_month.get("averageEnergyUseForBillingUnit")
-        if avg_usage is not None:
+        for entry in history:
+            total_usage = entry.get("total_usage")
+            if total_usage is None:
+                continue
+            
+            start_date = entry.get("start_date", "")
+            month_id = entry.get("month_id", "")
+            
+            if month_id in self._injected_periods:
+                continue
+            
+            stat_time = self._parse_start_date_to_datetime(start_date)
+            if not stat_time:
+                continue
+            
             try:
-                return float(avg_usage)
+                usage_value = float(total_usage)
             except (ValueError, TypeError):
-                pass
+                continue
+            
+            statistics.append(
+                StatisticData(
+                    start=stat_time,
+                    state=usage_value
+                )
+            )
+            self._injected_periods.add(month_id)
         
-        return None
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement.
-        
-        Returns:
-            Unit string constant for MijnTed measurements
-        """
-        return UNIT_MIJNTED
-    
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class.
-        
-        Returns:
-            SensorStateClass.MEASUREMENT for average/measurement sensors
-        """
-        return SensorStateClass.MEASUREMENT
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes.
-        
-        Returns:
-            Dictionary containing month identifier and related data
-        """
-        attributes: Dict[str, Any] = {}
-        
-        data = self.coordinator.data
-        if not data:
-            return attributes
-        
-        energy_usage_data = data.get("energy_usage_data", {})
-        if isinstance(energy_usage_data, dict):
-            latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-            if latest_month:
-                month_year = latest_month.get("monthYear")
-                if month_year:
-                    attributes["month"] = month_year
-        
-        return attributes
-
-
-class MijnTedLatestMonthLastYearAverageUsageSensor(MijnTedSensor):
-    """Sensor for last year's average usage for the latest month."""
-    
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the latest month last year average usage sensor."""
-        super().__init__(coordinator, "latest_month_average_last_year_usage", "latest month last year average usage")
-        self._attr_icon = "mdi:chart-line-variant"
-        self._attr_suggested_display_precision = 0
-
-    @property
-    def state(self) -> Optional[float]:
-        """Return the last year average usage for the latest month."""
-        data = self.coordinator.data
-        if not data:
-            return None
-        
-        energy_usage_data = data.get("energy_usage_data", {})
-        if not isinstance(energy_usage_data, dict):
-            return None
-        
-        latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-        if not latest_month:
-            return None
-        
-        month_year = latest_month.get("monthYear")
-        if not month_year:
-            return None
-        
-        # Extract month number to find same month in last year
-        month_num = DataUtil.extract_month_number(month_year)
-        if not month_num:
-            return None
-        
-        # Get last year usage data
-        usage_last_year = data.get("usage_last_year", {})
-        if not isinstance(usage_last_year, dict):
-            return None
-        
-        # Find the same month in last year
-        last_year = DateUtil.get_last_year()
-        last_year_month_identifier = f"{month_num}.{last_year}"
-        last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
-        
-        if last_year_month:
-            last_year_avg = last_year_month.get("averageEnergyUseForBillingUnit")
-            if last_year_avg is not None:
+        current = self._build_current_data()
+        if current:
+            current_month_id = current.get("month_id", "")
+            if current_month_id and current_month_id not in self._injected_periods:
+                total_usage_start = current.get("total_usage_start", 0)
+                total_usage_end = current.get("total_usage_end", 0)
+                start_date = current.get("start_date", "")
+                
                 try:
-                    return float(last_year_avg)
+                    start = float(total_usage_start) if total_usage_start is not None else DEFAULT_START_VALUE
+                    end = float(total_usage_end) if total_usage_end is not None else DEFAULT_START_VALUE
+                    
+                    parsed = DataUtil.parse_month_year(current_month_id) if current_month_id else None
+                    if parsed and parsed[0] == 1:
+                        usage_value = end
+                    else:
+                        usage_value = end - start
+                    
+                    stat_time = self._parse_start_date_to_datetime(start_date)
+                    if stat_time:
+                        statistics.append(
+                            StatisticData(
+                                start=stat_time,
+                                state=usage_value
+                            )
+                        )
+                        self._injected_periods.add(current_month_id)
                 except (ValueError, TypeError):
                     pass
         
-        return None
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement.
+        if not statistics:
+            return
         
-        Returns:
-            Unit string constant for MijnTed measurements
-        """
-        return UNIT_MIJNTED
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=False,
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
+            unit_of_measurement=UNIT_MIJNTED,
+            mean_type=StatisticMeanType.NONE,
+            unit_class=None
+        )
+        
+        await self._async_safe_import_statistics(metadata, statistics)
     
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class.
-        
-        Returns:
-            SensorStateClass.MEASUREMENT for average/measurement sensors
-        """
-        return SensorStateClass.MEASUREMENT
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass, set up statistics injection."""
+        await super().async_added_to_hass()
+        await self._setup_statistics_injection()
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes.
-        
-        Returns:
-            Dictionary containing month identifier and related data
-        """
+        """Return entity specific state attributes."""
         attributes: Dict[str, Any] = {}
         
-        data = self.coordinator.data
-        if not data:
-            return attributes
-        
-        energy_usage_data = data.get("energy_usage_data", {})
-        if isinstance(energy_usage_data, dict):
-            latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-            if latest_month:
-                month_year = latest_month.get("monthYear")
-                if month_year:
-                    attributes["month"] = month_year
+        current = self._build_current_data()
+        if current:
+            month_year = current.get("month_id", "")
+            if month_year:
+                attributes["month_id"] = month_year
+            
+            start_date = current.get("start_date")
+            if start_date:
+                attributes["start_date"] = start_date
+            
+            end_date = current.get("end_date")
+            if end_date:
+                attributes["end_date"] = end_date
+            
+            days = current.get("days")
+            if days is not None:
+                attributes["days"] = days
         
         return attributes
 
 
-class MijnTedLatestMonthUsageSensor(MijnTedSensor):
-    """Sensor for latest month's actual usage."""
+class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
+    """Sensor for last year's monthly usage extracted from coordinator data."""
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the latest month usage sensor."""
-        super().__init__(coordinator, "latest_month_usage", "latest month usage")
-        self._attr_icon = "mdi:chart-line"
+        """Initialize the last year monthly usage sensor."""
+        super().__init__(coordinator, "last_year_monthly_usage", "last year monthly usage")
+        self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
+        self._injected_periods: set[str] = set()
 
     @property
     def state(self) -> Optional[float]:
-        """Return the usage for the latest month."""
-        data = self.coordinator.data
-        if not data:
-            return None
+        """Return the last year usage for the current month's corresponding month from last year."""
+        current = self._build_current_data()
+        if current:
+            last_year_usage = current.get("last_year_usage")
+            if last_year_usage is not None:
+                try:
+                    value = float(last_year_usage)
+                    self._update_last_known_value(value)
+                    return value
+                except (ValueError, TypeError):
+                    pass
         
-        energy_usage_data = data.get("energy_usage_data", {})
-        if not isinstance(energy_usage_data, dict):
-            return None
+        return self._last_known_value
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MIJNTED
+    
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.TOTAL
+
+    async def _async_inject_statistics(self) -> None:
+        """Inject statistics for current month's last year data (single data point)."""
+        current = self._build_current_data()
+        if not current:
+            return
         
-        latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-        if not latest_month:
-            return None
+        last_year_usage = current.get("last_year_usage")
+        if last_year_usage is None:
+            return
         
-        total_usage = latest_month.get("totalEnergyUsage")
-        if total_usage is not None:
-            try:
-                return float(total_usage)
-            except (ValueError, TypeError):
-                pass
+        current_month_id = current.get("month_id", "")
+        if current_month_id in self._injected_periods:
+            return
+        
+        start_date = current.get("start_date", "")
+        if not start_date:
+            return
+        
+        stat_time = self._parse_start_date_to_datetime(start_date)
+        if not stat_time:
+            return
+        
+        try:
+            usage_value = float(last_year_usage)
+        except (ValueError, TypeError):
+            return
+        
+        if not self._validate_statistics_injection():
+            return
+        
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=False,
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
+            unit_of_measurement=UNIT_MIJNTED,
+            mean_type=StatisticMeanType.NONE,
+            unit_class=None
+        )
+        
+        statistics = [
+            StatisticData(
+                start=stat_time,
+                state=usage_value
+            )
+        ]
+        
+        await self._async_safe_import_statistics(metadata, statistics)
+        self._injected_periods.add(current_month_id)
+    
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass, set up statistics injection."""
+        await super().async_added_to_hass()
+        await self._setup_statistics_injection()
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes."""
+        attributes: Dict[str, Any] = {}
+        
+        current = self._build_current_data()
+        if current:
+            month_year = current.get("month_id", "")
+            if month_year:
+                attributes["month_id"] = month_year
+        
+        if "month_id" not in attributes:
+            now = datetime.now()
+            attributes["month_id"] = f"{now.month}.{now.year}"
+        
+        current_month_id = attributes.get("month_id", "")
+        if current_month_id:
+            parsed = DataUtil.parse_month_year(current_month_id)
+            if parsed:
+                current_month, current_year = parsed
+                last_year_month_id = f"{current_month}.{current_year - 1}"
+                attributes["last_year_month_id"] = last_year_month_id
+        
+        return attributes
+
+
+class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
+    """Sensor for average monthly usage extracted from coordinator history data."""
+    
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+        """Initialize the average monthly usage sensor."""
+        super().__init__(coordinator, "average_monthly_usage", "average monthly usage")
+        self._attr_icon = "mdi:chart-line"
+        self._attr_suggested_display_precision = 0
+        self._injected_periods: set[str] = set()
+
+    @property
+    def state(self) -> Optional[float]:
+        """Return the latest available average from history."""
+        history = self._build_history_data()
+        
+        for entry in history:
+            avg_usage = entry.get("average_usage")
+            if avg_usage is not None:
+                try:
+                    return float(avg_usage)
+                except (ValueError, TypeError):
+                    continue
         
         return None
 
     @property
     def unit_of_measurement(self) -> str:
-        """Return the unit of measurement.
-        
-        Returns:
-            Unit string constant for MijnTed measurements
-        """
+        """Return the unit of measurement."""
         return UNIT_MIJNTED
     
     @property
     def state_class(self) -> SensorStateClass:
-        """Return the state class.
-        
-        Returns:
-            SensorStateClass.MEASUREMENT for average/measurement sensors
-        """
+        """Return the state class."""
         return SensorStateClass.MEASUREMENT
 
+    async def _async_inject_statistics(self) -> None:
+        """Inject statistics with period-end dates from history."""
+        history = self._build_history_data()
+        if not history:
+            return
+        
+        if not self._validate_statistics_injection():
+            return
+        
+        statistics = []
+        
+        for entry in history:
+            avg_usage = entry.get("average_usage")
+            if avg_usage is None:
+                continue
+            
+            start_date = entry.get("start_date", "")
+            month_id = entry.get("month_id", "")
+            
+            if month_id in self._injected_periods:
+                continue
+            
+            stat_time = self._parse_start_date_to_datetime(start_date)
+            if not stat_time:
+                continue
+            
+            try:
+                avg_value = float(avg_usage)
+            except (ValueError, TypeError):
+                continue
+            
+            statistics.append(
+                StatisticData(
+                    start=stat_time,
+                    state=avg_value
+                )
+            )
+            self._injected_periods.add(month_id)
+        
+        if not statistics:
+            return
+        
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=False,
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
+            unit_of_measurement=UNIT_MIJNTED,
+            mean_type=StatisticMeanType.ARITHMETIC,
+            unit_class=None
+        )
+        
+        await self._async_safe_import_statistics(metadata, statistics)
+    
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass, set up statistics injection."""
+        await super().async_added_to_hass()
+        await self._setup_statistics_injection()
+    
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes.
-        
-        Returns:
-            Dictionary containing month identifier and related data
-        """
+        """Return entity specific state attributes."""
         attributes: Dict[str, Any] = {}
         
-        data = self.coordinator.data
-        if not data:
-            return attributes
+        history = self._build_history_data()
+        if history:
+            for entry in history:
+                avg_usage = entry.get("average_usage")
+                if avg_usage is not None:
+                    month_id = entry.get("month_id", "")
+                    if month_id:
+                        attributes["month_id"] = month_id
+                    break
         
-        energy_usage_data = data.get("energy_usage_data", {})
-        if isinstance(energy_usage_data, dict):
-            latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
-            if latest_month:
-                month_year = latest_month.get("monthYear")
-                if month_year:
-                    attributes["month"] = month_year
+        return attributes
+
+
+class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
+    """Sensor for last year's average monthly usage extracted from coordinator data."""
+    
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+        """Initialize the last year average monthly usage sensor."""
+        super().__init__(coordinator, "last_year_average_monthly_usage", "last year average monthly usage")
+        self._attr_icon = "mdi:chart-line-variant"
+        self._attr_suggested_display_precision = 0
+        self._injected_periods: set[str] = set()
+
+    @property
+    def state(self) -> Optional[float]:
+        """Return the last year average usage for the current month's corresponding month from last year."""
+        current = self._build_current_data()
+        if current:
+            last_year_average_usage = current.get("last_year_average_usage")
+            if last_year_average_usage is not None:
+                try:
+                    value = float(last_year_average_usage)
+                    self._update_last_known_value(value)
+                    return value
+                except (ValueError, TypeError):
+                    pass
+        
+        return self._last_known_value
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return UNIT_MIJNTED
+    
+    @property
+    def state_class(self) -> SensorStateClass:
+        """Return the state class."""
+        return SensorStateClass.MEASUREMENT
+
+    async def _async_inject_statistics(self) -> None:
+        """Inject statistics for current month's last year average data (single data point)."""
+        current = self._build_current_data()
+        if not current:
+            return
+        
+        last_year_average_usage = current.get("last_year_average_usage")
+        if last_year_average_usage is None:
+            return
+        
+        current_month_id = current.get("month_id", "")
+        if current_month_id in self._injected_periods:
+            return
+        
+        start_date = current.get("start_date", "")
+        if not start_date:
+            return
+        
+        stat_time = self._parse_start_date_to_datetime(start_date)
+        if not stat_time:
+            return
+        
+        try:
+            avg_value = float(last_year_average_usage)
+        except (ValueError, TypeError):
+            return
+        
+        if not self._validate_statistics_injection():
+            return
+        
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=False,
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
+            unit_of_measurement=UNIT_MIJNTED,
+            mean_type=StatisticMeanType.ARITHMETIC,
+            unit_class=None
+        )
+        
+        statistics = [
+            StatisticData(
+                start=stat_time,
+                state=avg_value
+            )
+        ]
+        
+        await self._async_safe_import_statistics(metadata, statistics)
+        self._injected_periods.add(current_month_id)
+    
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass, set up statistics injection."""
+        await super().async_added_to_hass()
+        await self._setup_statistics_injection()
+    
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes."""
+        attributes: Dict[str, Any] = {}
+        
+        current = self._build_current_data()
+        if current:
+            month_year = current.get("month_id", "")
+            if month_year:
+                attributes["month_id"] = month_year
+        
+        if "month_id" not in attributes:
+            now = datetime.now()
+            attributes["month_id"] = f"{now.month}.{now.year}"
+        
+        current_month_id = attributes.get("month_id", "")
+        if current_month_id:
+            parsed = DataUtil.parse_month_year(current_month_id)
+            if parsed:
+                current_month, current_year = parsed
+                last_year_month_id = f"{current_month}.{current_year - 1}"
+                attributes["last_year_month_id"] = last_year_month_id
         
         return attributes
 
@@ -532,8 +539,9 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         """
         super().__init__(coordinator, "total_usage", "total usage")
         self._attr_icon = "mdi:lightning-bolt"
-        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_suggested_display_precision = 0
+        self._injected_periods: set[str] = set()
 
     @property
     def state(self) -> Optional[float]:
@@ -563,186 +571,121 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         """
         return UNIT_MIJNTED
     
-    def _calculate_last_year_total(self) -> Optional[float]:
-        data = self.coordinator.data
-        if not data:
-            return None
+    async def _async_inject_statistics(self) -> None:
+        """Inject statistics into Home Assistant recorder for history graphs."""
+        history = self._build_history_data()
+        if not history:
+            return
         
-        usage_data = data.get("usage_last_year", {})
-        # API returns {"monthlyEnergyUsages": [...], "averageEnergyUseForBillingUnit": 0}
-        if isinstance(usage_data, dict):
-            monthly_usages = usage_data.get("monthlyEnergyUsages", [])
-            if monthly_usages:
-                total = sum(
-                    float(month.get("totalEnergyUsage", 0))
-                    for month in monthly_usages
-                    if isinstance(month, dict)
+        if not self._validate_statistics_injection():
+            return
+        
+        entries_to_inject = []
+        for entry in history:
+            total_usage_end = entry.get("total_usage_end")
+            if total_usage_end is None:
+                continue
+            
+            start_date = entry.get("start_date", "")
+            month_id = entry.get("month_id", "")
+            
+            if not start_date or not month_id:
+                continue
+            
+            if month_id in self._injected_periods:
+                continue
+            
+            stat_time = self._parse_start_date_to_datetime(start_date)
+            if not stat_time:
+                continue
+            
+            try:
+                usage_value = float(total_usage_end)
+            except (ValueError, TypeError):
+                continue
+            
+            month_num = entry.get("month")
+            if not isinstance(month_num, int):
+                try:
+                    parsed = DataUtil.parse_month_year(month_id)
+                    if parsed:
+                        month_num = parsed[0]
+                    else:
+                        month_num = None
+                except (ValueError, TypeError):
+                    month_num = None
+            
+            entries_to_inject.append({
+                "stat_time": stat_time,
+                "state": usage_value,
+                "month_id": month_id,
+                "month": month_num
+            })
+        
+        if not entries_to_inject:
+            return
+        
+        entries_to_inject.sort(key=lambda x: x["stat_time"])
+        
+        cumulative_sum = DEFAULT_START_VALUE
+        previous_total_usage_end = None
+        statistics = []
+        
+        for entry in entries_to_inject:
+            current_total_usage_end = entry["state"]
+            
+            if entry["month"] == 1:
+                delta = current_total_usage_end
+            elif previous_total_usage_end is not None:
+                delta = current_total_usage_end - previous_total_usage_end
+            else:
+                delta = current_total_usage_end
+            
+            cumulative_sum += delta
+            
+            statistics.append(
+                StatisticData(
+                    start=entry["stat_time"],
+                    state=current_total_usage_end,
+                    sum=cumulative_sum
                 )
-                return total if total > 0 else None
-            return float(usage_data.get("total", 0)) if usage_data.get("total") else None
-        return float(usage_data) if isinstance(usage_data, (int, float)) else None
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes.
+            )
+            self._injected_periods.add(entry["month_id"])
+            previous_total_usage_end = current_total_usage_end
         
-        Returns:
-            Dictionary containing device list and last year usage
-        """
-        attributes: Dict[str, Any] = {}
+        if not statistics:
+            return
         
-        data = self.coordinator.data
-        if not data:
-            return attributes
+        metadata = StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            name=self.name,
+            source="recorder",
+            statistic_id=self.entity_id,
+            unit_of_measurement=UNIT_MIJNTED,
+            mean_type=StatisticMeanType.NONE,
+            unit_class=None
+        )
         
-        filter_status = data.get('filter_status')
-        if isinstance(filter_status, list):
-            attributes["devices"] = filter_status
-            attributes["device_count"] = len(filter_status)
-        
-        last_year_total = self._calculate_last_year_total()
-        if last_year_total is not None:
-            attributes["last_year_usage"] = last_year_total
-        
-        return attributes
-
-
-class MijnTedThisYearUsageSensor(MijnTedSensor):
-    """Sensor for this year's total usage with month breakdown."""
+        await self._async_safe_import_statistics(metadata, statistics)
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the this year usage sensor."""
-        super().__init__(coordinator, "this_year_usage", "this year usage")
-        self._attr_icon = "mdi:chart-line"
-        self._attr_suggested_display_precision = 0
-    
-    @property
-    def state(self) -> Optional[float]:
-        """Return the state of the sensor from usageInsight, or last known value if unavailable."""
-        data = self.coordinator.data
-        if not data:
-            return self._last_known_value
-        
-        usage_insight = data.get("usage_insight", {})
-        value = DataUtil.extract_usage_from_insight(usage_insight)
-        if value is not None:
-            self._update_last_known_value(value)
-            return value
-        return self._last_known_value
-    
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class.
-        
-        Returns:
-            SensorStateClass.TOTAL for cumulative usage sensors
-        """
-        return SensorStateClass.TOTAL
-    
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement.
-        
-        Returns:
-            Unit string constant
-        """
-        return UNIT_MIJNTED
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass, set up statistics injection."""
+        await super().async_added_to_hass()
+        await self._setup_statistics_injection()
     
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes from usageInsight and residentialUnitUsage.
-        
-        Returns:
-            Dictionary containing usage insight data and monthly breakdown
-        """
+        """Return entity specific state attributes."""
         attributes: Dict[str, Any] = {}
         
-        data = self.coordinator.data
-        if not data:
-            return attributes
+        current_readings_dict = self._build_current_data()
+        historical_readings_list = self._build_history_data()
         
-        usage_insight = data.get("usage_insight", {})
-        attributes.update(DataUtil.extract_usage_insight_attributes(usage_insight))
-        
-        usage_data = data.get("usage_this_year", {})
-        month_breakdown = DataUtil.extract_monthly_breakdown(usage_data)
-        if month_breakdown:
-            attributes["monthly_breakdown"] = month_breakdown
-        
-        return attributes
-
-
-class MijnTedLastYearUsageSensor(MijnTedSensor):
-    """Sensor for last year's total usage with month breakdown."""
-    
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
-        """Initialize the last year usage sensor.
-        
-        Args:
-            coordinator: Data update coordinator
-        """
-        super().__init__(coordinator, "last_year_usage", "last year usage")
-        self._attr_icon = "mdi:chart-line"
-        self._attr_suggested_display_precision = 0
-    
-    @property
-    def state(self) -> Optional[float]:
-        """Return the state of the sensor from usageInsight, or last known value if unavailable.
-        
-        Returns:
-            Total usage for last year, or last known value if unavailable
-        """
-        data = self.coordinator.data
-        if not data:
-            return self._last_known_value
-        
-        usage_insight = data.get("usage_insight_last_year", {})
-        value = DataUtil.extract_usage_from_insight(usage_insight)
-        if value is not None:
-            self._update_last_known_value(value)
-            return value
-        return self._last_known_value
-    
-    @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class.
-        
-        Returns:
-            SensorStateClass.TOTAL for cumulative usage sensors
-        """
-        return SensorStateClass.TOTAL
-    
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement.
-        
-        Returns:
-            Unit string constant for MijnTed measurements
-        """
-        return UNIT_MIJNTED
-    
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return entity specific state attributes from usageInsight and residentialUnitUsage.
-        
-        Returns:
-            Dictionary containing usage insight attributes and residential unit usage data
-        """
-        attributes: Dict[str, Any] = {}
-        
-        data = self.coordinator.data
-        if not data:
-            return attributes
-        
-        # Add all properties from usageInsight
-        usage_insight = data.get("usage_insight_last_year", {})
-        attributes.update(DataUtil.extract_usage_insight_attributes(usage_insight))
-        
-        # Add monthly breakdown from residentialUnitUsage
-        usage_data = data.get("usage_last_year", {})
-        month_breakdown = DataUtil.extract_monthly_breakdown(usage_data)
-        if month_breakdown:
-            attributes["monthly_breakdown"] = month_breakdown
+        if current_readings_dict is not None:
+            attributes["current"] = current_readings_dict
+        if historical_readings_list:
+            attributes["history"] = historical_readings_list
         
         return attributes
 

@@ -1,14 +1,11 @@
 from .base import MijnTedSensor
 from .device import MijnTedDeviceSensor
 from .usage import (
-    MijnTedThisMonthUsageSensor,
+    MijnTedMonthlyUsageSensor,
     MijnTedTotalUsageSensor,
-    MijnTedThisYearUsageSensor,
-    MijnTedLastYearUsageSensor,
-    MijnTedLatestMonthLastYearUsageSensor,
-    MijnTedLatestMonthAverageUsageSensor,
-    MijnTedLatestMonthLastYearAverageUsageSensor,
-    MijnTedLatestMonthUsageSensor,
+    MijnTedAverageMonthlyUsageSensor,
+    MijnTedLastYearAverageMonthlyUsageSensor,
+    MijnTedLastYearMonthlyUsageSensor,
 )
 from .diagnostics import (
     MijnTedLastUpdateSensor,
@@ -17,24 +14,23 @@ from .diagnostics import (
     MijnTedResidentialUnitDetailSensor,
     MijnTedUnitOfMeasuresSensor,
     MijnTedLastSuccessfulSyncSensor,
+    MijnTedLatestAvailableInsightSensor,
 )
 
 __all__ = [
     "MijnTedSensor",
     "MijnTedDeviceSensor",
-    "MijnTedThisMonthUsageSensor",
+    "MijnTedMonthlyUsageSensor",
     "MijnTedTotalUsageSensor",
-    "MijnTedThisYearUsageSensor",
-    "MijnTedLastYearUsageSensor",
-    "MijnTedLatestMonthLastYearUsageSensor",
-    "MijnTedLatestMonthAverageUsageSensor",
-    "MijnTedLatestMonthLastYearAverageUsageSensor",
-    "MijnTedLatestMonthUsageSensor",
+    "MijnTedAverageMonthlyUsageSensor",
+    "MijnTedLastYearAverageMonthlyUsageSensor",
+    "MijnTedLastYearMonthlyUsageSensor",
     "MijnTedLastUpdateSensor",
     "MijnTedActiveModelSensor",
     "MijnTedDeliveryTypesSensor",
     "MijnTedResidentialUnitDetailSensor",
     "MijnTedUnitOfMeasuresSensor",
     "MijnTedLastSuccessfulSyncSensor",
+    "MijnTedLatestAvailableInsightSensor"
 ]
 

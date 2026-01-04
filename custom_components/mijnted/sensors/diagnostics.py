@@ -3,7 +3,8 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
-from ..utils import TimestampUtil, ListUtil
+from ..utils import TimestampUtil, ListUtil, DataUtil, DateUtil
+from ..const import CALCULATION_YEAR_MONTH_SORT_MULTIPLIER
 
 
 class MijnTedLastUpdateSensor(MijnTedSensor):
@@ -95,7 +96,6 @@ class MijnTedDeliveryTypesSensor(MijnTedSensor):
         delivery_types = data.get("delivery_types", [])
         if not delivery_types:
             return None
-        # Convert to strings in case they're integers
         return ", ".join(str(dt) for dt in delivery_types)
 
 
@@ -164,7 +164,6 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
         unit_of_measures = data.get("unit_of_measures", [])
         first_item = ListUtil.get_first_item(unit_of_measures)
         if first_item is not None:
-            # Get the first item's displayName
             if isinstance(first_item, dict):
                 return first_item.get("displayName")
         return None
@@ -208,4 +207,188 @@ class MijnTedLastSuccessfulSyncSensor(MijnTedSensor):
             ISO timestamp string of last successful sync, or None if not available
         """
         return self._get_last_successful_sync()
+
+
+class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
+    """Diagnostic sensor displaying the month with the last available insight data including average."""
+    
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+        """Initialize the latest available insight sensor.
+        
+        Args:
+            coordinator: Data update coordinator
+        """
+        super().__init__(coordinator, "latest_available_insight", "latest available insight")
+        self._attr_icon = "mdi:calendar-month"
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+    
+    @property
+    def state(self) -> Optional[str]:
+        """Return the month name (e.g., "November 2025") for the latest available insight with average.
+        
+        Returns:
+            Month name string in format "MonthName YYYY" for the latest month with average_usage,
+            or None if not available
+        """
+        data = self.coordinator.data
+        if not data:
+            return None
+        
+        latest_month = None
+        latest_sort_key = 0
+        latest_month_num = None
+        latest_year = None
+        
+        energy_usage_data = data.get("energy_usage_data", {})
+        if isinstance(energy_usage_data, dict):
+            monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
+            for month in monthly_usages:
+                if not isinstance(month, dict):
+                    continue
+                
+                avg_usage = month.get("averageEnergyUseForBillingUnit")
+                if avg_usage is not None:
+                    month_year = month.get("monthYear", "")
+                    parsed = DataUtil.parse_month_year(month_year)
+                    if parsed:
+                        month_num, year = parsed
+                        sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
+                        if sort_key > latest_sort_key:
+                            latest_sort_key = sort_key
+                            latest_month = month
+                            latest_month_num = month_num
+                            latest_year = year
+        
+        usage_last_year = data.get("usage_last_year", {})
+        if isinstance(usage_last_year, dict):
+            monthly_usages = usage_last_year.get("monthlyEnergyUsages", [])
+            for month in monthly_usages:
+                if not isinstance(month, dict):
+                    continue
+                
+                avg_usage = month.get("averageEnergyUseForBillingUnit")
+                if avg_usage is not None:
+                    month_year = month.get("monthYear", "")
+                    parsed = DataUtil.parse_month_year(month_year)
+                    if parsed:
+                        month_num, year = parsed
+                        sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
+                        if sort_key > latest_sort_key:
+                            latest_sort_key = sort_key
+                            latest_month = month
+                            latest_month_num = month_num
+                            latest_year = year
+        
+        if latest_month_num is not None and latest_year is not None:
+            formatted = DateUtil.format_month_name(latest_month_num, latest_year)
+            if formatted:
+                return formatted
+        
+        monthly_history_cache = data.get("monthly_history_cache", {})
+        if isinstance(monthly_history_cache, dict) and monthly_history_cache:
+            month_keys = list(monthly_history_cache.keys())
+            month_keys.sort(key=lambda k: (int(k.split("-")[0]), int(k.split("-")[1])), reverse=True)
+            
+            for month_key in month_keys:
+                month_data = monthly_history_cache[month_key]
+                if isinstance(month_data, dict):
+                    if month_data.get("average_usage") is not None:
+                        month_num = month_data.get("month")
+                        year = month_data.get("year")
+                        if month_num is not None and year is not None:
+                            try:
+                                formatted = DateUtil.format_month_name(int(month_num), int(year))
+                                if formatted:
+                                    return formatted
+                            except (ValueError, TypeError):
+                                pass
+        
+        return None
+    
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return entity specific state attributes with all available month data.
+        
+        Returns:
+            Dictionary containing:
+            - month_id: Month identifier (MM.YYYY)
+            - total_energy_usage: Total usage for the month
+            - average_energy_use_for_billing_unit: Average usage for billing unit
+            - unit_of_measurement: Unit of measurement
+            - is_current_month: Whether this is the current month
+            - has_average: Whether average data is available
+            - last_year_comparison: Comparison data from last year (if available)
+        """
+        attributes: Dict[str, Any] = {}
+        
+        data = self.coordinator.data
+        if not data:
+            return attributes
+        
+        energy_usage_data = data.get("energy_usage_data", {})
+        if not isinstance(energy_usage_data, dict):
+            return attributes
+        
+        latest_month = DataUtil.find_latest_valid_month(energy_usage_data)
+        has_average = latest_month is not None
+        if not latest_month:
+            latest_month = DataUtil.find_latest_month_with_data(energy_usage_data)
+        
+        if not latest_month:
+            return attributes
+        
+        month_year = latest_month.get("monthYear")
+        if month_year:
+            attributes["month_id"] = month_year
+            attributes["is_current_month"] = DataUtil.is_current_month(month_year)
+            attributes["has_average"] = has_average
+        
+        total_usage = latest_month.get("totalEnergyUsage")
+        if total_usage is not None:
+            try:
+                attributes["total_energy_usage"] = float(total_usage)
+            except (ValueError, TypeError):
+                pass
+        
+        avg_usage = latest_month.get("averageEnergyUseForBillingUnit")
+        if avg_usage is not None:
+            try:
+                attributes["average_energy_use_for_billing_unit"] = float(avg_usage)
+            except (ValueError, TypeError):
+                pass
+        
+        unit_of_measurement = latest_month.get("unitOfMeasurement")
+        if unit_of_measurement:
+            attributes["unit_of_measurement"] = unit_of_measurement
+        
+        if month_year:
+            month_num = DataUtil.extract_month_number(month_year)
+            if month_num:
+                usage_last_year = data.get("usage_last_year", {})
+                if isinstance(usage_last_year, dict):
+                    last_year = DateUtil.get_last_year()
+                    last_year_month_identifier = f"{month_num}.{last_year}"
+                    last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
+                    
+                    if last_year_month:
+                        last_year_attributes: Dict[str, Any] = {}
+                        
+                        last_year_total = last_year_month.get("totalEnergyUsage")
+                        if last_year_total is not None:
+                            try:
+                                last_year_attributes["total_energy_usage"] = float(last_year_total)
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        last_year_avg = last_year_month.get("averageEnergyUseForBillingUnit")
+                        if last_year_avg is not None:
+                            try:
+                                last_year_attributes["average_energy_use_for_billing_unit"] = float(last_year_avg)
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        if last_year_attributes:
+                            attributes["last_year_comparison"] = last_year_attributes
+        
+        return attributes
 

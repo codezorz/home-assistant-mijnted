@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Dict, Any, Optional, Callable, Awaitable, List
 from .const import (
     API_BASE_URL,
@@ -63,7 +63,7 @@ class MijntedApi:
             "residential_unit": residential_unit,
             "refresh_token_expires_at": refresh_token_expires_at,
             "token_update_callback": token_update_callback,
-            "credentials_callback": credentials_callback,
+            "credentials_callback": credentials_callback
         }
 
     def _ensure_session(self) -> None:
@@ -243,6 +243,34 @@ class MijntedApi:
         value = ApiUtil.extract_value(result, [])
         return value if isinstance(value, list) else []
 
+    async def get_device_statuses_for_date(self, target_date: date) -> List[Dict[str, Any]]:
+        """Get device statuses for a specific date.
+        
+        Args:
+            target_date: Date object for which to retrieve device statuses
+            
+        Returns:
+            List of device status objects for the specified date, empty list if none found or on error
+        """
+        try:
+            date_str = target_date.strftime("%Y-%m-%d")
+            year = target_date.year
+            url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{year}?fromDate={date_str}"
+            result = await self._make_request("GET", url)
+            if isinstance(result, list):
+                return result
+            value = ApiUtil.extract_value(result, [])
+            return value if isinstance(value, list) else []
+        except Exception as err:
+            date_str = target_date.strftime("%Y-%m-%d") if target_date else "unknown"
+            _LOGGER.warning(
+                "Failed to fetch device statuses for date %s: %s",
+                target_date,
+                err,
+                extra={"date": date_str, "residential_unit": self.residential_unit, "error_type": type(err).__name__}
+            )
+            return []
+
     async def get_usage_insight(self, year: Optional[int] = None) -> Dict[str, Any]:
         """Get usage insight information for a specific year.
         
@@ -312,7 +340,7 @@ class MijntedApi:
     def _headers(self) -> Dict[str, str]:
         return {
             "Authorization": f"{AUTHORIZATION_SCHEME_BEARER} {self.auth.access_token if self.auth else ''}",
-            "User-Agent": USER_AGENT,
+            "User-Agent": USER_AGENT
         }
 
     async def close(self) -> None:

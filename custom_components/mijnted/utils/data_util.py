@@ -1,10 +1,46 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 from datetime import datetime
-from ..const import YEAR_MONTH_SORT_MULTIPLIER
+from ..const import CALCULATION_YEAR_MONTH_SORT_MULTIPLIER, MONTH_YEAR_PARTS_COUNT
 
 
 class DataUtil:
     """Utility class for data parsing and extraction."""
+    
+    @staticmethod
+    def safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+        """Safely convert a value to float.
+        
+        Args:
+            value: Value to convert to float
+            default: Default value to return if conversion fails or value is None
+            
+        Returns:
+            Float value if conversion succeeds, default value otherwise
+        """
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    
+    @staticmethod
+    def safe_int(value: Any, default: Optional[int] = None) -> Optional[int]:
+        """Safely convert a value to int.
+        
+        Args:
+            value: Value to convert to int
+            default: Default value to return if conversion fails or value is None
+            
+        Returns:
+            Integer value if conversion succeeds, default value otherwise
+        """
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return default
     
     @staticmethod
     def parse_month_year(month_year: str) -> Optional[Tuple[int, int]]:
@@ -18,7 +54,7 @@ class DataUtil:
         """
         try:
             parts = month_year.split(".")
-            if len(parts) == 2:
+            if len(parts) == MONTH_YEAR_PARTS_COUNT:
                 return (int(parts[0]), int(parts[1]))
         except (ValueError, IndexError):
             pass
@@ -238,8 +274,53 @@ class DataUtil:
                 parsed = DataUtil.parse_month_year(month_year)
                 if parsed:
                     month_num, year = parsed
-                    # Create a sortable key (year * YEAR_MONTH_SORT_MULTIPLIER + month)
-                    sort_key = year * YEAR_MONTH_SORT_MULTIPLIER + month_num
+                    sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
+                    valid_months.append((sort_key, month))
+        
+        # Sort by date descending (most recent first) and return the first valid one
+        if valid_months:
+            valid_months.sort(key=lambda x: x[0], reverse=True)
+            return valid_months[0][1]
+        
+        return None
+    
+    @staticmethod
+    def find_latest_month_with_data(usage_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Find the most recent month with totalEnergyUsage > 0 (relaxed requirement).
+        
+        This is a fallback when find_latest_valid_month returns None because
+        averageEnergyUseForBillingUnit is null (month not yet finalized).
+        This method only requires totalEnergyUsage > 0, making it useful when
+        months exist but haven't been finalized yet.
+        
+        Args:
+            usage_data: Dictionary containing monthly energy usage data
+            
+        Returns:
+            Most recent month with usage data if found, None otherwise
+        """
+        if not isinstance(usage_data, dict):
+            return None
+        
+        monthly_usages = usage_data.get("monthlyEnergyUsages", [])
+        if not monthly_usages:
+            return None
+        
+        # Parse monthYear format (e.g., "11.2025") and sort by date (most recent first)
+        valid_months = []
+        for month in monthly_usages:
+            if not isinstance(month, dict):
+                continue
+            
+            total_usage = month.get("totalEnergyUsage", 0)
+            
+            # Check if this month has usage data (only requires totalEnergyUsage > 0)
+            if isinstance(total_usage, (int, float)) and float(total_usage) > 0:
+                month_year = month.get("monthYear", "")
+                parsed = DataUtil.parse_month_year(month_year)
+                if parsed:
+                    month_num, year = parsed
+                    sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
                     valid_months.append((sort_key, month))
         
         # Sort by date descending (most recent first) and return the first valid one
@@ -272,4 +353,74 @@ class DataUtil:
                 return month
         
         return None
+    
+    @staticmethod
+    def extract_device_readings_map(device_statuses: List[Dict[str, Any]]) -> Dict[str, float]:
+        """Extract device readings as a map of deviceNumber to currentReadingValue.
+        
+        Args:
+            device_statuses: List of device status dictionaries
+            
+        Returns:
+            Dictionary mapping deviceNumber (string) to currentReadingValue (float)
+            Returns empty dict on error or if no devices found
+        """
+        readings_map: Dict[str, float] = {}
+        
+        if not isinstance(device_statuses, list):
+            return readings_map
+        
+        for device in device_statuses:
+            if not isinstance(device, dict):
+                continue
+            
+            device_number = device.get("deviceNumber")
+            reading_value = device.get("currentReadingValue")
+            
+            if device_number is not None and reading_value is not None:
+                try:
+                    device_id = str(device_number)
+                    reading = float(reading_value)
+                    readings_map[device_id] = reading
+                except (ValueError, TypeError):
+                    continue
+        
+        return readings_map
+    
+    @staticmethod
+    def calculate_per_device_usage(start_readings: Dict[str, float], end_readings: Dict[str, float]) -> List[Dict[str, Any]]:
+        """Calculate per-device usage from start and end readings.
+        
+        Args:
+            start_readings: Dictionary mapping deviceNumber to reading at start
+            end_readings: Dictionary mapping deviceNumber to reading at end
+            
+        Returns:
+            List of device dictionaries with id, start, and end readings
+            Handles missing devices gracefully (only includes devices present in both)
+        """
+        devices_list: List[Dict[str, Any]] = []
+        
+        if not isinstance(start_readings, dict) or not isinstance(end_readings, dict):
+            return devices_list
+        
+        # Get all unique device IDs from both maps
+        all_device_ids = set(start_readings.keys()) | set(end_readings.keys())
+        
+        for device_id in all_device_ids:
+            start_value = start_readings.get(device_id)
+            end_value = end_readings.get(device_id)
+            
+            # Only include devices that have both start and end readings
+            if start_value is not None and end_value is not None:
+                try:
+                    devices_list.append({
+                        "id": device_id,
+                        "start": float(start_value),
+                        "end": float(end_value)
+                    })
+                except (ValueError, TypeError):
+                    continue
+        
+        return devices_list
 

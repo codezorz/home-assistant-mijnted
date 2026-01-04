@@ -51,7 +51,7 @@ class TranslationUtil:
         # Fallback to hardcoded translations
         room_translations = {
             "KA": "bedroom",
-            "W": "living room",
+            "W": "living room"
         }
         return room_translations.get(room_code, room_code)
     
@@ -86,7 +86,7 @@ class TranslationUtil:
                     translation_keys = [
                         f"component.{DOMAIN}.entity.sensor.room_codes.{room_code}",
                         f"component.{DOMAIN}.room_codes.{room_code}",
-                        f"room_codes.{room_code}",
+                        f"room_codes.{room_code}"
                     ]
                     
                     for key in translation_keys:
@@ -116,7 +116,7 @@ class TranslationUtil:
         # Fallback to hardcoded translations
         room_translations = {
             "KA": "bedroom",
-            "W": "living room",
+            "W": "living room"
         }
         return room_translations.get(room_code, room_code)
 
