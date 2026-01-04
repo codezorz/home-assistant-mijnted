@@ -61,7 +61,6 @@ class MijnTedDeviceSensor(MijnTedSensor):
         device_data = self._device_data
         if device_data and device_data.get("room"):
             room_code = device_data['room']
-            # Get hass instance from coordinator (DataUpdateCoordinator has hass attribute)
             hass = getattr(self.coordinator, 'hass', None)
             room_name = TranslationUtil.translate_room_code(room_code, hass)
             return f"MijnTed device {room_name}"
@@ -93,7 +92,6 @@ class MijnTedDeviceSensor(MijnTedSensor):
         device_data = self._device_data
         if device_data:
             unit = device_data.get("unitOfMeasure", "")
-            # Translate German/Dutch "Einheiten"/"Eenheden" to "Units"
             if unit in ("Einheiten", "Eenheden"):
                 return UNIT_MIJNTED
             return unit if unit else ""
@@ -113,7 +111,7 @@ class MijnTedDeviceSensor(MijnTedSensor):
             attributes.update({
                 "room": device_data.get("room"),
                 "device_id": device_data.get("deviceId"),
-                "measurement_device_id": device_data.get("measurementDeviceId"),
+                "measurement_device_id": device_data.get("measurementDeviceId")
             })
         
         return attributes

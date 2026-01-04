@@ -4,21 +4,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.components.sensor import SensorEntity
 from .const import DOMAIN
 from .sensors import (
-    MijnTedThisMonthUsageSensor,
+    MijnTedMonthlyUsageSensor,
     MijnTedLastUpdateSensor,
     MijnTedTotalUsageSensor,
     MijnTedActiveModelSensor,
     MijnTedDeliveryTypesSensor,
     MijnTedResidentialUnitDetailSensor,
     MijnTedUnitOfMeasuresSensor,
-    MijnTedThisYearUsageSensor,
-    MijnTedLastYearUsageSensor,
     MijnTedLastSuccessfulSyncSensor,
     MijnTedDeviceSensor,
-    MijnTedLatestMonthLastYearUsageSensor,
-    MijnTedLatestMonthAverageUsageSensor,
-    MijnTedLatestMonthLastYearAverageUsageSensor,
-    MijnTedLatestMonthUsageSensor,
+    MijnTedAverageMonthlyUsageSensor,
+    MijnTedLastYearAverageMonthlyUsageSensor,
+    MijnTedLastYearMonthlyUsageSensor,
+    MijnTedLatestAvailableInsightSensor,
 )
 
 
@@ -37,23 +35,20 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
     sensors: List[SensorEntity] = [
-        MijnTedThisMonthUsageSensor(coordinator),
+        MijnTedMonthlyUsageSensor(coordinator),
         MijnTedLastUpdateSensor(coordinator),
         MijnTedTotalUsageSensor(coordinator),
         MijnTedActiveModelSensor(coordinator),
         MijnTedDeliveryTypesSensor(coordinator),
         MijnTedResidentialUnitDetailSensor(coordinator),
         MijnTedUnitOfMeasuresSensor(coordinator),
-        MijnTedThisYearUsageSensor(coordinator),
-        MijnTedLastYearUsageSensor(coordinator),
         MijnTedLastSuccessfulSyncSensor(coordinator),
-        MijnTedLatestMonthLastYearUsageSensor(coordinator),
-        MijnTedLatestMonthAverageUsageSensor(coordinator),
-        MijnTedLatestMonthLastYearAverageUsageSensor(coordinator),
-        MijnTedLatestMonthUsageSensor(coordinator),
+        MijnTedAverageMonthlyUsageSensor(coordinator),
+        MijnTedLastYearAverageMonthlyUsageSensor(coordinator),
+        MijnTedLastYearMonthlyUsageSensor(coordinator),
+        MijnTedLatestAvailableInsightSensor(coordinator)
     ]
     
-    # Room usage sensors are not created here as device sensors already include room information
     filter_status = coordinator.data.get("filter_status", [])
     if isinstance(filter_status, list):
         seen_devices = set()

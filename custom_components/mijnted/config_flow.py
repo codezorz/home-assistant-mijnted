@@ -56,7 +56,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): vol.All(
                     vol.Coerce(int),
                     vol.Range(min=MIN_POLLING_INTERVAL, max=MAX_POLLING_INTERVAL)
-                ),
+                )
             }
         )
 
@@ -248,7 +248,7 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
                     ): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_POLLING_INTERVAL, max=MAX_POLLING_INTERVAL)
-                    ),
+                    )
                 }
             ),
         )

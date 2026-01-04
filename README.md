@@ -69,23 +69,31 @@ During the integration setup in Home Assistant, you'll be prompted to enter your
 
 Once configured, the integration will create several sensors in Home Assistant:
 
-- **This Month Usage** - Current month's energy usage (calculated from total minus measured months)
-- **Latest Month Usage** - Actual usage for the latest available month
-- **Latest Month Last Year Usage** - Last year's usage for the latest available month (computed comparison)
-- **Latest Month Average Usage** - Average usage for the latest available month
-- **Latest Month Last Year Average Usage** - Last year's average usage for the latest available month (computed comparison)
-- **Last Update** - Timestamp of the last data synchronization from the API
-- **Last Successful Sync** - Timestamp of the last successful data synchronization from the API
-- **Total Usage** - Sum of all device readings (cumulative filter status)
-- **Active Model** - The active model identifier (e.g., "F71")
-- **Delivery Type** - Available delivery types for your residential unit
-- **Residential Unit** - Detailed information about your residential unit
-- **Unit of Measures** - Unit of measurement information
-- **This Year Usage** - Total energy usage for the current year (with monthly breakdown in attributes)
-- **Last Year Usage** - Total energy usage for the previous year (with monthly breakdown in attributes)
+- **Monthly usage** - Current month's energy usage (calculated from total_usage_end - total_usage_start). Includes attributes: `start_date`, `end_date`, `days`, and `month_id`.
+- **Last year monthly usage** - Last year's monthly usage for the corresponding month (prefers API-provided value from previous year's data)
+- **Average monthly usage** - Average usage extracted from historical monthly usage data
+- **Last year average monthly usage** - Last year's average monthly usage for the corresponding month (prefers API-provided value from previous year's data)
+- **Total usage** - Sum of all device readings (cumulative filter status, accumulating counter). Automatically injects historical data for proper history graphs.
+- **Last update** - Timestamp of the last data synchronization from the API
+- **Last successful sync** - Timestamp of the last successful data synchronization from the API
+- **Active model** - The active model identifier (e.g., "F71")
+- **Delivery type** - Available delivery types for your residential unit
+- **Residential unit** - Detailed information about your residential unit
+- **Unit of measures** - Unit of measurement information
+- **Latest available insight** - Month with the last available insight data including average
 - **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)
 
 All usage sensors display values with zero decimal places for a cleaner interface.
+
+### History and Statistics
+
+The integration automatically injects historical data into Home Assistant's recorder for proper history graphs:
+- **Total Usage Sensor**: Injects historical `total_usage_end` values (accumulated counter) for each month, enabling standard history graphs to display consumption trends over time
+- **Monthly Usage Sensor**: Injects monthly consumption statistics
+- **Last Year Monthly Usage Sensor**: Injects historical data for the previous year's corresponding month
+- **Average Monthly Usage Sensors**: Inject historical average values for trend analysis
+
+All sensors use appropriate state classes (`TOTAL`, `TOTAL_INCREASING`, `MEASUREMENT`) to ensure correct behavior in Home Assistant's statistics and history system.
 
 You can use these sensors in your automations, scripts, and dashboards to monitor and analyze your energy consumption. The sensors include additional attributes with detailed information that can be accessed in templates and automations.
 

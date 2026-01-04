@@ -1,5 +1,5 @@
-from datetime import timedelta, datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from datetime import timedelta, datetime, timezone, date
+from typing import Any, Dict, Optional, Tuple, List
 import asyncio
 import logging
 from homeassistant.config_entries import ConfigEntry
@@ -7,10 +7,33 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from .api import MijntedApi
 from .exceptions import MijntedApiError, MijntedAuthenticationError, MijntedGrantExpiredError, MijntedConnectionError
-from .const import DOMAIN, DEFAULT_POLLING_INTERVAL
-from .utils import ApiUtil, DateUtil, TimestampUtil
+from .const import DOMAIN, DEFAULT_POLLING_INTERVAL, CACHE_HISTORY_MONTHS, DEFAULT_START_VALUE
+from .utils import ApiUtil, DateUtil, TimestampUtil, DataUtil
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _extract_end_values_from_devices(devices_list: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Extract end values from devices list as a readings map.
+    
+    Args:
+        devices_list: List of device dictionaries with 'id' and 'end' keys
+        
+    Returns:
+        Dictionary mapping device ID strings to end values as floats
+    """
+    end_readings = {}
+    for device in devices_list:
+        if isinstance(device, dict):
+            device_id = device.get("id")
+            end_value = device.get("end")
+            if device_id is not None and end_value is not None:
+                try:
+                    end_readings[str(device_id)] = float(end_value)
+                except (ValueError, TypeError):
+                    pass
+    return end_readings
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry."""
@@ -199,6 +222,414 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 now = datetime.now(timezone.utc)
                 last_successful_sync = TimestampUtil.format_datetime_to_timestamp(now)
                 
+                calculated_history: Dict[str, float] = {}
+                current_month_calculated: Optional[float] = None
+                
+                try:
+                    prev_month, prev_year = DateUtil.get_previous_month()
+                    month_key = f"{prev_month}.{prev_year}"
+                    
+                    has_previous_month_in_analytics = False
+                    if isinstance(energy_usage_data, dict):
+                        monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
+                        for month in monthly_usages:
+                            if isinstance(month, dict) and month.get("monthYear") == month_key:
+                                has_previous_month_in_analytics = True
+                                break
+                    
+                    if not has_previous_month_in_analytics:
+                        try:
+                            first_day = DateUtil.get_first_day_of_month(prev_month, prev_year)
+                            last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
+                            
+                            start_anchor = await api.get_device_statuses_for_date(first_day)
+                            end_anchor = await api.get_device_statuses_for_date(last_day)
+                            
+                            start_total = DataUtil.calculate_filter_status_total(start_anchor)
+                            end_total = DataUtil.calculate_filter_status_total(end_anchor)
+                            
+                            if start_total is not None and end_total is not None:
+                                if prev_month == 1:
+                                    calculated_history[month_key] = end_total
+                                else:
+                                    calculated_history[month_key] = end_total - start_total
+                            else:
+                                _LOGGER.warning(
+                                    "Could not calculate previous month usage: missing anchor data for %s",
+                                    month_key,
+                                    extra={"month": month_key, "has_start": start_total is not None, "has_end": end_total is not None}
+                                )
+                        except Exception as err:
+                            _LOGGER.warning(
+                                "Failed to calculate previous month usage for %s: %s",
+                                month_key,
+                                err,
+                                extra={"month": month_key, "error_type": type(err).__name__},
+                                exc_info=True
+                            )
+                    
+                    # Step C: Current Month Calculation
+                    try:
+                        current_month = datetime.now().month
+                        current_year = datetime.now().year
+                        current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
+                        
+                        current_month_start_anchor = await api.get_device_statuses_for_date(current_month_first_day)
+                        current_month_start_total = DataUtil.calculate_filter_status_total(current_month_start_anchor)
+                        current_readings_total = DataUtil.calculate_filter_status_total(filter_status)
+                        
+                        if current_month_start_total is not None and current_readings_total is not None:
+                            if current_month == 1:
+                                current_month_calculated = current_readings_total
+                            else:
+                                current_month_calculated = current_readings_total - current_month_start_total
+                        else:
+                            _LOGGER.debug(
+                                "Could not calculate current month usage: missing anchor data",
+                                extra={"has_start": current_month_start_total is not None, "has_current": current_readings_total is not None}
+                            )
+                    except Exception as err:
+                        _LOGGER.warning(
+                            "Failed to calculate current month usage: %s",
+                            err,
+                            extra={"error_type": type(err).__name__},
+                            exc_info=True
+                        )
+                
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Error in anchor calculation logic: %s",
+                        err,
+                        extra={"error_type": type(err).__name__},
+                        exc_info=True
+                    )
+                
+                monthly_history_cache: Dict[str, Dict[str, Any]] = {}
+                cached_last_update_date: Optional[str] = None
+                
+                if entry.entry_id in hass.data.get(DOMAIN, {}):
+                    existing_coordinator = hass.data[DOMAIN][entry.entry_id]
+                    if existing_coordinator and existing_coordinator.data:
+                        monthly_history_cache = existing_coordinator.data.get("monthly_history_cache", {})
+                        cached_last_update_date = existing_coordinator.data.get("cached_last_update_date")
+                
+                current_last_update_date = None
+                if isinstance(last_update, dict):
+                    current_last_update_date = last_update.get("lastSyncDate") or last_update.get("date")
+                elif isinstance(last_update, str):
+                    current_last_update_date = last_update
+                
+                last_update_date_changed = current_last_update_date != cached_last_update_date
+                
+                try:
+                    if not monthly_history_cache:
+                        _LOGGER.info(f"Building {CACHE_HISTORY_MONTHS}-month history cache (this may take a moment)")
+                        last_sync_date_obj = DateUtil.parse_last_sync_date(last_update)
+                        if last_sync_date_obj:
+                            prev_month, prev_year = DateUtil.get_previous_month_from_date(last_sync_date_obj)
+                            prev_month_date = DateUtil.get_first_day_of_month(prev_month, prev_year)
+                            months_to_build = DateUtil.get_last_n_months_from_date(CACHE_HISTORY_MONTHS, prev_month_date)
+                        else:
+                            now = datetime.now()
+                            prev_month, prev_year = DateUtil.get_previous_month()
+                            prev_month_date = DateUtil.get_first_day_of_month(prev_month, prev_year)
+                            months_to_build = DateUtil.get_last_n_months_from_date(CACHE_HISTORY_MONTHS, prev_month_date)
+                        
+                        months_to_build = list(reversed(months_to_build))
+                        
+                        for month_num, year in months_to_build:
+                            month_key = DateUtil.format_month_key(year, month_num)
+                            
+                            try:
+                                first_day = DateUtil.get_first_day_of_month(month_num, year)
+                                last_day = DateUtil.get_last_day_of_month(month_num, year)
+                                
+                                end_anchor = await api.get_device_statuses_for_date(last_day)
+                                end_readings = DataUtil.extract_device_readings_map(end_anchor)
+                                end_total = DataUtil.calculate_filter_status_total(end_anchor)
+                                
+                                now = datetime.now()
+                                is_current_month = (month_num == now.month and year == now.year)
+                                
+                                if month_num == 1:
+                                    start_readings = {}
+                                    start_total = DEFAULT_START_VALUE
+                                    devices_list = []
+                                    for device_id_str, end_value in end_readings.items():
+                                        try:
+                                            devices_list.append({
+                                                "id": device_id_str,
+                                                "start": DEFAULT_START_VALUE,
+                                                "end": float(end_value)
+                                            })
+                                        except (ValueError, TypeError):
+                                            continue
+                                else:
+                                    prev_month, prev_year = DateUtil.get_previous_month_from_date(first_day)
+                                    prev_month_key = DateUtil.format_month_key(prev_year, prev_month)
+                                    prev_month_data = monthly_history_cache.get(prev_month_key)
+                                    
+                                    if prev_month_data and isinstance(prev_month_data, dict):
+                                        prev_devices = prev_month_data.get("devices", [])
+                                        start_readings = _extract_end_values_from_devices(prev_devices)
+                                    else:
+                                        prev_last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
+                                        prev_anchor = await api.get_device_statuses_for_date(prev_last_day)
+                                        start_readings = DataUtil.extract_device_readings_map(prev_anchor)
+                                    
+                                    start_total = sum(start_readings.values()) if start_readings else None
+                                    
+                                    if is_current_month:
+                                        existing_month_cache = monthly_history_cache.get(month_key, {})
+                                        existing_devices = existing_month_cache.get("devices", [])
+                                        has_start_values = any(
+                                            isinstance(device, dict) and device.get("start") is not None
+                                            for device in existing_devices
+                                        )
+                                        
+                                        if not has_start_values:
+                                            devices_list = DataUtil.calculate_per_device_usage(start_readings, end_readings)
+                                        else:
+                                            devices_list = existing_devices
+                                    else:
+                                        devices_list = DataUtil.calculate_per_device_usage(start_readings, end_readings)
+                                
+                                if start_total is not None and end_total is not None:
+                                    if end_total < start_total:
+                                        total_usage = end_total
+                                    else:
+                                        total_usage = end_total - start_total
+                                else:
+                                    total_usage = None
+                                
+                                average_usage = None
+                                finalized = False
+                                month_year_str = f"{month_num}.{year}"
+                                
+                                if isinstance(energy_usage_data, dict):
+                                    monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
+                                    for month in monthly_usages:
+                                        if isinstance(month, dict) and month.get("monthYear") == month_year_str:
+                                            avg = month.get("averageEnergyUseForBillingUnit")
+                                            if avg is not None:
+                                                try:
+                                                    average_usage = float(avg)
+                                                    finalized = True
+                                                except (ValueError, TypeError):
+                                                    pass
+                                            break
+                                
+                                if average_usage is None and isinstance(usage_last_year_data, dict):
+                                    monthly_usages = usage_last_year_data.get("monthlyEnergyUsages", [])
+                                    for month in monthly_usages:
+                                        if isinstance(month, dict) and month.get("monthYear") == month_year_str:
+                                            avg = month.get("averageEnergyUseForBillingUnit")
+                                            if avg is not None:
+                                                try:
+                                                    average_usage = float(avg)
+                                                    finalized = True
+                                                except (ValueError, TypeError):
+                                                    pass
+                                            break
+                                
+                                month_year_key = f"{month_num}.{year}"
+                                monthly_history_cache[month_key] = {
+                                    "month_id": month_year_key,
+                                    "year": year,
+                                    "month": month_num,
+                                    "start_date": DateUtil.format_date_for_api(first_day),
+                                    "end_date": DateUtil.format_date_for_api(last_day),
+                                    "total_usage": total_usage,
+                                    "average_usage": average_usage,
+                                    "devices": devices_list,
+                                    "finalized": finalized
+                                }
+                                
+                            except Exception as err:
+                                _LOGGER.warning(
+                                    "Failed to build cache entry for %s: %s",
+                                    month_key,
+                                    err,
+                                    extra={"month": month_key, "error_type": type(err).__name__},
+                                    exc_info=True
+                                )
+                                month_year_key = f"{month_num}.{year}"
+                                monthly_history_cache[month_key] = {
+                                    "month_id": month_year_key,
+                                    "year": year,
+                                    "month": month_num,
+                                    "start_date": DateUtil.format_date_for_api(DateUtil.get_first_day_of_month(month_num, year)),
+                                    "end_date": DateUtil.format_date_for_api(DateUtil.get_last_day_of_month(month_num, year)),
+                                    "total_usage": None,
+                                    "average_usage": None,
+                                    "devices": [],
+                                    "finalized": False
+                                }
+                    
+                    else:
+                        if last_update_date_changed:
+                            current_month = datetime.now().month
+                            current_year = datetime.now().year
+                            current_month_key = DateUtil.format_month_key(current_year, current_month)
+                            
+                            try:
+                                current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
+                                
+                                current_month_cache = monthly_history_cache.get(current_month_key, {})
+                                existing_devices = current_month_cache.get("devices", [])
+                                has_start_values = any(
+                                    isinstance(device, dict) and device.get("start") is not None
+                                    for device in existing_devices
+                                )
+                                
+                                end_readings = DataUtil.extract_device_readings_map(filter_status)
+                                end_total = DataUtil.calculate_filter_status_total(filter_status)
+                                
+                                if not has_start_values:
+                                    if current_month == 1:
+                                        start_readings = {}
+                                        start_total = DEFAULT_START_VALUE
+                                        devices_list = []
+                                        for device_id_str, end_value in end_readings.items():
+                                            try:
+                                                devices_list.append({
+                                                    "id": device_id_str,
+                                                    "start": DEFAULT_START_VALUE,
+                                                    "end": float(end_value)
+                                                })
+                                            except (ValueError, TypeError):
+                                                continue
+                                    else:
+                                        prev_month, prev_year = DateUtil.get_previous_month()
+                                        prev_month_key = DateUtil.format_month_key(prev_year, prev_month)
+                                        prev_month_data = monthly_history_cache.get(prev_month_key)
+                                        
+                                        if prev_month_data and isinstance(prev_month_data, dict):
+                                            prev_devices = prev_month_data.get("devices", [])
+                                            start_readings = _extract_end_values_from_devices(prev_devices)
+                                        else:
+                                            prev_last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
+                                            prev_anchor = await api.get_device_statuses_for_date(prev_last_day)
+                                            start_readings = DataUtil.extract_device_readings_map(prev_anchor)
+                                        
+                                        start_total = sum(start_readings.values()) if start_readings else None
+                                        devices_list = DataUtil.calculate_per_device_usage(start_readings, end_readings)
+                                else:
+                                    devices_list = existing_devices
+                                    if current_month == 1:
+                                        start_total = DEFAULT_START_VALUE
+                                    else:
+                                        prev_month, prev_year = DateUtil.get_previous_month()
+                                        prev_month_key = DateUtil.format_month_key(prev_year, prev_month)
+                                        prev_month_data = monthly_history_cache.get(prev_month_key)
+                                        
+                                        if prev_month_data and isinstance(prev_month_data, dict):
+                                            prev_devices = prev_month_data.get("devices", [])
+                                            start_readings = _extract_end_values_from_devices(prev_devices)
+                                            start_total = sum(start_readings.values()) if start_readings else None
+                                        else:
+                                            prev_last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
+                                            prev_anchor = await api.get_device_statuses_for_date(prev_last_day)
+                                            start_total = DataUtil.calculate_filter_status_total(prev_anchor)
+                                
+                                if start_total is not None and end_total is not None:
+                                    if current_month == 1:
+                                        total_usage = end_total
+                                    else:
+                                        total_usage = end_total - start_total
+                                else:
+                                    total_usage = None
+                                
+                                end_date_str = None
+                                last_sync_date_obj = DateUtil.parse_last_sync_date(last_update)
+                                if last_sync_date_obj:
+                                    end_date_str = DateUtil.format_date_for_api(last_sync_date_obj)
+                                else:
+                                    end_date_str = DateUtil.format_date_for_api(DateUtil.get_last_day_of_month(current_month, current_year))
+                                
+                                average_usage = None
+                                finalized = False
+                                if isinstance(energy_usage_data, dict):
+                                    monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
+                                    month_year_str = f"{current_month}.{current_year}"
+                                    for month in monthly_usages:
+                                        if isinstance(month, dict) and month.get("monthYear") == month_year_str:
+                                            avg = month.get("averageEnergyUseForBillingUnit")
+                                            if avg is not None:
+                                                try:
+                                                    average_usage = float(avg)
+                                                    finalized = True
+                                                except (ValueError, TypeError):
+                                                    pass
+                                            break
+                                
+                                current_month_year_key = f"{current_month}.{current_year}"
+                                monthly_history_cache[current_month_key] = {
+                                    "month_id": current_month_year_key,
+                                    "year": current_year,
+                                    "month": current_month,
+                                    "start_date": DateUtil.format_date_for_api(current_month_first_day),
+                                    "end_date": end_date_str,
+                                    "total_usage": total_usage,
+                                    "average_usage": average_usage,
+                                    "devices": devices_list,
+                                    "finalized": finalized
+                                }
+                                
+                            except Exception as err:
+                                _LOGGER.warning(
+                                    "Failed to refresh current month in cache: %s",
+                                    err,
+                                    extra={"error_type": type(err).__name__},
+                                    exc_info=True
+                                )
+                    
+                    # Enrich all months with averages from official analytics (runs after both initial build and incremental updates)
+                    for usage_data_source in [energy_usage_data, usage_last_year_data]:
+                        if not isinstance(usage_data_source, dict):
+                            continue
+                        
+                        monthly_usages = usage_data_source.get("monthlyEnergyUsages", [])
+                        for month in monthly_usages:
+                            if not isinstance(month, dict):
+                                continue
+                            
+                            month_year_str = month.get("monthYear")
+                            if not month_year_str:
+                                continue
+                            
+                            parsed = DataUtil.parse_month_year(month_year_str)
+                            if not parsed:
+                                continue
+                            
+                            month_num, year = parsed
+                            month_key = DateUtil.format_month_key(year, month_num)
+                            
+                            if month_key in monthly_history_cache:
+                                cache_entry = monthly_history_cache[month_key]
+                                avg = month.get("averageEnergyUseForBillingUnit")
+                                if avg is not None:
+                                    try:
+                                        average_usage = float(avg)
+                                        if not cache_entry.get("finalized", False) or cache_entry.get("average_usage") is None:
+                                            cache_entry["average_usage"] = average_usage
+                                            cache_entry["finalized"] = True
+                                            _LOGGER.debug(
+                                                "Enriched month %s with average: %s",
+                                                month_key,
+                                                average_usage
+                                            )
+                                    except (ValueError, TypeError):
+                                        pass
+                
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Error in monthly history cache logic: %s",
+                        err,
+                        extra={"error_type": type(err).__name__},
+                        exc_info=True
+                    )
+                
                 return {
                     "energy_usage": energy_usage_total,
                     "energy_usage_data": energy_usage_data,
@@ -215,6 +646,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "room_usage": room_usage,
                     "unit_of_measures": unit_of_measures_data,
                     "last_successful_sync": last_successful_sync,
+                    "calculated_history": calculated_history,
+                    "current_month_calculated": current_month_calculated,
+                    "monthly_history_cache": monthly_history_cache,
+                    "cached_last_update_date": current_last_update_date
                 }
         except MijntedGrantExpiredError as err:
             _LOGGER.warning(

@@ -1,11 +1,9 @@
-import logging
 from homeassistant.const import Platform
 from datetime import timedelta
 
 DOMAIN = "mijnted"
 API_BASE_URL = "https://ted-prod-function-app.azurewebsites.net/api"
 AUTH_URL = "https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token"
-LOGGER = logging.getLogger(__package__)
 PLATFORMS = [Platform.SENSOR]
 DEFAULT_POLLING_INTERVAL = timedelta(hours=1)
 UNIT_MIJNTED = "Units"
@@ -14,6 +12,7 @@ UNIT_MIJNTED = "Units"
 REQUEST_TIMEOUT = 10  # seconds
 TOKEN_REFRESH_MAX_RETRIES = 3  # Maximum number of retry attempts for token refresh
 TOKEN_REFRESH_RETRY_DELAY = 10  # Delay in seconds between token refresh retry attempts
+
 # ID token claim constants
 ID_TOKEN_CLAIM_RESIDENTIAL_UNITS = "extension_ResidentialUnits"
 ID_TOKEN_CLAIM_OCCUPANT_ID = "extension_OccupantID"
@@ -34,8 +33,16 @@ REFRESH_TOKEN_PROACTIVE_REFRESH_THRESHOLD_SECONDS = 900  # 15 minutes in seconds
 REFRESH_TOKEN_DEFAULT_EXPIRATION_SECONDS = 86400  # 24 hours in seconds - default expiration when not provided
 
 # Sensor calculation constants
-YEAR_TRANSITION_MULTIPLIER = 2.0  # Multiplier for detecting year transition issues
-YEAR_MONTH_SORT_MULTIPLIER = 100  # Multiplier for creating sortable year-month keys (year * 100 + month)
+CALCULATION_YEAR_MONTH_SORT_MULTIPLIER = 100  # Multiplier for creating sortable year-month keys (year * 100 + month)
+CALCULATION_AVERAGE_PER_DAY_DECIMAL_PLACES = 2  # Number of decimal places for average_per_day calculations
+
+# Cache constants
+CACHE_HISTORY_MONTHS = 12  # Number of months to store in historical readings cache
+
+# Sensor and calculation constants
+MONTH_YEAR_PARTS_COUNT = 2  # Expected number of parts when parsing month.year format (e.g., "1.2025")
+DEFAULT_START_VALUE = 0.0  # Default start value for device readings at year start
+ENTITY_REGISTRATION_DELAY_SECONDS = 0.1  # Delay in seconds to ensure entity is fully registered before statistics injection
 
 # Azure B2C authentication constants
 AUTH_TENANT_NAME = "mytedprod"
