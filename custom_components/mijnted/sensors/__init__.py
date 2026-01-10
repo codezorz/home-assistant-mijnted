@@ -16,6 +16,7 @@ from .diagnostics import (
     MijnTedLastSuccessfulSyncSensor,
     MijnTedLatestAvailableInsightSensor,
 )
+from .button import MijnTedResetStatisticsButton
 
 __all__ = [
     "MijnTedSensor",
@@ -31,6 +32,7 @@ __all__ = [
     "MijnTedResidentialUnitDetailSensor",
     "MijnTedUnitOfMeasuresSensor",
     "MijnTedLastSuccessfulSyncSensor",
-    "MijnTedLatestAvailableInsightSensor"
+    "MijnTedLatestAvailableInsightSensor",
+    "MijnTedResetStatisticsButton"
 ]
 

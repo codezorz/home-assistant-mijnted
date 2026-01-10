@@ -25,13 +25,10 @@ class TimestampUtil:
         if not date_str:
             return None
         
-        # Check if already in ISO 8601 format
         if "T" in date_str or date_str.count("-") >= 2:
             try:
-                # Try to parse as ISO format
                 if date_str.endswith("Z"):
                     return date_str
-                # Try parsing various ISO formats
                 for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"]:
                     try:
                         parsed = datetime.strptime(date_str, fmt)
@@ -41,10 +38,8 @@ class TimestampUtil:
             except (ValueError, AttributeError):
                 pass
         
-        # Try DD/MM/YYYY format
         try:
             date_obj = datetime.strptime(date_str, "%d/%m/%Y")
-            # Convert to ISO 8601 format (midnight UTC)
             return date_obj.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + "Z"
         except (ValueError, AttributeError):
             _LOGGER.debug(
@@ -64,7 +59,6 @@ class TimestampUtil:
         Returns:
             ISO 8601 timestamp string (YYYY-MM-DDTHH:MM:SSZ)
         """
-        # Convert to UTC if timezone-aware, then make naive
         if dt.tzinfo is not None:
             dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
         return dt.replace(microsecond=0).isoformat() + "Z"

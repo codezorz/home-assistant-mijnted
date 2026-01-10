@@ -59,6 +59,11 @@
       "filter": {
         "name": "Filter"
       }
+    },
+    "button": {
+      "reset_statistics": {
+        "name": "Reset Statistics"
+      }
     }
   },
   "room_codes": {
