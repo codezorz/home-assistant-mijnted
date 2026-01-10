@@ -1,8 +1,9 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
+from .models import StatisticsTracking
 from ..utils import TimestampUtil, ListUtil, DataUtil, DateUtil
 from ..const import CALCULATION_YEAR_MONTH_SORT_MULTIPLIER
 
@@ -222,6 +223,74 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         self._attr_icon = "mdi:calendar-month"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
     
+    def _find_latest_month_with_average_from_energy_data(
+        self, energy_data: Dict[str, Any]
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Find the latest month with average usage from energy data.
+        
+        Args:
+            energy_data: Energy usage data dictionary
+            
+        Returns:
+            Tuple of (month_num, year) for latest month with average, or (None, None) if not found
+        """
+        if not isinstance(energy_data, dict):
+            return None, None
+        
+        latest_sort_key = 0
+        latest_month_num = None
+        latest_year = None
+        
+        monthly_usages = energy_data.get("monthlyEnergyUsages", [])
+        for month in monthly_usages:
+            if not isinstance(month, dict):
+                continue
+            
+            avg_usage = month.get("averageEnergyUseForBillingUnit")
+            if avg_usage is not None:
+                month_year = month.get("monthYear", "")
+                parsed = DataUtil.parse_month_year(month_year)
+                if parsed:
+                    month_num, year = parsed
+                    sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
+                    if sort_key > latest_sort_key:
+                        latest_sort_key = sort_key
+                        latest_month_num = month_num
+                        latest_year = year
+        
+        return latest_month_num, latest_year
+    
+    def _find_latest_month_with_average_from_cache(
+        self, monthly_history_cache: Dict[str, Any]
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Find the latest month with average usage from monthly history cache.
+        
+        Args:
+            monthly_history_cache: Monthly history cache dictionary
+            
+        Returns:
+            Tuple of (month_num, year) for latest month with average, or (None, None) if not found
+        """
+        if not isinstance(monthly_history_cache, dict) or not monthly_history_cache:
+            return None, None
+        
+        month_keys = list(monthly_history_cache.keys())
+        month_keys.sort(key=lambda k: (int(k.split("-")[0]), int(k.split("-")[1])), reverse=True)
+        
+        for month_key in month_keys:
+            month_data = monthly_history_cache[month_key]
+            if isinstance(month_data, dict):
+                if month_data.get("average_usage") is not None:
+                    month_num = month_data.get("month")
+                    year = month_data.get("year")
+                    if month_num is not None and year is not None:
+                        try:
+                            return int(month_num), int(year)
+                        except (ValueError, TypeError):
+                            pass
+        
+        return None, None
+    
     @property
     def state(self) -> Optional[str]:
         """Return the month name (e.g., "November 2025") for the latest available insight with average.
@@ -234,74 +303,36 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         if not data:
             return None
         
-        latest_month = None
-        latest_sort_key = 0
-        latest_month_num = None
-        latest_year = None
-        
-        energy_usage_data = data.get("energy_usage_data", {})
-        if isinstance(energy_usage_data, dict):
-            monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
-            for month in monthly_usages:
-                if not isinstance(month, dict):
-                    continue
-                
-                avg_usage = month.get("averageEnergyUseForBillingUnit")
-                if avg_usage is not None:
-                    month_year = month.get("monthYear", "")
-                    parsed = DataUtil.parse_month_year(month_year)
-                    if parsed:
-                        month_num, year = parsed
-                        sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
-                        if sort_key > latest_sort_key:
-                            latest_sort_key = sort_key
-                            latest_month = month
-                            latest_month_num = month_num
-                            latest_year = year
+        latest_month_num, latest_year = self._find_latest_month_with_average_from_energy_data(
+            data.get("energy_usage_data", {})
+        )
         
         usage_last_year = data.get("usage_last_year", {})
         if isinstance(usage_last_year, dict):
-            monthly_usages = usage_last_year.get("monthlyEnergyUsages", [])
-            for month in monthly_usages:
-                if not isinstance(month, dict):
-                    continue
-                
-                avg_usage = month.get("averageEnergyUseForBillingUnit")
-                if avg_usage is not None:
-                    month_year = month.get("monthYear", "")
-                    parsed = DataUtil.parse_month_year(month_year)
-                    if parsed:
-                        month_num, year = parsed
-                        sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
-                        if sort_key > latest_sort_key:
-                            latest_sort_key = sort_key
-                            latest_month = month
-                            latest_month_num = month_num
-                            latest_year = year
+            last_year_month_num, last_year_year = self._find_latest_month_with_average_from_energy_data(
+                usage_last_year
+            )
+            if last_year_month_num is not None and last_year_year is not None:
+                last_year_sort_key = last_year_year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + last_year_month_num
+                if latest_month_num is None or latest_year is None:
+                    latest_month_num, latest_year = last_year_month_num, last_year_year
+                else:
+                    current_sort_key = latest_year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + latest_month_num
+                    if last_year_sort_key > current_sort_key:
+                        latest_month_num, latest_year = last_year_month_num, last_year_year
         
         if latest_month_num is not None and latest_year is not None:
             formatted = DateUtil.format_month_name(latest_month_num, latest_year)
             if formatted:
                 return formatted
         
-        monthly_history_cache = data.get("monthly_history_cache", {})
-        if isinstance(monthly_history_cache, dict) and monthly_history_cache:
-            month_keys = list(monthly_history_cache.keys())
-            month_keys.sort(key=lambda k: (int(k.split("-")[0]), int(k.split("-")[1])), reverse=True)
-            
-            for month_key in month_keys:
-                month_data = monthly_history_cache[month_key]
-                if isinstance(month_data, dict):
-                    if month_data.get("average_usage") is not None:
-                        month_num = month_data.get("month")
-                        year = month_data.get("year")
-                        if month_num is not None and year is not None:
-                            try:
-                                formatted = DateUtil.format_month_name(int(month_num), int(year))
-                                if formatted:
-                                    return formatted
-                            except (ValueError, TypeError):
-                                pass
+        cache_month_num, cache_year = self._find_latest_month_with_average_from_cache(
+            data.get("monthly_history_cache", {})
+        )
+        if cache_month_num is not None and cache_year is not None:
+            formatted = DateUtil.format_month_name(cache_month_num, cache_year)
+            if formatted:
+                return formatted
         
         return None
     
@@ -325,6 +356,10 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         if not data:
             return attributes
         
+        statistics_tracking = data.get("statistics_tracking")
+        if isinstance(statistics_tracking, StatisticsTracking):
+            attributes["statistics"] = statistics_tracking.to_dict()
+        
         energy_usage_data = data.get("energy_usage_data", {})
         if not isinstance(energy_usage_data, dict):
             return attributes
@@ -345,17 +380,15 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         
         total_usage = latest_month.get("totalEnergyUsage")
         if total_usage is not None:
-            try:
-                attributes["total_energy_usage"] = float(total_usage)
-            except (ValueError, TypeError):
-                pass
+            converted = DataUtil.safe_float(total_usage)
+            if converted is not None:
+                attributes["total_energy_usage"] = converted
         
         avg_usage = latest_month.get("averageEnergyUseForBillingUnit")
         if avg_usage is not None:
-            try:
-                attributes["average_energy_use_for_billing_unit"] = float(avg_usage)
-            except (ValueError, TypeError):
-                pass
+            converted = DataUtil.safe_float(avg_usage)
+            if converted is not None:
+                attributes["average_energy_use_for_billing_unit"] = converted
         
         unit_of_measurement = latest_month.get("unitOfMeasurement")
         if unit_of_measurement:
@@ -375,17 +408,15 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
                         
                         last_year_total = last_year_month.get("totalEnergyUsage")
                         if last_year_total is not None:
-                            try:
-                                last_year_attributes["total_energy_usage"] = float(last_year_total)
-                            except (ValueError, TypeError):
-                                pass
+                            converted = DataUtil.safe_float(last_year_total)
+                            if converted is not None:
+                                last_year_attributes["total_energy_usage"] = converted
                         
                         last_year_avg = last_year_month.get("averageEnergyUseForBillingUnit")
                         if last_year_avg is not None:
-                            try:
-                                last_year_attributes["average_energy_use_for_billing_unit"] = float(last_year_avg)
-                            except (ValueError, TypeError):
-                                pass
+                            converted = DataUtil.safe_float(last_year_avg)
+                            if converted is not None:
+                                last_year_attributes["average_energy_use_for_billing_unit"] = converted
                         
                         if last_year_attributes:
                             attributes["last_year_comparison"] = last_year_attributes

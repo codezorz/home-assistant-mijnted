@@ -82,6 +82,7 @@ Once configured, the integration will create several sensors in Home Assistant:
 - **Unit of measures** - Unit of measurement information
 - **Latest available insight** - Month with the last available insight data including average
 - **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)
+- **Reset statistics** - Button to reset statistics tracking and trigger re-injection of historical data
 
 All usage sensors display values with zero decimal places for a cleaner interface.
 
@@ -105,12 +106,12 @@ The integration uses a custom `MijntedApi` class to interact with the MijnTed AP
 - `get_energy_usage()`: Fetches the current year's energy usage data
 - `get_last_data_update()`: Retrieves the timestamp of the last data update
 - `get_filter_status()`: Gets filter status and device readings
+- `get_device_statuses_for_date(target_date)`: Gets device statuses for a specific date
 - `get_usage_insight(year)`: Retrieves usage insights for a specific year (defaults to current year)
 - `get_active_model()`: Gets the active model information
 - `get_delivery_types()`: Retrieves available delivery types for the residential unit
 - `get_residential_unit_detail()`: Gets detailed residential unit information
-- `get_usage_last_year()`: Fetches last year's energy usage data
-- `get_usage_per_room()`: Gets usage data per room for the current year
+- `get_usage_per_room(year)`: Gets usage data per room for a specific year (defaults to current year)
 - `get_unit_of_measures()`: Gets unit of measurement information
 
 **Note:** Token refresh is handled automatically by the internal `MijntedAuth` class when access tokens expire. The API automatically retries requests with a refreshed token if authentication fails.

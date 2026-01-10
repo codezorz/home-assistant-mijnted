@@ -19,7 +19,6 @@ from .auth import MijntedAuth
 
 _LOGGER = logging.getLogger(__name__)
 
-# Import exceptions from separate module to avoid circular imports
 from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
@@ -211,14 +210,18 @@ class MijntedApi:
             self.delivery_type = first_item
         return result if isinstance(result, list) else []
 
-    async def get_energy_usage(self) -> Dict[str, Any]:
-        """Get energy usage data for the current year.
+    async def get_energy_usage(self, year: Optional[int] = None) -> Dict[str, Any]:
+        """Get energy usage data for a specific year.
+        
+        Args:
+            year: Year to get usage data for (defaults to current year)
         
         Returns:
             Dictionary containing energy usage data with monthly breakdown
         """
-        current_year = self._get_current_year()
-        url = f"{self.base_url}/residentialUnitUsage/{current_year}/{self.residential_unit}/{self.delivery_type}"
+        if year is None:
+            year = self._get_current_year()
+        url = f"{self.base_url}/residentialUnitUsage/{year}/{self.residential_unit}/{self.delivery_type}"
         return await self._make_request("GET", url)
 
     async def get_last_data_update(self) -> Dict[str, Any]:
@@ -303,24 +306,19 @@ class MijntedApi:
         url = f"{self.base_url}/residentialUnitDetailItem/{self.residential_unit}"
         return await self._make_request("GET", url)
 
-    async def get_usage_last_year(self) -> Dict[str, Any]:
-        """Get usage data for last year.
-        
-        Returns:
-            Dictionary containing last year's energy usage data
-        """
-        last_year = DateUtil.get_last_year()
-        url = f"{self.base_url}/residentialUnitUsage/{last_year}/{self.residential_unit}/{self.delivery_type}"
-        return await self._make_request("GET", url)
 
-    async def get_usage_per_room(self) -> Dict[str, Any]:
-        """Get usage data per room for current year.
+    async def get_usage_per_room(self, year: Optional[int] = None) -> Dict[str, Any]:
+        """Get usage data per room for a specific year.
+        
+        Args:
+            year: Year to get usage data for (defaults to current year)
         
         Returns:
             Dictionary containing room usage data
         """
-        current_year = self._get_current_year()
-        url = f"{self.base_url}/residentialUnitUsagePerRoom/{current_year}/{self.residential_unit}/{self.delivery_type}"
+        if year is None:
+            year = self._get_current_year()
+        url = f"{self.base_url}/residentialUnitUsagePerRoom/{year}/{self.residential_unit}/{self.delivery_type}"
         return await self._make_request("GET", url)
 
     async def get_unit_of_measures(self) -> List[Dict[str, Any]]:

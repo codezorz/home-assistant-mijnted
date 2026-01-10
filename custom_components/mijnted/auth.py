@@ -4,6 +4,7 @@ import logging
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, Callable, Awaitable, Tuple
+
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -83,14 +84,6 @@ class MijntedAuth:
         self.extension_user_role: Optional[str] = None
 
     def _calculate_refresh_token_expires_at(self, refresh_token_expires_in: Optional[Any]) -> datetime:
-        """Calculate refresh token expiration datetime.
-        
-        Args:
-            refresh_token_expires_in: Expiration time in seconds, or None
-            
-        Returns:
-            Datetime when refresh token expires (defaults to 24 hours if not provided)
-        """
         if refresh_token_expires_in is not None:
             try:
                 expires_in_seconds = int(refresh_token_expires_in)
@@ -103,7 +96,6 @@ class MijntedAuth:
         return expires_at
     
     async def _invoke_token_update_callback(self) -> None:
-        """Invoke the token update callback if available."""
         if not self.token_update_callback:
             return
         
@@ -118,14 +110,6 @@ class MijntedAuth:
             _LOGGER.warning("Error in token update callback: %s", err, exc_info=True)
     
     async def _populate_claims_from_id_token(self, id_token: str) -> None:
-        """Populate claims from id_token if not already set.
-        
-        Only called during refresh token rotation. Claim values never change,
-        so this is only needed once. Extracts specific extension_ claims.
-        
-        Args:
-            id_token: ID token to extract claims from
-        """
         payload = JwtUtil.decode_token(id_token)
         if not payload:
             return
@@ -143,17 +127,6 @@ class MijntedAuth:
             self.residential_unit = payload.get(ID_TOKEN_CLAIM_RESIDENTIAL_UNITS)
     
     def _perform_oauth_flow_sync(self, username, password) -> Dict[str, Any]:
-        """Synchronous version of authentication using 'requests'.
-        
-        Delegates to OAuthUtil for the actual OAuth flow implementation.
-        
-        Args:
-            username: User email address
-            password: User password
-            
-        Returns:
-            Dictionary containing tokens from the OAuth flow
-        """
         return OAuthUtil.perform_oauth_flow(self.client_id, username, password)
 
     async def async_authenticate_with_credentials(self, username: str, password: str) -> Dict[str, Any]:
@@ -196,17 +169,6 @@ class MijntedAuth:
             raise
     
     async def _rotate_refresh_token_with_credentials(self) -> str:
-        """Rotate the refresh token using stored credentials.
-        
-        This performs a full OAuth flow to get a new refresh token and access token.
-        Used when the refresh token has expired or is expiring soon (~24 hours).
-        
-        Returns:
-            New access token string
-            
-        Raises:
-            MijntedGrantExpiredError: If credentials callback unavailable or authentication fails
-        """
         if not self.credentials_callback:
             raise MijntedGrantExpiredError(
                 "Refresh token expired but no credentials callback available. Please re-authenticate."

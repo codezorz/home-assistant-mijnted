@@ -169,13 +169,11 @@ class DateUtil:
         if not date_str:
             return None
         
-        # Try DD/MM/YYYY format (common API format)
         try:
             return datetime.strptime(date_str, "%d/%m/%Y").date()
         except (ValueError, TypeError):
             pass
         
-        # Try YYYY-MM-DD format
         try:
             return datetime.strptime(date_str, "%Y-%m-%d").date()
         except (ValueError, TypeError):

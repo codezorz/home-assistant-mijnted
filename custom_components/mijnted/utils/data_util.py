@@ -120,7 +120,6 @@ class DataUtil:
             Total value as float if valid, None otherwise
         """
         if isinstance(filter_status, list):
-            # Sum all currentReadingValue from all devices
             total = sum(
                 float(device.get("currentReadingValue", 0))
                 for device in filter_status
@@ -173,7 +172,6 @@ class DataUtil:
             
             month_data: Dict[str, Any] = {}
             
-            # Store all available fields
             if "totalEnergyUsage" in month:
                 total_usage = month.get("totalEnergyUsage")
                 if total_usage is not None:
@@ -258,7 +256,6 @@ class DataUtil:
         if not monthly_usages:
             return None
         
-        # Parse monthYear format (e.g., "11.2025") and sort by date (most recent first)
         valid_months = []
         for month in monthly_usages:
             if not isinstance(month, dict):
@@ -267,7 +264,6 @@ class DataUtil:
             total_usage = month.get("totalEnergyUsage", 0)
             avg_usage = month.get("averageEnergyUseForBillingUnit")
             
-            # Check if this month has valid data
             if (isinstance(total_usage, (int, float)) and float(total_usage) > 0 and 
                 avg_usage is not None):
                 month_year = month.get("monthYear", "")
@@ -277,7 +273,6 @@ class DataUtil:
                     sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
                     valid_months.append((sort_key, month))
         
-        # Sort by date descending (most recent first) and return the first valid one
         if valid_months:
             valid_months.sort(key=lambda x: x[0], reverse=True)
             return valid_months[0][1]
@@ -306,7 +301,6 @@ class DataUtil:
         if not monthly_usages:
             return None
         
-        # Parse monthYear format (e.g., "11.2025") and sort by date (most recent first)
         valid_months = []
         for month in monthly_usages:
             if not isinstance(month, dict):
@@ -314,7 +308,6 @@ class DataUtil:
             
             total_usage = month.get("totalEnergyUsage", 0)
             
-            # Check if this month has usage data (only requires totalEnergyUsage > 0)
             if isinstance(total_usage, (int, float)) and float(total_usage) > 0:
                 month_year = month.get("monthYear", "")
                 parsed = DataUtil.parse_month_year(month_year)
@@ -323,7 +316,6 @@ class DataUtil:
                     sort_key = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
                     valid_months.append((sort_key, month))
         
-        # Sort by date descending (most recent first) and return the first valid one
         if valid_months:
             valid_months.sort(key=lambda x: x[0], reverse=True)
             return valid_months[0][1]
@@ -404,14 +396,12 @@ class DataUtil:
         if not isinstance(start_readings, dict) or not isinstance(end_readings, dict):
             return devices_list
         
-        # Get all unique device IDs from both maps
         all_device_ids = set(start_readings.keys()) | set(end_readings.keys())
         
         for device_id in all_device_ids:
             start_value = start_readings.get(device_id)
             end_value = end_readings.get(device_id)
             
-            # Only include devices that have both start and end readings
             if start_value is not None and end_value is not None:
                 try:
                     devices_list.append({

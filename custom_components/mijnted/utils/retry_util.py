@@ -56,7 +56,6 @@ class RetryUtil:
                     await asyncio.sleep(delay)
                     continue
             except Exception as err:
-                # Don't retry on unexpected exceptions - re-raise immediately
                 _LOGGER.error(
                     "%s failed with unexpected exception (attempt %d/%d): %s",
                     operation.capitalize(),

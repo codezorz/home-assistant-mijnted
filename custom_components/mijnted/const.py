@@ -4,14 +4,14 @@ from datetime import timedelta
 DOMAIN = "mijnted"
 API_BASE_URL = "https://ted-prod-function-app.azurewebsites.net/api"
 AUTH_URL = "https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token"
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BUTTON]
 DEFAULT_POLLING_INTERVAL = timedelta(hours=1)
 UNIT_MIJNTED = "Units"
 
 # API constants
-REQUEST_TIMEOUT = 10  # seconds
-TOKEN_REFRESH_MAX_RETRIES = 3  # Maximum number of retry attempts for token refresh
-TOKEN_REFRESH_RETRY_DELAY = 10  # Delay in seconds between token refresh retry attempts
+REQUEST_TIMEOUT = 10
+TOKEN_REFRESH_MAX_RETRIES = 3
+TOKEN_REFRESH_RETRY_DELAY = 10
 
 # ID token claim constants
 ID_TOKEN_CLAIM_RESIDENTIAL_UNITS = "extension_ResidentialUnits"
@@ -25,24 +25,23 @@ HTTP_STATUS_BAD_REQUEST = 400
 HTTP_STATUS_UNAUTHORIZED = 401
 
 # Polling interval constants
-MIN_POLLING_INTERVAL = 3600  # 1 hour in seconds
-MAX_POLLING_INTERVAL = 86400  # 24 hours in seconds
+MIN_POLLING_INTERVAL = 3600
+MAX_POLLING_INTERVAL = 86400
 
 # Refresh token expiration constants
-REFRESH_TOKEN_PROACTIVE_REFRESH_THRESHOLD_SECONDS = 900  # 15 minutes in seconds - refresh when less time remains
-REFRESH_TOKEN_DEFAULT_EXPIRATION_SECONDS = 86400  # 24 hours in seconds - default expiration when not provided
+REFRESH_TOKEN_PROACTIVE_REFRESH_THRESHOLD_SECONDS = 900
+REFRESH_TOKEN_DEFAULT_EXPIRATION_SECONDS = 86400
 
 # Sensor calculation constants
-CALCULATION_YEAR_MONTH_SORT_MULTIPLIER = 100  # Multiplier for creating sortable year-month keys (year * 100 + month)
-CALCULATION_AVERAGE_PER_DAY_DECIMAL_PLACES = 2  # Number of decimal places for average_per_day calculations
+CALCULATION_YEAR_MONTH_SORT_MULTIPLIER = 100
+CALCULATION_AVERAGE_PER_DAY_DECIMAL_PLACES = 2
 
 # Cache constants
-CACHE_HISTORY_MONTHS = 12  # Number of months to store in historical readings cache
+CACHE_HISTORY_MONTHS = 16
 
 # Sensor and calculation constants
-MONTH_YEAR_PARTS_COUNT = 2  # Expected number of parts when parsing month.year format (e.g., "1.2025")
-DEFAULT_START_VALUE = 0.0  # Default start value for device readings at year start
-ENTITY_REGISTRATION_DELAY_SECONDS = 0.1  # Delay in seconds to ensure entity is fully registered before statistics injection
+MONTH_YEAR_PARTS_COUNT = 2
+DEFAULT_START_VALUE = 0.0
 
 # Azure B2C authentication constants
 AUTH_TENANT_NAME = "mytedprod"

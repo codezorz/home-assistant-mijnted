@@ -2,8 +2,8 @@ import logging
 import re
 import uuid
 import urllib.parse
-import pkce
 import requests
+import pkce
 from typing import Dict, Any, Tuple, Optional
 
 from ..const import (
@@ -44,14 +44,6 @@ class OAuthUtil:
     
     @staticmethod
     def _parse_csrf_token(html_text: str) -> Optional[str]:
-        """Extract CSRF token from authorization page HTML.
-        
-        Args:
-            html_text: HTML content from authorization page
-            
-        Returns:
-            CSRF token string if found, None otherwise
-        """
         if not html_text or not isinstance(html_text, str):
             return None
         
@@ -62,14 +54,6 @@ class OAuthUtil:
     
     @staticmethod
     def _parse_transaction_id(html_text: str) -> Optional[str]:
-        """Extract transaction ID from authorization page HTML.
-        
-        Args:
-            html_text: HTML content from authorization page
-            
-        Returns:
-            Transaction ID string if found, None otherwise
-        """
         if not html_text or not isinstance(html_text, str):
             return None
         
@@ -80,14 +64,6 @@ class OAuthUtil:
     
     @staticmethod
     def _parse_authorization_code_from_location(location_header: str) -> Optional[str]:
-        """Parse authorization code from Location header.
-        
-        Args:
-            location_header: Location header value from redirect response
-            
-        Returns:
-            Authorization code if found, None otherwise
-        """
         if not location_header or not isinstance(location_header, str):
             return None
         
@@ -105,14 +81,6 @@ class OAuthUtil:
     
     @staticmethod
     def _parse_authorization_code_from_body(response_text: str) -> Optional[str]:
-        """Parse authorization code from response body.
-        
-        Args:
-            response_text: Response body text
-            
-        Returns:
-            Authorization code if found, None otherwise
-        """
         if not response_text or not isinstance(response_text, str):
             return None
         
@@ -148,7 +116,7 @@ class OAuthUtil:
     
     @staticmethod
     def submit_credentials(
-        session: requests.Session,
+        session: "requests.Session",
         csrf_token: str,
         trans_id: str,
         username: str,
@@ -195,14 +163,13 @@ class OAuthUtil:
             _LOGGER.error("Login request failed with HTTP %d", login_resp.status_code)
             raise MijntedAuthenticationError(f"Login failed (HTTP {login_resp.status_code})")
         
-        status_ok_str = f'"status":"{HTTP_STATUS_OK}"'
-        status_ok_str_spaced = f'"status": "{HTTP_STATUS_OK}"'
-        if status_ok_str not in login_resp.text and status_ok_str_spaced not in login_resp.text:
+        status_patterns = (f'"status":"{HTTP_STATUS_OK}"', f'"status": "{HTTP_STATUS_OK}"')
+        if not any(pattern in login_resp.text for pattern in status_patterns):
             _LOGGER.warning("Login request returned 200 but status indicates failure")
             raise MijntedAuthenticationError("Invalid credentials or login blocked by server")
     
     @staticmethod
-    def extract_authorization_code(confirm_resp: requests.Response) -> str:
+    def extract_authorization_code(confirm_resp: "requests.Response") -> str:
         """Extract authorization code from response.
         
         Args:
@@ -232,7 +199,7 @@ class OAuthUtil:
     
     @staticmethod
     def exchange_code_for_tokens(
-        session: requests.Session,
+        session: "requests.Session",
         auth_code: str,
         code_verifier: str,
         client_id: str

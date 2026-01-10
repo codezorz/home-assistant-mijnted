@@ -42,9 +42,25 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Create options flow handler."""
         return MijnTedOptionsFlowHandler(config_entry)
 
+    def _handle_validation_error(
+        self,
+        err: Exception,
+        error_type: str,
+        log_message: str,
+        exception_class: type,
+        user_message_template: str
+    ) -> None:
+        error_msg = str(err) if err else ""
+        _LOGGER.debug(
+            f"{log_message}: %s",
+            error_msg,
+            extra={"error_type": error_type}
+        )
+        user_message = user_message_template.format(msg=error_msg) if error_msg else user_message_template.replace("{msg}", "")
+        raise exception_class(user_message) from err
+    
     @staticmethod
     def _get_data_schema() -> vol.Schema:
-        """Get the data schema for config flow."""
         return vol.Schema(
             {
                 vol.Required(CONF_CLIENT_ID): str,
@@ -126,8 +142,6 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _validate_input(self, user_input: Dict[str, Any]) -> None:
-        """Validate the user input."""
-        # Create session with explicit cookie jar to ensure cookies are maintained between requests
         connector = aiohttp.TCPConnector()
         cookie_jar = aiohttp.CookieJar()
         session = aiohttp.ClientSession(connector=connector, cookie_jar=cookie_jar)
@@ -166,53 +180,17 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if auth.residential_unit:
                 user_input["residential_unit"] = auth.residential_unit
         except MijntedGrantExpiredError as err:
-            error_msg = str(err) if err else "Refresh token grant has expired"
-            _LOGGER.debug(
-                "Grant expiration during validation: %s",
-                error_msg,
-                extra={"error_type": "MijntedGrantExpiredError"}
-            )
-            raise InvalidAuth(f"Refresh token has expired. Please re-authenticate: {error_msg}") from err
+            self._handle_validation_error(err, "MijntedGrantExpiredError", "Grant expiration during validation", InvalidAuth, "Refresh token has expired. Please re-authenticate: {msg}")
         except MijntedAuthenticationError as err:
-            error_msg = str(err) if err else "Authentication failed"
-            _LOGGER.debug(
-                "Authentication validation failed: %s",
-                error_msg,
-                extra={"error_type": "MijntedAuthenticationError"}
-            )
-            raise InvalidAuth(f"Invalid credentials: {error_msg}") from err
+            self._handle_validation_error(err, "MijntedAuthenticationError", "Authentication validation failed", InvalidAuth, "Invalid credentials: {msg}")
         except MijntedTimeoutError as err:
-            error_msg = str(err) if err else "Request timed out"
-            _LOGGER.debug(
-                "Timeout during validation: %s",
-                error_msg,
-                extra={"error_type": "MijntedTimeoutError"}
-            )
-            raise CannotConnect(f"Connection timeout: {error_msg}. Please check your internet connection and try again.") from err
+            self._handle_validation_error(err, "MijntedTimeoutError", "Timeout during validation", CannotConnect, "Connection timeout: {msg}. Please check your internet connection and try again.")
         except MijntedConnectionError as err:
-            error_msg = str(err) if err else "Connection failed"
-            _LOGGER.debug(
-                "Connection validation failed: %s",
-                error_msg,
-                extra={"error_type": "MijntedConnectionError"}
-            )
-            raise CannotConnect(f"Unable to connect to MijnTed API: {error_msg}. Please check your internet connection.") from err
+            self._handle_validation_error(err, "MijntedConnectionError", "Connection validation failed", CannotConnect, "Unable to connect to MijnTed API: {msg}. Please check your internet connection.")
         except MijntedApiError as err:
-            error_msg = str(err) if err else "API error"
-            _LOGGER.debug(
-                "API validation failed: %s",
-                error_msg,
-                extra={"error_type": "MijntedApiError"}
-            )
-            raise CannotConnect(f"MijnTed API error: {error_msg}. Please try again later.") from err
+            self._handle_validation_error(err, "MijntedApiError", "API validation failed", CannotConnect, "MijnTed API error: {msg}. Please try again later.")
         except aiohttp.ClientError as err:
-            error_msg = str(err) if err else "Network error"
-            _LOGGER.debug(
-                "HTTP client error during validation: %s",
-                error_msg,
-                extra={"error_type": "aiohttp.ClientError"}
-            )
-            raise CannotConnect(f"Network error: {error_msg}. Please check your internet connection.") from err
+            self._handle_validation_error(err, "aiohttp.ClientError", "HTTP client error during validation", CannotConnect, "Network error: {msg}. Please check your internet connection.")
         finally:
             await session.close()
 
