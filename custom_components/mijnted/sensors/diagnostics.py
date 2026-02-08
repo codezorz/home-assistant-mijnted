@@ -222,6 +222,7 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         super().__init__(coordinator, "latest_available_insight", "latest available insight")
         self._attr_icon = "mdi:calendar-month"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_native_unit_of_measurement = None
     
     def _find_latest_month_with_average_from_energy_data(
         self, energy_data: Dict[str, Any]
@@ -343,12 +344,8 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         Returns:
             Dictionary containing:
             - month_id: Month identifier (MM.YYYY)
-            - total_energy_usage: Total usage for the month
-            - average_energy_use_for_billing_unit: Average usage for billing unit
-            - unit_of_measurement: Unit of measurement
-            - is_current_month: Whether this is the current month
+            - usage_unit: Unit for energy values (e.g. Eenheden)
             - has_average: Whether average data is available
-            - last_year_comparison: Comparison data from last year (if available)
         """
         attributes: Dict[str, Any] = {}
         
@@ -375,51 +372,11 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         month_year = latest_month.get("monthYear")
         if month_year:
             attributes["month_id"] = month_year
-            attributes["is_current_month"] = DataUtil.is_current_month(month_year)
             attributes["has_average"] = has_average
         
-        total_usage = latest_month.get("totalEnergyUsage")
-        if total_usage is not None:
-            converted = DataUtil.safe_float(total_usage)
-            if converted is not None:
-                attributes["total_energy_usage"] = converted
-        
-        avg_usage = latest_month.get("averageEnergyUseForBillingUnit")
-        if avg_usage is not None:
-            converted = DataUtil.safe_float(avg_usage)
-            if converted is not None:
-                attributes["average_energy_use_for_billing_unit"] = converted
-        
-        unit_of_measurement = latest_month.get("unitOfMeasurement")
-        if unit_of_measurement:
-            attributes["unit_of_measurement"] = unit_of_measurement
-        
-        if month_year:
-            month_num = DataUtil.extract_month_number(month_year)
-            if month_num:
-                usage_last_year = data.get("usage_last_year", {})
-                if isinstance(usage_last_year, dict):
-                    last_year = DateUtil.get_last_year()
-                    last_year_month_identifier = f"{month_num}.{last_year}"
-                    last_year_month = DataUtil.find_month_by_identifier(usage_last_year, last_year_month_identifier)
-                    
-                    if last_year_month:
-                        last_year_attributes: Dict[str, Any] = {}
-                        
-                        last_year_total = last_year_month.get("totalEnergyUsage")
-                        if last_year_total is not None:
-                            converted = DataUtil.safe_float(last_year_total)
-                            if converted is not None:
-                                last_year_attributes["total_energy_usage"] = converted
-                        
-                        last_year_avg = last_year_month.get("averageEnergyUseForBillingUnit")
-                        if last_year_avg is not None:
-                            converted = DataUtil.safe_float(last_year_avg)
-                            if converted is not None:
-                                last_year_attributes["average_energy_use_for_billing_unit"] = converted
-                        
-                        if last_year_attributes:
-                            attributes["last_year_comparison"] = last_year_attributes
+        usage_unit = latest_month.get("unitOfMeasurement")
+        if usage_unit:
+            attributes["usage_unit"] = usage_unit
         
         return attributes
 
