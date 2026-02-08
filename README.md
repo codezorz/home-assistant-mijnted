@@ -94,7 +94,12 @@ The integration automatically injects historical data into Home Assistant's reco
 - **Last Year Monthly Usage Sensor**: Injects historical data for the previous year's corresponding month
 - **Average Monthly Usage Sensors**: Inject historical average values for trend analysis
 
-All sensors use appropriate state classes (`TOTAL`, `TOTAL_INCREASING`, `MEASUREMENT`) to ensure correct behavior in Home Assistant's statistics and history system.
+All usage sensors use appropriate state classes (`TOTAL` or `TOTAL_INCREASING`) to ensure correct behavior in Home Assistant's statistics and history system, enabling proper historical data tracking and graph visualization:
+- **Monthly Usage**: `TOTAL` - for tracking monthly consumption
+- **Last Year Monthly Usage**: `TOTAL` - for historical comparison
+- **Average Monthly Usage**: `TOTAL` - for tracking average usage trends over time
+- **Last Year Average Monthly Usage**: `TOTAL` - for historical average comparison
+- **Total Usage**: `TOTAL_INCREASING` - for cumulative meter readings
 
 You can use these sensors in your automations, scripts, and dashboards to monitor and analyze your energy consumption. The sensors include additional attributes with detailed information that can be accessed in templates and automations.
 

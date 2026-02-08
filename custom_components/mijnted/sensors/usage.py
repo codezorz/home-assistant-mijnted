@@ -208,9 +208,9 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
         """Return the state class.
         
         Returns:
-            SensorStateClass.MEASUREMENT for average values
+            SensorStateClass.TOTAL for historical tracking
         """
-        return SensorStateClass.MEASUREMENT
+        return SensorStateClass.TOTAL
 
     async def _async_inject_statistics(self) -> None:
         await self._build_statistics_from_history(
@@ -275,9 +275,9 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
         """Return the state class.
         
         Returns:
-            SensorStateClass.MEASUREMENT for average values
+            SensorStateClass.TOTAL for historical tracking
         """
-        return SensorStateClass.MEASUREMENT
+        return SensorStateClass.TOTAL
 
     async def _async_inject_statistics(self) -> None:
         await self._async_inject_last_year_statistics("average_usage", "last_year_average_usage", StatisticMeanType.ARITHMETIC)
