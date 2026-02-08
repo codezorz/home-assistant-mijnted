@@ -1,17 +1,33 @@
-from datetime import timedelta, datetime, timezone, date
-from typing import Any, Dict, Optional, Tuple, List
 import asyncio
 import logging
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
 from .api import MijntedApi
-from .exceptions import MijntedApiError, MijntedAuthenticationError, MijntedGrantExpiredError, MijntedConnectionError
-from .const import DOMAIN, DEFAULT_POLLING_INTERVAL, CACHE_HISTORY_MONTHS, DEFAULT_START_VALUE
-from .utils import ApiUtil, DateUtil, TimestampUtil, DataUtil
-from .sensors.models import StatisticsTracking, MonthCacheEntry, DeviceReading
+from .const import (
+    CACHE_HISTORY_MONTHS,
+    CONF_PASSWORD,
+    CONF_POLLING_INTERVAL,
+    CONF_USERNAME,
+    DEFAULT_POLLING_INTERVAL,
+    DEFAULT_START_VALUE,
+    DOMAIN,
+    MONTH_YEAR_PARTS_COUNT,
+)
+from .exceptions import (
+    MijntedApiError,
+    MijntedAuthenticationError,
+    MijntedConnectionError,
+    MijntedGrantExpiredError,
+)
+from .utils import ApiUtil, DataUtil, DateUtil, TimestampUtil
 from .sensors.base import MijnTedSensor
+from .sensors.models import DeviceReading, MonthCacheEntry, StatisticsTracking
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,7 +54,6 @@ async def _load_persisted_cache(hass: HomeAssistant, entry_id: str) -> Optional[
         if data and isinstance(data, dict):
             cache = data.get("monthly_history_cache")
             if isinstance(cache, dict):
-                now = datetime.now()
                 validated_cache: Dict[str, MonthCacheEntry] = {}
                 for month_key, cache_entry_dict in cache.items():
                     if not isinstance(cache_entry_dict, dict):
@@ -52,10 +67,10 @@ async def _load_persisted_cache(hass: HomeAssistant, entry_id: str) -> Optional[
                     
                     try:
                         parts = month_key.split("-")
-                        if len(parts) == 2:
+                        if len(parts) == MONTH_YEAR_PARTS_COUNT:
                             year = int(parts[0])
                             month = int(parts[1])
-                            is_current_month = (month == now.month and year == now.year)
+                            is_current_month = DateUtil.is_current_month(month, year)
                         else:
                             is_current_month = False
                     except (ValueError, IndexError):
@@ -88,7 +103,6 @@ async def _save_persisted_cache(
         entry_id: Config entry ID
         monthly_history_cache: Cache data to persist (MonthCacheEntry objects)
     """
-    now = datetime.now()
     complete_cache: Dict[str, Dict[str, Any]] = {}
     for month_key, cache_entry in monthly_history_cache.items():
         if not isinstance(cache_entry, MonthCacheEntry):
@@ -103,10 +117,10 @@ async def _save_persisted_cache(
         
         try:
             parts = month_key.split("-")
-            if len(parts) == 2:
+            if len(parts) == MONTH_YEAR_PARTS_COUNT:
                 year = int(parts[0])
                 month = int(parts[1])
-                is_current_month = (month == now.month and year == now.year)
+                is_current_month = DateUtil.is_current_month(month, year)
             else:
                 is_current_month = False
         except (ValueError, IndexError):
@@ -173,8 +187,6 @@ def _is_month_cache_complete(
             return False
     
     return True
-
-
 
 
 def _extract_end_values_from_devices(devices_list: List[Dict[str, Any]]) -> Dict[str, float]:
@@ -333,6 +345,22 @@ async def _get_start_readings_from_previous_month(
     return start_readings, start_total
 
 
+def _empty_month_cache_entry(month_num: int, year: int) -> MonthCacheEntry:
+    """Build an empty MonthCacheEntry for a month (e.g. when API build fails)."""
+    month_year_key = _format_month_year_key(month_num, year)
+    return MonthCacheEntry(
+        month_id=month_year_key,
+        year=year,
+        month=month_num,
+        start_date=DateUtil.format_date_for_api(DateUtil.get_first_day_of_month(month_num, year)),
+        end_date=DateUtil.format_date_for_api(DateUtil.get_last_day_of_month(month_num, year)),
+        total_usage=None,
+        average_usage=None,
+        devices=[],
+        finalized=False
+    )
+
+
 async def _build_month_cache_entry(
     api: MijntedApi,
     month_num: int,
@@ -360,8 +388,7 @@ async def _build_month_cache_entry(
     end_readings = DataUtil.extract_device_readings_map(end_anchor)
     end_total = DataUtil.calculate_filter_status_total(end_anchor)
     
-    now = datetime.now()
-    is_current_month = (month_num == now.month and year == now.year)
+    is_current_month = DateUtil.is_current_month(month_num, year)
     
     if month_num == 1:
         start_readings = {}
@@ -453,10 +480,9 @@ async def _build_initial_monthly_history_cache(
     
     months_to_build = list(reversed(months_to_build))
     
-    now = datetime.now()
     for month_num, year in months_to_build:
         month_key = DateUtil.format_month_key(year, month_num)
-        is_current_month = (month_num == now.month and year == now.year)
+        is_current_month = DateUtil.is_current_month(month_num, year)
         
         existing_entry = monthly_history_cache.get(month_key)
         if existing_entry:
@@ -485,18 +511,7 @@ async def _build_initial_monthly_history_cache(
                 extra={"month": month_key, "error_type": type(err).__name__},
                 exc_info=True
             )
-            month_year_key = _format_month_year_key(month_num, year)
-            monthly_history_cache[month_key] = MonthCacheEntry(
-                month_id=month_year_key,
-                year=year,
-                month=month_num,
-                start_date=DateUtil.format_date_for_api(DateUtil.get_first_day_of_month(month_num, year)),
-                end_date=DateUtil.format_date_for_api(DateUtil.get_last_day_of_month(month_num, year)),
-                total_usage=None,
-                average_usage=None,
-                devices=[],
-                finalized=False
-            )
+            monthly_history_cache[month_key] = _empty_month_cache_entry(month_num, year)
     
     return monthly_history_cache
 
@@ -852,6 +867,399 @@ async def _enrich_cache_with_api_data(
                                 )
 
 
+def _parse_refresh_token_expires_at(entry: ConfigEntry) -> Optional[datetime]:
+    """Parse refresh_token_expires_at from config entry data."""
+    refresh_token_expires_at_str = entry.data.get("refresh_token_expires_at")
+    if not refresh_token_expires_at_str:
+        return None
+    try:
+        refresh_token_expires_at = datetime.fromisoformat(
+            refresh_token_expires_at_str.replace("Z", "+00:00")
+        )
+        if refresh_token_expires_at.tzinfo is None:
+            refresh_token_expires_at = refresh_token_expires_at.replace(tzinfo=timezone.utc)
+        return refresh_token_expires_at
+    except (ValueError, AttributeError) as err:
+        _LOGGER.warning(
+            "Could not parse refresh_token_expires_at from config: %s",
+            refresh_token_expires_at_str,
+            extra={"entry_id": entry.entry_id},
+            exc_info=True
+        )
+        return None
+
+
+def _handle_gather_result(
+    name: str,
+    result: Any,
+    default_empty: Any,
+    residential_unit: Optional[str],
+) -> Any:
+    """Handle result from asyncio.gather: return value or default and log on exception."""
+    if isinstance(result, Exception):
+        _LOGGER.warning(
+            "Failed to fetch %s: %s",
+            name,
+            result,
+            extra={
+                "data_type": name,
+                "residential_unit": residential_unit,
+                "error_type": type(result).__name__
+            }
+        )
+        return default_empty
+    return result
+
+
+def _build_room_usage(usage_per_room_data: Any) -> Dict[str, Any]:
+    """Build room_usage dict from API usage_per_room response (dict or list)."""
+    room_usage: Dict[str, Any] = {}
+    if isinstance(usage_per_room_data, dict):
+        rooms = usage_per_room_data.get("rooms", [])
+        current_year_data = usage_per_room_data.get("currentYear", {})
+        values = current_year_data.get("values", [])
+        for i, room_name in enumerate(rooms):
+            if i < len(values):
+                value = values[i]
+                if room_name in room_usage:
+                    existing = DataUtil.safe_float(room_usage[room_name], 0.0) or 0.0
+                    new_value = DataUtil.safe_float(value, 0.0) or 0.0
+                    room_usage[room_name] = existing + new_value
+                else:
+                    room_usage[room_name] = DataUtil.safe_float(value, 0.0) or 0.0
+    elif isinstance(usage_per_room_data, list):
+        for i, item in enumerate(usage_per_room_data):
+            if isinstance(item, dict):
+                room_name = item.get("room") or item.get("roomName") or item.get("name") or item.get("id")
+                if room_name:
+                    room_usage[room_name] = item
+                else:
+                    room_usage[f"room_{i}"] = item
+            else:
+                room_usage[f"room_{i}"] = item
+    return room_usage
+
+
+async def _fetch_and_normalize_api_data(api: MijntedApi) -> Dict[str, Any]:
+    """Fetch all API data via gather + delivery_types and normalize (exceptions to defaults)."""
+    last_year = DateUtil.get_last_year()
+    (
+        energy_usage_data,
+        last_update_data,
+        filter_status_data,
+        usage_insight_data,
+        usage_insight_last_year_data,
+        active_model_data,
+        residential_unit_detail_data,
+        usage_per_room_data,
+        unit_of_measures_data,
+    ) = await asyncio.gather(
+        api.get_energy_usage(),
+        api.get_last_data_update(),
+        api.get_filter_status(),
+        api.get_usage_insight(),
+        api.get_usage_insight(last_year),
+        api.get_active_model(),
+        api.get_residential_unit_detail(),
+        api.get_usage_per_room(),
+        api.get_unit_of_measures(),
+        return_exceptions=True,
+    )
+    residential_unit = api.residential_unit
+    energy_usage_data = _handle_gather_result("energy_usage", energy_usage_data, {}, residential_unit)
+    last_update_data = _handle_gather_result("last_update", last_update_data, {}, residential_unit)
+    filter_status_data = _handle_gather_result("filter_status", filter_status_data, [], residential_unit)
+    usage_insight_data = _handle_gather_result("usage_insight", usage_insight_data, {}, residential_unit)
+    usage_insight_last_year_data = _handle_gather_result(
+        "usage_insight_last_year", usage_insight_last_year_data, {}, residential_unit
+    )
+    active_model_data = _handle_gather_result("active_model", active_model_data, {}, residential_unit)
+    residential_unit_detail_data = _handle_gather_result(
+        "residential_unit_detail", residential_unit_detail_data, {}, residential_unit
+    )
+    usage_per_room_data = _handle_gather_result(
+        "usage_per_room", usage_per_room_data, {}, residential_unit
+    )
+    unit_of_measures_data = _handle_gather_result(
+        "unit_of_measures", unit_of_measures_data, [], residential_unit
+    )
+    delivery_types = await api.get_delivery_types()
+    return {
+        "energy_usage_data": energy_usage_data,
+        "last_update_data": last_update_data,
+        "filter_status_data": filter_status_data,
+        "usage_insight_data": usage_insight_data,
+        "usage_insight_last_year_data": usage_insight_last_year_data,
+        "active_model_data": active_model_data,
+        "residential_unit_detail_data": residential_unit_detail_data,
+        "usage_per_room_data": usage_per_room_data,
+        "unit_of_measures_data": unit_of_measures_data,
+        "delivery_types": delivery_types,
+    }
+
+
+async def _compute_anchor_calculations(
+    api: MijntedApi,
+    energy_usage_data: Dict[str, Any],
+    filter_status: List[Dict[str, Any]],
+) -> Tuple[Dict[str, float], Optional[float]]:
+    """Compute calculated_history and current_month_calculated from anchors."""
+    calculated_history: Dict[str, float] = {}
+    current_month_calculated: Optional[float] = None
+    try:
+        prev_month, prev_year = DateUtil.get_previous_month()
+        month_key = _format_month_year_key(prev_month, prev_year)
+        has_previous_month_in_analytics = False
+        if isinstance(energy_usage_data, dict):
+            monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
+            for month in monthly_usages:
+                if isinstance(month, dict) and month.get("monthYear") == month_key:
+                    has_previous_month_in_analytics = True
+                    break
+        if not has_previous_month_in_analytics:
+            try:
+                first_day = DateUtil.get_first_day_of_month(prev_month, prev_year)
+                last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
+                start_anchor = await api.get_device_statuses_for_date(first_day)
+                end_anchor = await api.get_device_statuses_for_date(last_day)
+                start_total = DataUtil.calculate_filter_status_total(start_anchor)
+                end_total = DataUtil.calculate_filter_status_total(end_anchor)
+                if start_total is not None and end_total is not None:
+                    if prev_month == 1:
+                        calculated_history[month_key] = end_total
+                    else:
+                        calculated_history[month_key] = end_total - start_total
+                else:
+                    _LOGGER.warning(
+                        "Could not calculate previous month usage: missing anchor data for %s",
+                        month_key,
+                        extra={"month": month_key, "has_start": start_total is not None, "has_end": end_total is not None}
+                    )
+            except Exception as err:
+                _LOGGER.warning(
+                    "Failed to calculate previous month usage for %s: %s",
+                    month_key,
+                    err,
+                    extra={"month": month_key, "error_type": type(err).__name__},
+                    exc_info=True
+                )
+        try:
+            current_month = datetime.now().month
+            current_year = datetime.now().year
+            current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
+            current_month_start_anchor = await api.get_device_statuses_for_date(current_month_first_day)
+            current_month_start_total = DataUtil.calculate_filter_status_total(current_month_start_anchor)
+            current_readings_total = DataUtil.calculate_filter_status_total(filter_status)
+            if current_month_start_total is not None and current_readings_total is not None:
+                if current_month == 1:
+                    current_month_calculated = current_readings_total
+                else:
+                    current_month_calculated = current_readings_total - current_month_start_total
+            else:
+                _LOGGER.debug(
+                    "Could not calculate current month usage: missing anchor data",
+                    extra={"has_start": current_month_start_total is not None, "has_current": current_readings_total is not None}
+                )
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to calculate current month usage: %s",
+                err,
+                extra={"error_type": type(err).__name__},
+                exc_info=True
+            )
+    except Exception as err:
+        _LOGGER.warning(
+            "Error in anchor calculation logic: %s",
+            err,
+            extra={"error_type": type(err).__name__},
+            exc_info=True
+        )
+    return (calculated_history, current_month_calculated)
+
+
+async def _ensure_monthly_history_cache(
+    api: MijntedApi,
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    last_update: Any,
+    energy_usage_data: Dict[str, Any],
+    filter_status: List[Dict[str, Any]],
+) -> Tuple[Dict[str, MonthCacheEntry], Optional[str], StatisticsTracking]:
+    """Load/build/update/enrich/persist monthly history cache; return cache, last_update_date, statistics_tracking."""
+    monthly_history_cache: Dict[str, MonthCacheEntry] = {}
+    cached_last_update_date: Optional[str] = None
+    cache_was_modified = False
+
+    if entry.entry_id in hass.data.get(DOMAIN, {}):
+        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
+        if existing_coordinator and existing_coordinator.data:
+            cache_data = existing_coordinator.data.get("monthly_history_cache", {})
+            cached_last_update_date = existing_coordinator.data.get("cached_last_update_date")
+            if cache_data:
+                converted_cache: Dict[str, MonthCacheEntry] = {}
+                for month_key, entry_data in cache_data.items():
+                    if isinstance(entry_data, MonthCacheEntry):
+                        converted_cache[month_key] = entry_data
+                    elif isinstance(entry_data, dict):
+                        try:
+                            converted_cache[month_key] = MonthCacheEntry.from_dict(entry_data)
+                        except Exception as err:
+                            _LOGGER.warning("Failed to convert cache entry for %s: %s", month_key, err)
+                    else:
+                        _LOGGER.warning("Invalid cache entry type for %s: %s", month_key, type(entry_data))
+                monthly_history_cache = converted_cache
+
+    if not monthly_history_cache:
+        persisted_cache = await _load_persisted_cache(hass, entry.entry_id)
+        if persisted_cache:
+            monthly_history_cache = persisted_cache
+            _LOGGER.info("Restored monthly history cache from storage (%d complete months)", len(monthly_history_cache))
+
+    current_last_update_date = None
+    if isinstance(last_update, dict):
+        current_last_update_date = last_update.get("lastSyncDate") or last_update.get("date")
+    elif isinstance(last_update, str):
+        current_last_update_date = last_update
+
+    last_update_date_changed = current_last_update_date != cached_last_update_date
+
+    try:
+        if not monthly_history_cache:
+            monthly_history_cache = await _build_initial_monthly_history_cache(
+                api, last_update, energy_usage_data,
+                existing_cache=monthly_history_cache
+            )
+            cache_was_modified = True
+        else:
+            cache_before = len(monthly_history_cache)
+            monthly_history_cache = await _build_initial_monthly_history_cache(
+                api, last_update, energy_usage_data,
+                existing_cache=monthly_history_cache
+            )
+            if len(monthly_history_cache) > cache_before:
+                cache_was_modified = True
+            if last_update_date_changed:
+                try:
+                    await _update_current_month_cache(
+                        api, monthly_history_cache, filter_status,
+                        last_update, energy_usage_data
+                    )
+                    cache_was_modified = True
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Failed to refresh current month in cache: %s",
+                        err,
+                        extra={"error_type": type(err).__name__},
+                        exc_info=True
+                    )
+        cache_before_enrich: Dict[str, Optional[float]] = {}
+        for k, v in monthly_history_cache.items():
+            if isinstance(v, MonthCacheEntry):
+                cache_before_enrich[k] = v.average_usage
+            elif isinstance(v, dict):
+                cache_before_enrich[k] = v.get("average_usage")
+        await _enrich_cache_with_api_data(api, monthly_history_cache, energy_usage_data)
+        cache_after_enrich: Dict[str, Optional[float]] = {}
+        for k, v in monthly_history_cache.items():
+            if isinstance(v, MonthCacheEntry):
+                cache_after_enrich[k] = v.average_usage
+            elif isinstance(v, dict):
+                cache_after_enrich[k] = v.get("average_usage")
+        if cache_before_enrich != cache_after_enrich:
+            cache_was_modified = True
+        try:
+            await _recalculate_current_month_starts_if_previous_finalized(
+                api,
+                monthly_history_cache,
+                filter_status,
+                cache_before_enrich,
+                cache_after_enrich
+            )
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to recalculate current month start values after previous month finalization: %s",
+                err,
+                extra={"error_type": type(err).__name__},
+                exc_info=True
+            )
+        if cache_was_modified:
+            try:
+                await _save_persisted_cache(hass, entry.entry_id, monthly_history_cache)
+            except Exception as err:
+                _LOGGER.warning("Failed to persist cache: %s", err)
+    except Exception as err:
+        _LOGGER.warning(
+            "Error in monthly history cache logic: %s",
+            err,
+            extra={"error_type": type(err).__name__},
+            exc_info=True
+        )
+
+    statistics_tracking = None
+    if entry.entry_id in hass.data.get(DOMAIN, {}):
+        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
+        if existing_coordinator and existing_coordinator.data:
+            existing_tracking = existing_coordinator.data.get("statistics_tracking")
+            if isinstance(existing_tracking, StatisticsTracking):
+                statistics_tracking = existing_tracking
+    if statistics_tracking is None:
+        statistics_tracking = StatisticsTracking(
+            monthly_usage=None,
+            last_year_monthly_usage=None,
+            average_monthly_usage=None,
+            last_year_average_monthly_usage=None,
+            total_usage=None
+        )
+    return (monthly_history_cache, current_last_update_date, statistics_tracking)
+
+
+def _build_coordinator_return_dict(
+    api: MijntedApi,
+    energy_usage_data: Dict[str, Any],
+    energy_usage_total: float,
+    last_update: Any,
+    filter_status: List[Dict[str, Any]],
+    usage_insight_data: Dict[str, Any],
+    usage_insight_last_year_data: Dict[str, Any],
+    active_model: Any,
+    delivery_types: List[Any],
+    residential_unit_detail_data: Dict[str, Any],
+    usage_this_year: Dict[str, Any],
+    usage_last_year: Dict[str, Any],
+    room_usage: Dict[str, Any],
+    unit_of_measures_data: List[Any],
+    last_successful_sync: str,
+    calculated_history: Dict[str, float],
+    current_month_calculated: Optional[float],
+    monthly_history_cache: Dict[str, MonthCacheEntry],
+    current_last_update_date: Optional[str],
+    statistics_tracking: StatisticsTracking,
+) -> Dict[str, Any]:
+    """Build the coordinator data dictionary returned by async_update_data."""
+    return {
+        "energy_usage": energy_usage_total,
+        "energy_usage_data": energy_usage_data,
+        "last_update": last_update,
+        "filter_status": filter_status,
+        "usage_insight": usage_insight_data,
+        "usage_insight_last_year": usage_insight_last_year_data,
+        "active_model": active_model,
+        "delivery_types": delivery_types,
+        "residential_unit": api.residential_unit,
+        "residential_unit_detail": residential_unit_detail_data,
+        "usage_this_year": usage_this_year,
+        "usage_last_year": usage_last_year,
+        "room_usage": room_usage,
+        "unit_of_measures": unit_of_measures_data,
+        "last_successful_sync": last_successful_sync,
+        "calculated_history": calculated_history,
+        "current_month_calculated": current_month_calculated,
+        "monthly_history_cache": monthly_history_cache,
+        "cached_last_update_date": current_last_update_date,
+        "statistics_tracking": statistics_tracking
+    }
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry.
     
@@ -904,8 +1312,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         Raises:
             MijntedAuthenticationError: If username or password not found in config entry
         """
-        username = entry.data.get("username")
-        password = entry.data.get("password")
+        username = entry.data.get(CONF_USERNAME)
+        password = entry.data.get(CONF_PASSWORD)
         if not username or not password:
             raise MijntedAuthenticationError("Username and password not found in config entry")
         return (username, password)
@@ -920,21 +1328,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         Raises:
             UpdateFailed: If data fetch fails or authentication errors occur
         """
-        refresh_token_expires_at = None
-        refresh_token_expires_at_str = entry.data.get("refresh_token_expires_at")
-        if refresh_token_expires_at_str:
-            try:
-                refresh_token_expires_at = datetime.fromisoformat(refresh_token_expires_at_str.replace('Z', '+00:00'))
-                if refresh_token_expires_at.tzinfo is None:
-                    refresh_token_expires_at = refresh_token_expires_at.replace(tzinfo=timezone.utc)
-            except (ValueError, AttributeError) as err:
-                _LOGGER.warning(
-                    "Could not parse refresh_token_expires_at from config: %s",
-                    refresh_token_expires_at_str,
-                    extra={"entry_id": entry.entry_id},
-                    exc_info=True
-                )
-        
+        refresh_token_expires_at = _parse_refresh_token_expires_at(entry)
         api = MijntedApi(
             hass=hass,
             client_id=entry.data["client_id"],
@@ -945,21 +1339,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             token_update_callback=token_update_callback,
             credentials_callback=credentials_callback
         )
-        
         try:
             async with api:
                 await api.authenticate()
-                
                 original_refresh_token = entry.data.get("refresh_token")
                 original_access_token = entry.data.get("access_token")
-                
-                if (api.refresh_token != original_refresh_token or 
+                if (api.refresh_token != original_refresh_token or
                     api.access_token != original_access_token or
                     api.residential_unit != entry.data.get("residential_unit")):
                     refresh_token_expires_at_str = None
                     if api.refresh_token_expires_at:
                         refresh_token_expires_at_str = api.refresh_token_expires_at.isoformat()
-                    
                     hass.config_entries.async_update_entry(
                         entry,
                         data={
@@ -970,55 +1360,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             "refresh_token_expires_at": refresh_token_expires_at_str
                         }
                     )
-                
-                last_year = DateUtil.get_last_year()
-                (
-                    energy_usage_data,
-                    last_update_data,
-                    filter_status_data,
-                    usage_insight_data,
-                    usage_insight_last_year_data,
-                    active_model_data,
-                    residential_unit_detail_data,
-                    usage_per_room_data,
-                    unit_of_measures_data,
-                ) = await asyncio.gather(
-                    api.get_energy_usage(),
-                    api.get_last_data_update(),
-                    api.get_filter_status(),
-                    api.get_usage_insight(),
-                    api.get_usage_insight(last_year),
-                    api.get_active_model(),
-                    api.get_residential_unit_detail(),
-                    api.get_usage_per_room(),
-                    api.get_unit_of_measures(),
-                    return_exceptions=True,
-                )
-                
-                delivery_types = await api.get_delivery_types()
-                
-                def handle_result(name: str, result: Any, default_empty: Any) -> Any:
-                    """Handle result from gather, converting exceptions to defaults."""
-                    if isinstance(result, Exception):
-                        _LOGGER.warning(
-                            "Failed to fetch %s: %s",
-                            name,
-                            result,
-                            extra={"data_type": name, "residential_unit": api.residential_unit, "error_type": type(result).__name__}
-                        )
-                        return default_empty
-                    return result
-                
-                energy_usage_data = handle_result("energy_usage", energy_usage_data, {})
-                last_update_data = handle_result("last_update", last_update_data, {})
-                filter_status_data = handle_result("filter_status", filter_status_data, [])
-                usage_insight_data = handle_result("usage_insight", usage_insight_data, {})
-                usage_insight_last_year_data = handle_result("usage_insight_last_year", usage_insight_last_year_data, {})
-                active_model_data = handle_result("active_model", active_model_data, {})
-                residential_unit_detail_data = handle_result("residential_unit_detail", residential_unit_detail_data, {})
-                usage_per_room_data = handle_result("usage_per_room", usage_per_room_data, {})
-                unit_of_measures_data = handle_result("unit_of_measures", unit_of_measures_data, [])
-                
+                data = await _fetch_and_normalize_api_data(api)
+                energy_usage_data = data["energy_usage_data"]
+                last_update_data = data["last_update_data"]
+                filter_status_data = data["filter_status_data"]
                 energy_usage_total = 0.0
                 if isinstance(energy_usage_data, dict):
                     monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
@@ -1028,281 +1373,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             for month in monthly_usages
                             if isinstance(month, dict)
                         )
-                
                 last_update = ApiUtil.extract_value(last_update_data, "")
                 filter_status = filter_status_data if isinstance(filter_status_data, list) else []
-                active_model = ApiUtil.extract_value(active_model_data, None)
-                
+                active_model = ApiUtil.extract_value(data["active_model_data"], None)
                 usage_this_year = energy_usage_data if isinstance(energy_usage_data, dict) else {}
                 usage_last_year = {}
-                
-                room_usage = {}
-                if isinstance(usage_per_room_data, dict):
-                    rooms = usage_per_room_data.get("rooms", [])
-                    current_year_data = usage_per_room_data.get("currentYear", {})
-                    values = current_year_data.get("values", [])
-                    
-                    for i, room_name in enumerate(rooms):
-                        if i < len(values):
-                            value = values[i]
-                            if room_name in room_usage:
-                                existing = DataUtil.safe_float(room_usage[room_name], 0.0) or 0.0
-                                new_value = DataUtil.safe_float(value, 0.0) or 0.0
-                                room_usage[room_name] = existing + new_value
-                            else:
-                                room_usage[room_name] = DataUtil.safe_float(value, 0.0) or 0.0
-                elif isinstance(usage_per_room_data, list):
-                    for i, item in enumerate(usage_per_room_data):
-                        if isinstance(item, dict):
-                            room_name = item.get("room") or item.get("roomName") or item.get("name") or item.get("id")
-                            if room_name:
-                                room_usage[room_name] = item
-                            else:
-                                room_usage[f"room_{i}"] = item
-                        else:
-                            room_usage[f"room_{i}"] = item
-                
-                now = datetime.now(timezone.utc)
-                last_successful_sync = TimestampUtil.format_datetime_to_timestamp(now)
-                
-                calculated_history: Dict[str, float] = {}
-                current_month_calculated: Optional[float] = None
-                
-                try:
-                    prev_month, prev_year = DateUtil.get_previous_month()
-                    month_key = _format_month_year_key(prev_month, prev_year)
-                    
-                    has_previous_month_in_analytics = False
-                    if isinstance(energy_usage_data, dict):
-                        monthly_usages = energy_usage_data.get("monthlyEnergyUsages", [])
-                        for month in monthly_usages:
-                            if isinstance(month, dict) and month.get("monthYear") == month_key:
-                                has_previous_month_in_analytics = True
-                                break
-                    
-                    if not has_previous_month_in_analytics:
-                        try:
-                            first_day = DateUtil.get_first_day_of_month(prev_month, prev_year)
-                            last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
-                            
-                            start_anchor = await api.get_device_statuses_for_date(first_day)
-                            end_anchor = await api.get_device_statuses_for_date(last_day)
-                            
-                            start_total = DataUtil.calculate_filter_status_total(start_anchor)
-                            end_total = DataUtil.calculate_filter_status_total(end_anchor)
-                            
-                            if start_total is not None and end_total is not None:
-                                if prev_month == 1:
-                                    calculated_history[month_key] = end_total
-                                else:
-                                    calculated_history[month_key] = end_total - start_total
-                            else:
-                                _LOGGER.warning(
-                                    "Could not calculate previous month usage: missing anchor data for %s",
-                                    month_key,
-                                    extra={"month": month_key, "has_start": start_total is not None, "has_end": end_total is not None}
-                                )
-                        except Exception as err:
-                            _LOGGER.warning(
-                                "Failed to calculate previous month usage for %s: %s",
-                                month_key,
-                                err,
-                                extra={"month": month_key, "error_type": type(err).__name__},
-                                exc_info=True
-                            )
-                    
-                    try:
-                        current_month = datetime.now().month
-                        current_year = datetime.now().year
-                        current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
-                        
-                        current_month_start_anchor = await api.get_device_statuses_for_date(current_month_first_day)
-                        current_month_start_total = DataUtil.calculate_filter_status_total(current_month_start_anchor)
-                        current_readings_total = DataUtil.calculate_filter_status_total(filter_status)
-                        
-                        if current_month_start_total is not None and current_readings_total is not None:
-                            if current_month == 1:
-                                current_month_calculated = current_readings_total
-                            else:
-                                current_month_calculated = current_readings_total - current_month_start_total
-                        else:
-                            _LOGGER.debug(
-                                "Could not calculate current month usage: missing anchor data",
-                                extra={"has_start": current_month_start_total is not None, "has_current": current_readings_total is not None}
-                            )
-                    except Exception as err:
-                        _LOGGER.warning(
-                            "Failed to calculate current month usage: %s",
-                            err,
-                            extra={"error_type": type(err).__name__},
-                            exc_info=True
-                        )
-                
-                except Exception as err:
-                    _LOGGER.warning(
-                        "Error in anchor calculation logic: %s",
-                        err,
-                        extra={"error_type": type(err).__name__},
-                        exc_info=True
+                room_usage = _build_room_usage(data["usage_per_room_data"])
+                last_successful_sync = TimestampUtil.format_datetime_to_timestamp(
+                    datetime.now(timezone.utc)
+                )
+                calculated_history, current_month_calculated = await _compute_anchor_calculations(
+                    api, energy_usage_data, filter_status
+                )
+                monthly_history_cache, current_last_update_date, statistics_tracking = (
+                    await _ensure_monthly_history_cache(
+                        api, hass, entry, last_update, energy_usage_data, filter_status
                     )
-                
-                monthly_history_cache: Dict[str, MonthCacheEntry] = {}
-                cached_last_update_date: Optional[str] = None
-                cache_was_modified = False
-                
-                if entry.entry_id in hass.data.get(DOMAIN, {}):
-                    existing_coordinator = hass.data[DOMAIN][entry.entry_id]
-                    if existing_coordinator and existing_coordinator.data:
-                        cache_data = existing_coordinator.data.get("monthly_history_cache", {})
-                        cached_last_update_date = existing_coordinator.data.get("cached_last_update_date")
-                        
-                        if cache_data:
-                            converted_cache: Dict[str, MonthCacheEntry] = {}
-                            for month_key, entry_data in cache_data.items():
-                                if isinstance(entry_data, MonthCacheEntry):
-                                    converted_cache[month_key] = entry_data
-                                elif isinstance(entry_data, dict):
-                                    try:
-                                        converted_cache[month_key] = MonthCacheEntry.from_dict(entry_data)
-                                    except Exception as err:
-                                        _LOGGER.warning("Failed to convert cache entry for %s: %s", month_key, err)
-                                else:
-                                    _LOGGER.warning("Invalid cache entry type for %s: %s", month_key, type(entry_data))
-                            monthly_history_cache = converted_cache
-                
-                if not monthly_history_cache:
-                    persisted_cache = await _load_persisted_cache(hass, entry.entry_id)
-                    if persisted_cache:
-                        monthly_history_cache = persisted_cache
-                        _LOGGER.info("Restored monthly history cache from storage (%d complete months)", len(monthly_history_cache))
-                
-                current_last_update_date = None
-                if isinstance(last_update, dict):
-                    current_last_update_date = last_update.get("lastSyncDate") or last_update.get("date")
-                elif isinstance(last_update, str):
-                    current_last_update_date = last_update
-                
-                last_update_date_changed = current_last_update_date != cached_last_update_date
-                
-                try:
-                    if not monthly_history_cache:
-                        monthly_history_cache = await _build_initial_monthly_history_cache(
-                            api, last_update, energy_usage_data,
-                            existing_cache=monthly_history_cache
-                        )
-                        cache_was_modified = True
-                    else:
-                        cache_before = len(monthly_history_cache)
-                        monthly_history_cache = await _build_initial_monthly_history_cache(
-                            api, last_update, energy_usage_data,
-                            existing_cache=monthly_history_cache
-                        )
-                        if len(monthly_history_cache) > cache_before:
-                            cache_was_modified = True
-                        
-                        if last_update_date_changed:
-                            try:
-                                await _update_current_month_cache(
-                                    api, monthly_history_cache, filter_status,
-                                    last_update, energy_usage_data
-                                )
-                                cache_was_modified = True
-                            except Exception as err:
-                                _LOGGER.warning(
-                                    "Failed to refresh current month in cache: %s",
-                                    err,
-                                    extra={"error_type": type(err).__name__},
-                                    exc_info=True
-                                )
-                    
-                    cache_before_enrich: Dict[str, Optional[float]] = {}
-                    for k, v in monthly_history_cache.items():
-                        if isinstance(v, MonthCacheEntry):
-                            cache_before_enrich[k] = v.average_usage
-                        elif isinstance(v, dict):
-                            cache_before_enrich[k] = v.get("average_usage")
-                    
-                    await _enrich_cache_with_api_data(api, monthly_history_cache, energy_usage_data)
-                    
-                    cache_after_enrich: Dict[str, Optional[float]] = {}
-                    for k, v in monthly_history_cache.items():
-                        if isinstance(v, MonthCacheEntry):
-                            cache_after_enrich[k] = v.average_usage
-                        elif isinstance(v, dict):
-                            cache_after_enrich[k] = v.get("average_usage")
-                    
-                    if cache_before_enrich != cache_after_enrich:
-                        cache_was_modified = True
-                    
-                    try:
-                        await _recalculate_current_month_starts_if_previous_finalized(
-                            api,
-                            monthly_history_cache,
-                            filter_status,
-                            cache_before_enrich,
-                            cache_after_enrich
-                        )
-                    except Exception as err:
-                        _LOGGER.warning(
-                            "Failed to recalculate current month start values after previous month finalization: %s",
-                            err,
-                            extra={"error_type": type(err).__name__},
-                            exc_info=True
-                        )
-                    
-                    if cache_was_modified:
-                        try:
-                            await _save_persisted_cache(hass, entry.entry_id, monthly_history_cache)
-                        except Exception as err:
-                            _LOGGER.warning("Failed to persist cache: %s", err)
-                
-                except Exception as err:
-                    _LOGGER.warning(
-                        "Error in monthly history cache logic: %s",
-                        err,
-                        extra={"error_type": type(err).__name__},
-                        exc_info=True
-                    )
-                
-                statistics_tracking = None
-                if entry.entry_id in hass.data.get(DOMAIN, {}):
-                    existing_coordinator = hass.data[DOMAIN][entry.entry_id]
-                    if existing_coordinator and existing_coordinator.data:
-                        existing_tracking = existing_coordinator.data.get("statistics_tracking")
-                        if isinstance(existing_tracking, StatisticsTracking):
-                            statistics_tracking = existing_tracking
-                
-                if statistics_tracking is None:
-                    statistics_tracking = StatisticsTracking(
-                        monthly_usage=None,
-                        last_year_monthly_usage=None,
-                        average_monthly_usage=None,
-                        last_year_average_monthly_usage=None,
-                        total_usage=None
-                    )
-                
-                return {
-                    "energy_usage": energy_usage_total,
-                    "energy_usage_data": energy_usage_data,
-                    "last_update": last_update,
-                    "filter_status": filter_status,
-                    "usage_insight": usage_insight_data,
-                    "usage_insight_last_year": usage_insight_last_year_data,
-                    "active_model": active_model,
-                    "delivery_types": delivery_types,
-                    "residential_unit": api.residential_unit,
-                    "residential_unit_detail": residential_unit_detail_data,
-                    "usage_this_year": usage_this_year,
-                    "usage_last_year": usage_last_year,
-                    "room_usage": room_usage,
-                    "unit_of_measures": unit_of_measures_data,
-                    "last_successful_sync": last_successful_sync,
-                    "calculated_history": calculated_history,
-                    "current_month_calculated": current_month_calculated,
-                    "monthly_history_cache": monthly_history_cache,
-                    "cached_last_update_date": current_last_update_date,
-                    "statistics_tracking": statistics_tracking
-                }
+                )
+                return _build_coordinator_return_dict(
+                    api,
+                    energy_usage_data,
+                    energy_usage_total,
+                    last_update,
+                    filter_status,
+                    data["usage_insight_data"],
+                    data["usage_insight_last_year_data"],
+                    active_model,
+                    data["delivery_types"],
+                    data["residential_unit_detail_data"],
+                    usage_this_year,
+                    usage_last_year,
+                    room_usage,
+                    data["unit_of_measures_data"],
+                    last_successful_sync,
+                    calculated_history,
+                    current_month_calculated,
+                    monthly_history_cache,
+                    current_last_update_date,
+                    statistics_tracking
+                )
         except MijntedGrantExpiredError as err:
             _LOGGER.warning(
                 "Refresh token grant has expired. Triggering re-authentication flow: %s",
@@ -1386,7 +1495,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             raise UpdateFailed(f"Unexpected error: {err}") from err
 
-    polling_interval_seconds = entry.data.get("polling_interval", DEFAULT_POLLING_INTERVAL.total_seconds())
+    polling_interval_seconds = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL.total_seconds())
     update_interval = timedelta(seconds=int(polling_interval_seconds))
     
     coordinator = DataUpdateCoordinator(

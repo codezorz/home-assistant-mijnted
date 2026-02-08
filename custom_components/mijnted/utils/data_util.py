@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional, Tuple, List
-from datetime import datetime
+
 from ..const import CALCULATION_YEAR_MONTH_SORT_MULTIPLIER, MONTH_YEAR_PARTS_COUNT
+from .date_util import DateUtil
 
 
 class DataUtil:
@@ -86,8 +87,7 @@ class DataUtil:
         parsed = DataUtil.parse_month_year(month_year)
         if parsed:
             month_num, year = parsed
-            now = datetime.now()
-            return month_num == now.month and year == now.year
+            return DateUtil.is_current_month(month_num, year)
         return False
     
     @staticmethod

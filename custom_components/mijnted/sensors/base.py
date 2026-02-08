@@ -1,12 +1,21 @@
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from datetime import datetime, timezone, time, date
 import logging
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
-from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.components.recorder.models import StatisticMetaData, StatisticData, StatisticMeanType
+from datetime import date, datetime, time, timezone
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from homeassistant.components.recorder.models import StatisticData, StatisticMetaData, StatisticMeanType
 from homeassistant.components.recorder.statistics import async_import_statistics
-from ..const import DOMAIN, DEFAULT_START_VALUE, CALCULATION_AVERAGE_PER_DAY_DECIMAL_PLACES, UNIT_MIJNTED
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
+
+from ..const import (
+    API_DATE_FORMAT,
+    CALCULATION_AVERAGE_PER_DAY_DECIMAL_PLACES,
+    DEFAULT_START_VALUE,
+    DOMAIN,
+    MONTH_YEAR_PARTS_COUNT,
+    UNIT_MIJNTED,
+)
 from ..utils import DateUtil, DataUtil
 from .models import DeviceReading, CurrentData, HistoryData, StatisticsTracking, MonthCacheEntry
 
@@ -538,12 +547,144 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             return None
         
         try:
-            date_obj = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            date_obj = datetime.strptime(start_date_str, API_DATE_FORMAT).date()
             dt = datetime.combine(date_obj, time(0, 0, 0))
             return dt.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError, AttributeError):
             return None
     
+    @staticmethod
+    def _history_month_sort_key(key: str) -> Tuple[int, int]:
+        """Sort key for month keys in YYYY-MM format; (0, 0) for invalid."""
+        try:
+            parts = key.split("-")
+            if len(parts) == MONTH_YEAR_PARTS_COUNT:
+                return (int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            pass
+        return (0, 0)
+
+    def _build_devices_list_for_current_month(
+        self,
+        filter_status: List[Any],
+        monthly_history_cache: Dict[str, Any],
+        current_month_key: str,
+        current_month: int,
+        current_year: int,
+    ) -> List[DeviceReading]:
+        """Build list of DeviceReading for current month from filter_status and optional cache."""
+        devices_dict_list: List[Dict[str, Any]] = []
+        end_readings_map = DataUtil.extract_device_readings_map(filter_status)
+        is_cache_dict = isinstance(monthly_history_cache, dict)
+        if is_cache_dict and current_month_key in monthly_history_cache:
+            current_month_cache = monthly_history_cache[current_month_key]
+            cached_devices = self._get_devices_from_cache_entry(current_month_cache)
+            cached_devices_map: Dict[str, Dict[str, Any]] = {}
+            for device in cached_devices:
+                if isinstance(device, dict):
+                    device_id = device.get("id")
+                    if device_id is not None:
+                        cached_devices_map[str(device_id)] = device
+            for device_id_str, end_value in end_readings_map.items():
+                cached_device = cached_devices_map.get(device_id_str)
+                if cached_device:
+                    device_dict = cached_device.copy()
+                    device_dict["end"] = end_value
+                else:
+                    device_dict = {"id": device_id_str, "end": end_value}
+                processed = self._enrich_device_entry(
+                    device_dict,
+                    device_id_str,
+                    current_month,
+                    current_year,
+                    monthly_history_cache,
+                    use_month_transition=True
+                )
+                if processed:
+                    devices_dict_list.append(processed)
+        else:
+            for device_id_str, end_value in end_readings_map.items():
+                device_dict = {"id": device_id_str, "end": end_value}
+                processed = self._enrich_device_entry(
+                    device_dict,
+                    device_id_str,
+                    current_month,
+                    current_year,
+                    monthly_history_cache,
+                    use_month_transition=True
+                )
+                if processed:
+                    devices_dict_list.append(processed)
+        devices_list: List[DeviceReading] = []
+        for device_dict in devices_dict_list:
+            device_reading = self._convert_dict_to_device_reading(device_dict)
+            if device_reading:
+                devices_list.append(device_reading)
+        return devices_list
+
+    def _compute_current_month_totals(
+        self,
+        devices_list: List[DeviceReading],
+        filter_status: List[Any],
+        monthly_history_cache: Dict[str, Any],
+        current_month_key: str,
+    ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """Return (total_usage_start, total_usage_end, total_usage) for current month."""
+        total_usage_start, _ = self._calculate_total_usage(devices_list)
+        total_usage_end = DataUtil.calculate_filter_status_total(filter_status)
+        total_usage = None
+        if isinstance(monthly_history_cache, dict) and current_month_key in monthly_history_cache:
+            current_month_data = monthly_history_cache[current_month_key]
+            total_usage = self._extract_value_from_cache_entry(current_month_data, "total_usage")
+        if total_usage is None and total_usage_start is not None and total_usage_end is not None:
+            if total_usage_end < total_usage_start:
+                total_usage = total_usage_end
+            else:
+                total_usage = total_usage_end - total_usage_start
+        return (total_usage_start, total_usage_end, total_usage)
+
+    def _month_cache_entry_to_history_data(
+        self,
+        month_key: str,
+        month_data: Dict[str, Any],
+    ) -> Optional[HistoryData]:
+        """Convert one month's cache entry dict to HistoryData, or None if invalid."""
+        year_value = DataUtil.safe_int(month_data.get("year"))
+        month_value = DataUtil.safe_int(month_data.get("month"))
+        if year_value is None or month_value is None:
+            return None
+        devices_dict_list = month_data.get("devices", [])
+        enriched_devices_dict = []
+        for device in devices_dict_list:
+            enriched_device = self._enrich_history_device(device)
+            if enriched_device:
+                enriched_devices_dict.append(enriched_device)
+        devices_list: List[DeviceReading] = []
+        for device_dict in enriched_devices_dict:
+            device_reading = self._convert_dict_to_device_reading(device_dict)
+            if device_reading:
+                devices_list.append(device_reading)
+        start_date_str = month_data.get("start_date", "")
+        end_date_str = month_data.get("end_date", "")
+        days = DateUtil.calculate_days_between(start_date_str, end_date_str)
+        total_usage = month_data.get("total_usage")
+        average_usage_per_day = self._calculate_average_per_day(total_usage, days)
+        total_usage_start, total_usage_end = self._calculate_total_usage(devices_list)
+        return HistoryData(
+            month_id=month_data.get("month_id", ""),
+            year=year_value,
+            month=month_value,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            average_usage=month_data.get("average_usage"),
+            devices=devices_list,
+            days=days,
+            average_usage_per_day=average_usage_per_day,
+            total_usage_start=total_usage_start,
+            total_usage_end=total_usage_end,
+            total_usage=total_usage
+        )
+
     def _get_month_context(self, last_sync_date_obj: date) -> Dict[str, Any]:
         current_month = last_sync_date_obj.month
         current_year = last_sync_date_obj.year
@@ -784,84 +925,19 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         last_update_date_str = DateUtil.format_date_for_api(last_sync_date_obj)
         days = DateUtil.calculate_days_between(start_date_str, end_date_str)
         
-        devices_dict_list: List[Dict[str, Any]] = []
-        
-        end_readings_map = DataUtil.extract_device_readings_map(filter_status)
-        
-        if is_cache_dict and current_month_key in monthly_history_cache:
-            current_month_cache = monthly_history_cache[current_month_key]
-            cached_devices = self._get_devices_from_cache_entry(current_month_cache)
-            
-            cached_devices_map: Dict[str, Dict[str, Any]] = {}
-            for device in cached_devices:
-                if isinstance(device, dict):
-                    device_id = device.get("id")
-                    if device_id is not None:
-                        cached_devices_map[str(device_id)] = device
-            
-            for device_id_str, end_value in end_readings_map.items():
-                cached_device = cached_devices_map.get(device_id_str)
-                
-                if cached_device:
-                    device_dict = cached_device.copy()
-                    device_dict["end"] = end_value
-                else:
-                    device_dict = {
-                        "id": device_id_str,
-                        "end": end_value
-                    }
-                
-                processed_device = self._enrich_device_entry(
-                    device_dict,
-                    device_id_str,
-                    current_month,
-                    current_year,
-                    monthly_history_cache,
-                    use_month_transition=True
-                )
-                if processed_device:
-                    devices_dict_list.append(processed_device)
-        else:
-            for device_id_str, end_value in end_readings_map.items():
-                device_dict = {
-                    "id": device_id_str,
-                    "end": end_value
-                }
-                
-                processed_device = self._enrich_device_entry(
-                    device_dict,
-                    device_id_str,
-                    current_month,
-                    current_year,
-                    monthly_history_cache,
-                    use_month_transition=True
-                )
-                if processed_device:
-                    devices_dict_list.append(processed_device)
-        
-        devices_list: List[DeviceReading] = []
-        for device_dict in devices_dict_list:
-            device_reading = self._convert_dict_to_device_reading(device_dict)
-            if device_reading:
-                devices_list.append(device_reading)
-        
+        devices_list = self._build_devices_list_for_current_month(
+            filter_status,
+            monthly_history_cache,
+            current_month_key,
+            current_month,
+            current_year,
+        )
         if not devices_list and days is None:
             return None
-        
-        total_usage_start, _ = self._calculate_total_usage(devices_list)
-        total_usage_end = DataUtil.calculate_filter_status_total(filter_status)
-        
-        total_usage = None
-        if is_cache_dict and current_month_key in monthly_history_cache:
-            current_month_data = monthly_history_cache[current_month_key]
-            total_usage = self._extract_value_from_cache_entry(current_month_data, "total_usage")
-        
-        if total_usage is None and total_usage_start is not None and total_usage_end is not None:
-            if total_usage_end < total_usage_start:
-                total_usage = total_usage_end
-            else:
-                total_usage = total_usage_end - total_usage_start
-        
+
+        total_usage_start, total_usage_end, total_usage = self._compute_current_month_totals(
+            devices_list, filter_status, monthly_history_cache, current_month_key
+        )
         average_usage_per_day = self._calculate_average_per_day(total_usage, days)
         
         return CurrentData(
@@ -883,83 +959,27 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         data = self.coordinator.data
         if not data:
             return []
-        
         monthly_history_cache = data.get("monthly_history_cache", {})
         if not isinstance(monthly_history_cache, dict) or not monthly_history_cache:
             return []
-        
         last_update = data.get("last_update")
         last_sync_date_obj = DateUtil.parse_last_sync_date(last_update)
         current_month_key = None
         if last_sync_date_obj:
             month_context = self._get_month_context(last_sync_date_obj)
             current_month_key = month_context["current_month_key"]
-        
-        def sort_key_func(key: str) -> Tuple[int, int]:
-            try:
-                parts = key.split("-")
-                if len(parts) == 2:
-                    return (int(parts[0]), int(parts[1]))
-            except (ValueError, IndexError):
-                pass
-            return (0, 0)
-        
         month_keys = list(monthly_history_cache.keys())
-        month_keys.sort(key=sort_key_func, reverse=True)
-        
+        month_keys.sort(key=self._history_month_sort_key, reverse=True)
         historical_readings_list: List[HistoryData] = []
-        
         for month_key in month_keys:
             if current_month_key and month_key == current_month_key:
                 continue
-            
-            month_data = monthly_history_cache[month_key]
-            month_data = self._get_month_cache_entry_dict(month_data)
+            month_data_raw = monthly_history_cache[month_key]
+            month_data = self._get_month_cache_entry_dict(month_data_raw)
             if not month_data:
                 continue
-            
-            year_value = DataUtil.safe_int(month_data.get("year"))
-            month_value = DataUtil.safe_int(month_data.get("month"))
-            
-            devices_dict_list = month_data.get("devices", [])
-            enriched_devices_dict = []
-            for device in devices_dict_list:
-                enriched_device = self._enrich_history_device(device)
-                if enriched_device:
-                    enriched_devices_dict.append(enriched_device)
-            
-            devices_list: List[DeviceReading] = []
-            for device_dict in enriched_devices_dict:
-                device_reading = self._convert_dict_to_device_reading(device_dict)
-                if device_reading:
-                    devices_list.append(device_reading)
-            
-            start_date_str = month_data.get("start_date", "")
-            end_date_str = month_data.get("end_date", "")
-            days = DateUtil.calculate_days_between(start_date_str, end_date_str)
-            
-            total_usage = month_data.get("total_usage")
-            average_usage_per_day = self._calculate_average_per_day(total_usage, days)
-            
-            total_usage_start, total_usage_end = self._calculate_total_usage(devices_list)
-            
-            if year_value is None or month_value is None:
-                continue
-            
-            historical_readings_list.append(HistoryData(
-                month_id=month_data.get("month_id", ""),
-                year=year_value,
-                month=month_value,
-                start_date=start_date_str,
-                end_date=end_date_str,
-                average_usage=month_data.get("average_usage"),
-                devices=devices_list,
-                days=days,
-                average_usage_per_day=average_usage_per_day,
-                total_usage_start=total_usage_start,
-                total_usage_end=total_usage_end,
-                total_usage=total_usage
-            ))
-        
+            history_entry = self._month_cache_entry_to_history_data(month_key, month_data)
+            if history_entry:
+                historical_readings_list.append(history_entry)
         return historical_readings_list
 
