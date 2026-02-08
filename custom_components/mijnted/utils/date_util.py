@@ -1,6 +1,12 @@
-from datetime import datetime, date
-from typing import Tuple, List, Optional, Any
 from calendar import monthrange
+from datetime import date, datetime
+from typing import Any, List, Optional, Tuple
+
+from ..const import (
+    API_DATE_FORMAT,
+    API_LAST_SYNC_DATE_FORMAT,
+    DISPLAY_MONTH_YEAR_FORMAT,
+)
 
 
 class DateUtil:
@@ -64,7 +70,7 @@ class DateUtil:
         Returns:
             Date string in YYYY-MM-DD format
         """
-        return target_date.strftime("%Y-%m-%d")
+        return target_date.strftime(API_DATE_FORMAT)
     
     @staticmethod
     def get_last_n_months(n: int) -> List[Tuple[int, int]]:
@@ -121,6 +127,12 @@ class DateUtil:
         return months
     
     @staticmethod
+    def is_current_month(month: int, year: int) -> bool:
+        """Return True if the given month and year are the current month and year."""
+        now = datetime.now()
+        return month == now.month and year == now.year
+
+    @staticmethod
     def get_previous_month_from_date(from_date: date) -> Tuple[int, int]:
         """Get the previous month (month before) from a specific date.
         
@@ -170,12 +182,12 @@ class DateUtil:
             return None
         
         try:
-            return datetime.strptime(date_str, "%d/%m/%Y").date()
+            return datetime.strptime(date_str, API_LAST_SYNC_DATE_FORMAT).date()
         except (ValueError, TypeError):
             pass
         
         try:
-            return datetime.strptime(date_str, "%Y-%m-%d").date()
+            return datetime.strptime(date_str, API_DATE_FORMAT).date()
         except (ValueError, TypeError):
             pass
         
@@ -196,8 +208,8 @@ class DateUtil:
             return None
         
         try:
-            start_date_obj = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-            end_date_obj = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+            start_date_obj = datetime.strptime(start_date_str, API_DATE_FORMAT).date()
+            end_date_obj = datetime.strptime(end_date_str, API_DATE_FORMAT).date()
             days = (end_date_obj - start_date_obj).days + 1
             return days if days > 0 else None
         except (ValueError, TypeError, AttributeError):
@@ -219,7 +231,7 @@ class DateUtil:
         
         try:
             month_date = datetime(year, month, 1)
-            return month_date.strftime("%B %Y")
+            return month_date.strftime(DISPLAY_MONTH_YEAR_FORMAT)
         except (ValueError, TypeError):
             return None
 

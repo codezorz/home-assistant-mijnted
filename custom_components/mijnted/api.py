@@ -1,30 +1,31 @@
-import aiohttp
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone, date
-from typing import Dict, Any, Optional, Callable, Awaitable, List
+from datetime import date, datetime, timezone
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+import aiohttp
+
 from .const import (
     API_BASE_URL,
-    REQUEST_TIMEOUT,
-    USER_AGENT,
+    API_DATE_FORMAT,
+    AUTHORIZATION_SCHEME_BEARER,
+    CONTENT_TYPE_JSON,
     HTTP_STATUS_OK,
     HTTP_STATUS_UNAUTHORIZED,
-    CONTENT_TYPE_JSON,
-    AUTHORIZATION_SCHEME_BEARER,
+    REQUEST_TIMEOUT,
+    USER_AGENT,
 )
-from .utils import ApiUtil, DateUtil, ListUtil
 from .auth import MijntedAuth
-
-
-_LOGGER = logging.getLogger(__name__)
-
 from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
     MijntedConnectionError,
     MijntedTimeoutError,
 )
+from .utils import ApiUtil, DateUtil, ListUtil
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class MijntedApi:
@@ -256,7 +257,7 @@ class MijntedApi:
             List of device status objects for the specified date, empty list if none found or on error
         """
         try:
-            date_str = target_date.strftime("%Y-%m-%d")
+            date_str = target_date.strftime(API_DATE_FORMAT)
             year = target_date.year
             url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{year}?fromDate={date_str}"
             result = await self._make_request("GET", url)
@@ -265,7 +266,7 @@ class MijntedApi:
             value = ApiUtil.extract_value(result, [])
             return value if isinstance(value, list) else []
         except Exception as err:
-            date_str = target_date.strftime("%Y-%m-%d") if target_date else "unknown"
+            date_str = target_date.strftime(API_DATE_FORMAT) if target_date else "unknown"
             _LOGGER.warning(
                 "Failed to fetch device statuses for date %s: %s",
                 target_date,

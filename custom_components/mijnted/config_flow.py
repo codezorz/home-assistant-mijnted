@@ -1,32 +1,46 @@
-from typing import Any, Dict, Optional
+import logging
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+import aiohttp
 import voluptuous as vol
+
 from homeassistant import config_entries
+from homeassistant.const import CONF_CLIENT_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.const import CONF_CLIENT_ID
 from homeassistant.exceptions import HomeAssistantError
-from .const import DOMAIN, DEFAULT_POLLING_INTERVAL, MIN_POLLING_INTERVAL, MAX_POLLING_INTERVAL
+
+from .const import (
+    CONF_PASSWORD,
+    CONF_POLLING_INTERVAL,
+    CONF_USERNAME,
+    DEFAULT_POLLING_INTERVAL,
+    DOMAIN,
+    MAX_POLLING_INTERVAL,
+    MIN_POLLING_INTERVAL,
+)
 from .auth import MijntedAuth
 from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
-    MijntedGrantExpiredError,
     MijntedConnectionError,
+    MijntedGrantExpiredError,
     MijntedTimeoutError,
 )
-import aiohttp
-import logging
 
 _LOGGER = logging.getLogger(__name__)
+
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
     pass
 
+
 class InvalidAuth(HomeAssistantError):
     """Error to indicate there is invalid auth."""
     pass
+
 
 class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a MijnTed config flow."""
@@ -59,15 +73,20 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         user_message = user_message_template.format(msg=error_msg) if error_msg else user_message_template.replace("{msg}", "")
         raise exception_class(user_message) from err
     
+    def _ensure_polling_interval_default(self, user_input: Dict[str, Any]) -> None:
+        """Set default polling interval on user_input if missing."""
+        if CONF_POLLING_INTERVAL not in user_input:
+            user_input[CONF_POLLING_INTERVAL] = int(DEFAULT_POLLING_INTERVAL.total_seconds())
+
     @staticmethod
     def _get_data_schema() -> vol.Schema:
         return vol.Schema(
             {
                 vol.Required(CONF_CLIENT_ID): str,
-                vol.Required("username"): str,
-                vol.Required("password"): str,
+                vol.Required(CONF_USERNAME): str,
+                vol.Required(CONF_PASSWORD): str,
                 vol.Optional(
-                    "polling_interval",
+                    CONF_POLLING_INTERVAL,
                     default=DEFAULT_POLLING_INTERVAL.total_seconds()
                 ): vol.All(
                     vol.Coerce(int),
@@ -82,8 +101,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                if "polling_interval" not in user_input:
-                    user_input["polling_interval"] = int(DEFAULT_POLLING_INTERVAL.total_seconds())
+                self._ensure_polling_interval_default(user_input)
                 await self._validate_input(user_input)
                 return self.async_create_entry(
                     title="MijnTed",
@@ -115,8 +133,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                if "polling_interval" not in user_input:
-                    user_input["polling_interval"] = int(DEFAULT_POLLING_INTERVAL.total_seconds())
+                self._ensure_polling_interval_default(user_input)
                 await self._validate_input(user_input)
                 existing_entry = self.hass.config_entries.async_get_entry(
                     self.context["entry_id"]
@@ -152,8 +169,8 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 client_id=user_input[CONF_CLIENT_ID]
             )
             tokens = await auth.async_authenticate_with_credentials(
-                username=user_input["username"],
-                password=user_input["password"]
+                username=user_input[CONF_USERNAME],
+                password=user_input[CONF_PASSWORD]
             )
             
             user_input["refresh_token"] = tokens.get("refresh_token")
@@ -218,9 +235,9 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        "polling_interval",
+                        CONF_POLLING_INTERVAL,
                         default=self.config_entry.data.get(
-                            "polling_interval",
+                            CONF_POLLING_INTERVAL,
                             DEFAULT_POLLING_INTERVAL.total_seconds()
                         ),
                     ): vol.All(

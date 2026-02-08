@@ -1,6 +1,13 @@
 import logging
-from typing import Optional
 from datetime import datetime, timezone
+from typing import Optional
+
+from ..const import (
+    API_DATE_FORMAT,
+    API_LAST_SYNC_DATE_FORMAT,
+    TIMESTAMP_FORMAT_ISO,
+    TIMESTAMP_FORMAT_ISO_Z,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +36,7 @@ class TimestampUtil:
             try:
                 if date_str.endswith("Z"):
                     return date_str
-                for fmt in ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"]:
+                for fmt in (TIMESTAMP_FORMAT_ISO, TIMESTAMP_FORMAT_ISO_Z, API_DATE_FORMAT):
                     try:
                         parsed = datetime.strptime(date_str, fmt)
                         return parsed.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + "Z"
@@ -39,7 +46,7 @@ class TimestampUtil:
                 pass
         
         try:
-            date_obj = datetime.strptime(date_str, "%d/%m/%Y")
+            date_obj = datetime.strptime(date_str, API_LAST_SYNC_DATE_FORMAT)
             return date_obj.replace(hour=0, minute=0, second=0, microsecond=0).isoformat() + "Z"
         except (ValueError, AttributeError):
             _LOGGER.debug(

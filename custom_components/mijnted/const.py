@@ -1,5 +1,6 @@
-from homeassistant.const import Platform
 from datetime import timedelta
+
+from homeassistant.const import Platform
 
 DOMAIN = "mijnted"
 API_BASE_URL = "https://ted-prod-function-app.azurewebsites.net/api"
@@ -42,6 +43,18 @@ CACHE_HISTORY_MONTHS = 16
 # Sensor and calculation constants
 MONTH_YEAR_PARTS_COUNT = 2
 DEFAULT_START_VALUE = 0.0
+
+# Date format for API requests and storage
+API_DATE_FORMAT = "%Y-%m-%d"
+API_LAST_SYNC_DATE_FORMAT = "%d/%m/%Y"
+DISPLAY_MONTH_YEAR_FORMAT = "%B %Y"
+TIMESTAMP_FORMAT_ISO = "%Y-%m-%dT%H:%M:%S"
+TIMESTAMP_FORMAT_ISO_Z = "%Y-%m-%dT%H:%M:%SZ"
+
+# Config flow schema keys
+CONF_USERNAME = "username"
+CONF_PASSWORD = "password"
+CONF_POLLING_INTERVAL = "polling_interval"
 
 # Azure B2C authentication constants
 AUTH_TENANT_NAME = "mytedprod"

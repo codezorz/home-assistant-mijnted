@@ -1,9 +1,10 @@
-import aiohttp
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+
+import aiohttp
 import requests
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional, Callable, Awaitable, Tuple
 
 from homeassistant.core import HomeAssistant
 
@@ -166,7 +167,7 @@ class MijntedAuth:
             raise
         except Exception as exc:
             _LOGGER.exception("Unexpected error during authentication: %s", exc)
-            raise
+            raise MijntedApiError(f"Unexpected error during authentication: {exc}") from exc
     
     async def _rotate_refresh_token_with_credentials(self) -> str:
         if not self.credentials_callback:

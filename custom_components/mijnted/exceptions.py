@@ -1,5 +1,3 @@
-
-
 class MijntedApiError(Exception):
     """Base exception for Mijnted API errors."""
     pass
