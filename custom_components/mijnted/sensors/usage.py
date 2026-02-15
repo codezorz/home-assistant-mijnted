@@ -35,6 +35,10 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
         if not current.last_update_date:
             return self._last_known_value
         
+        data = self.coordinator.data
+        if data is not None and data.get("filter_status") == [] and self._last_known_value is not None:
+            return self._last_known_value
+
         value = self._calculate_usage_from_start_end(
             current.total_usage_start,
             current.total_usage_end,

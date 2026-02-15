@@ -156,18 +156,20 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
         """Return the state of the sensor.
         
         Returns:
-            Display name of first unit of measure, or None if not available
+            Display name of first unit of measure, or last known value if unavailable (e.g. timeout)
         """
         data = self.coordinator.data
         if not data:
-            return None
-        
+            return self._last_known_value
+
         unit_of_measures = data.get("unit_of_measures", [])
         first_item = ListUtil.get_first_item(unit_of_measures)
-        if first_item is not None:
-            if isinstance(first_item, dict):
-                return first_item.get("displayName")
-        return None
+        if first_item is not None and isinstance(first_item, dict):
+            display_name = first_item.get("displayName")
+            if display_name is not None:
+                self._update_last_known_value(display_name)
+                return display_name
+        return self._last_known_value
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
