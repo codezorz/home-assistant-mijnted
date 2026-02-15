@@ -16,6 +16,10 @@ applyTo: "custom_components/mijnted/sensors/**"
 - **Diagnostics** (`diagnostics.py`): Informational (last update, active model, delivery types, residential unit, etc.). No statistics injection.
 - **Device** (`device.py`): Per-device or per-room sensors, created dynamically from API data.
 
+**When the API is unavailable (timeout/maintenance):**
+
+The coordinator replaces failed fetches with empty defaults (e.g. `filter_status` → `[]`, `unit_of_measures` → `[]`), so the update "succeeds" with partial data. Sensors that depend on that data should return their **last known value** instead of 0 or None, so history and dashboards are not disrupted. Use the base `_last_known_value` and `_update_last_known_value()`: when the source list/dict is empty and `_last_known_value` is set, return it and do not overwrite it with a computed fallback (e.g. 0). When you do have valid data, update the cache and return the value. See **Monthly usage** (empty `filter_status` → return `_last_known_value`) and **Unit of measures** (empty list → return cached display name) in `usage.py` and `diagnostics.py`.
+
 **Other:**
 
 - Device info: Use `MijnTedSensor._build_device_info(coordinator.data)` so all entities attach to the same MijnTed device.

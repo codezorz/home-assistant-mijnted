@@ -32,7 +32,7 @@ custom_components/mijnted/
 
 | Change | Files |
 |--------|--------|
-| New sensor | `sensors/usage.py`, `device.py`, or `diagnostics.py`; then `sensors/__init__.py` and the entity list in `__init__.py` / `sensor.py` |
+| New sensor | `sensors/usage.py`, `device.py`, or `diagnostics.py`; then `sensors/__init__.py` and the entity list in `sensor.py` (sensors) or `button.py` (buttons) |
 | New API call | `api.py`; URLs/constants in `const.py` |
 | New constant | `const.py` |
 | Config flow | `config_flow.py`, `translations/en.json` |
