@@ -1,6 +1,6 @@
 import logging
 from datetime import date, datetime, time, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, NamedTuple
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData, StatisticMeanType
 from homeassistant.components.recorder.statistics import async_import_statistics
@@ -20,6 +20,17 @@ from ..utils import DateUtil, DataUtil
 from .models import DeviceReading, CurrentData, HistoryData, StatisticsTracking, MonthCacheEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class CurrentDataPreconditions(NamedTuple):
+    """Validated inputs required to build CurrentData. Returned when preconditions pass."""
+
+    filter_status: List[Any]
+    last_sync_date_obj: date
+    month_context: Dict[str, Any]
+    monthly_history_cache: Dict[str, Any]
+    last_year_usage: Optional[Any]
+    last_year_average_usage: Optional[Any]
 
 
 class MijnTedSensor(CoordinatorEntity, SensorEntity):
@@ -886,37 +897,57 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             use_month_transition=False
         )
     
-    def _build_current_data(self) -> Optional[CurrentData]:
-        data = self.coordinator.data
+    def _get_current_data_preconditions(
+        self, data: Optional[Dict[str, Any]]
+    ) -> Optional[CurrentDataPreconditions]:
         if not data:
             return None
-        
-        filter_status = data.get('filter_status')
-        if not isinstance(filter_status, list):
+
+        filter_status = data.get("filter_status")
+        if not isinstance(filter_status, list) or len(filter_status) == 0:
             return None
-        
+
         last_update = data.get("last_update")
         last_sync_date_obj = DateUtil.parse_last_sync_date(last_update)
         if not last_sync_date_obj:
             return None
-        
+
         month_context = self._get_month_context(last_sync_date_obj)
+        monthly_history_cache = data.get("monthly_history_cache", {})
+        if not isinstance(monthly_history_cache, dict):
+            monthly_history_cache = {}
+
+        prev_month_key = month_context["prev_month_key"]
+        prev_year_data = monthly_history_cache.get(prev_month_key)
+        last_year_usage = self._extract_value_from_cache_entry(prev_year_data, "total_usage")
+        last_year_average_usage = self._extract_value_from_cache_entry(prev_year_data, "average_usage")
+
+        return CurrentDataPreconditions(
+            filter_status=filter_status,
+            last_sync_date_obj=last_sync_date_obj,
+            month_context=month_context,
+            monthly_history_cache=monthly_history_cache,
+            last_year_usage=last_year_usage,
+            last_year_average_usage=last_year_average_usage,
+        )
+
+    def _build_current_data(self) -> Optional[CurrentData]:
+        preconditions = self._get_current_data_preconditions(self.coordinator.data)
+        if not preconditions:
+            return None
+
+        filter_status = preconditions.filter_status
+        last_sync_date_obj = preconditions.last_sync_date_obj
+        month_context = preconditions.month_context
+        monthly_history_cache = preconditions.monthly_history_cache
+        last_year_usage = preconditions.last_year_usage
+        last_year_average_usage = preconditions.last_year_average_usage
+
         current_month = month_context["current_month"]
         current_year = month_context["current_year"]
         month_year_key = month_context["month_year_key"]
         current_month_key = month_context["current_month_key"]
-        prev_month_key = month_context["prev_month_key"]
-        
-        monthly_history_cache = data.get("monthly_history_cache", {})
-        is_cache_dict = isinstance(monthly_history_cache, dict)
-        
-        prev_year_data = None
-        if is_cache_dict:
-            prev_year_data = monthly_history_cache.get(prev_month_key)
-        
-        last_year_usage = self._extract_value_from_cache_entry(prev_year_data, "total_usage")
-        last_year_average_usage = self._extract_value_from_cache_entry(prev_year_data, "average_usage")
-        
+
         start_date = DateUtil.get_first_day_of_month(current_month, current_year)
         start_date_str = DateUtil.format_date_for_api(start_date)
         last_day_of_month = DateUtil.get_last_day_of_month(current_month, current_year)
@@ -924,7 +955,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         end_date_str = DateUtil.format_date_for_api(end_date)
         last_update_date_str = DateUtil.format_date_for_api(last_sync_date_obj)
         days = DateUtil.calculate_days_between(start_date_str, end_date_str)
-        
+
         devices_list = self._build_devices_list_for_current_month(
             filter_status,
             monthly_history_cache,
@@ -939,7 +970,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             devices_list, filter_status, monthly_history_cache, current_month_key
         )
         average_usage_per_day = self._calculate_average_per_day(total_usage, days)
-        
+
         return CurrentData(
             last_update_date=last_update_date_str,
             month_id=month_year_key,
@@ -952,7 +983,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             total_usage_start=total_usage_start,
             total_usage_end=total_usage_end,
             total_usage=total_usage,
-            average_usage_per_day=average_usage_per_day
+            average_usage_per_day=average_usage_per_day,
         )
     
     def _build_history_data(self) -> List[HistoryData]:

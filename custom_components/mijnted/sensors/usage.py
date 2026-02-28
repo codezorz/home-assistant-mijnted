@@ -36,7 +36,8 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
             return self._last_known_value
         
         data = self.coordinator.data
-        if data is not None and data.get("filter_status") == [] and self._last_known_value is not None:
+        filter_status = data.get("filter_status") if data is not None else None
+        if not filter_status and self._last_known_value is not None:
             return self._last_known_value
 
         value = self._calculate_usage_from_start_end(
@@ -50,7 +51,10 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
         
         if value is None:
             return self._last_known_value
-        
+
+        if value == 0 and not filter_status and self._last_known_value is not None:
+            return self._last_known_value
+
         self._update_last_known_value(value)
         return value
 
