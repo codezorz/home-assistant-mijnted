@@ -584,54 +584,37 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         current_year: int,
     ) -> List[DeviceReading]:
         """Build list of DeviceReading for current month from filter_status and optional cache."""
-        devices_dict_list: List[Dict[str, Any]] = []
         end_readings_map = DataUtil.extract_device_readings_map(filter_status)
-        is_cache_dict = isinstance(monthly_history_cache, dict)
-        if is_cache_dict and current_month_key in monthly_history_cache:
-            current_month_cache = monthly_history_cache[current_month_key]
-            cached_devices = self._get_devices_from_cache_entry(current_month_cache)
-            cached_devices_map: Dict[str, Dict[str, Any]] = {}
+
+        cached_devices_map: Dict[str, Dict[str, Any]] = {}
+        if isinstance(monthly_history_cache, dict) and current_month_key in monthly_history_cache:
+            cached_devices = self._get_devices_from_cache_entry(monthly_history_cache[current_month_key])
             for device in cached_devices:
                 if isinstance(device, dict):
                     device_id = device.get("id")
                     if device_id is not None:
                         cached_devices_map[str(device_id)] = device
-            for device_id_str, end_value in end_readings_map.items():
-                cached_device = cached_devices_map.get(device_id_str)
-                if cached_device:
-                    device_dict = cached_device.copy()
-                    device_dict["end"] = end_value
-                else:
-                    device_dict = {"id": device_id_str, "end": end_value}
-                processed = self._enrich_device_entry(
-                    device_dict,
-                    device_id_str,
-                    current_month,
-                    current_year,
-                    monthly_history_cache,
-                    use_month_transition=True
-                )
-                if processed:
-                    devices_dict_list.append(processed)
-        else:
-            for device_id_str, end_value in end_readings_map.items():
+
+        devices_dict_list: List[Dict[str, Any]] = []
+        for device_id_str, end_value in end_readings_map.items():
+            cached_device = cached_devices_map.get(device_id_str)
+            if cached_device:
+                device_dict = cached_device.copy()
+                device_dict["end"] = end_value
+            else:
                 device_dict = {"id": device_id_str, "end": end_value}
-                processed = self._enrich_device_entry(
-                    device_dict,
-                    device_id_str,
-                    current_month,
-                    current_year,
-                    monthly_history_cache,
-                    use_month_transition=True
-                )
-                if processed:
-                    devices_dict_list.append(processed)
-        devices_list: List[DeviceReading] = []
-        for device_dict in devices_dict_list:
-            device_reading = self._convert_dict_to_device_reading(device_dict)
-            if device_reading:
-                devices_list.append(device_reading)
-        return devices_list
+            processed = self._enrich_device_entry(
+                device_dict,
+                device_id_str,
+                current_month,
+                current_year,
+                monthly_history_cache,
+                use_month_transition=True
+            )
+            if processed:
+                devices_dict_list.append(processed)
+
+        return self._convert_device_dicts_to_readings(devices_dict_list)
 
     def _compute_current_month_totals(
         self,
@@ -664,17 +647,12 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         month_value = DataUtil.safe_int(month_data.get("month"))
         if year_value is None or month_value is None:
             return None
-        devices_dict_list = month_data.get("devices", [])
-        enriched_devices_dict = []
-        for device in devices_dict_list:
-            enriched_device = self._enrich_history_device(device)
-            if enriched_device:
-                enriched_devices_dict.append(enriched_device)
-        devices_list: List[DeviceReading] = []
-        for device_dict in enriched_devices_dict:
-            device_reading = self._convert_dict_to_device_reading(device_dict)
-            if device_reading:
-                devices_list.append(device_reading)
+        enriched_devices_dict = [
+            enriched
+            for device in month_data.get("devices", [])
+            if (enriched := self._enrich_history_device(device)) is not None
+        ]
+        devices_list = self._convert_device_dicts_to_readings(enriched_devices_dict)
         start_date_str = month_data.get("start_date", "")
         end_date_str = month_data.get("end_date", "")
         days = DateUtil.calculate_days_between(start_date_str, end_date_str)
@@ -886,6 +864,15 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             usage=usage_val
         )
     
+    def _convert_device_dicts_to_readings(self, devices_dict_list: List[Dict[str, Any]]) -> List[DeviceReading]:
+        """Convert a list of device dicts to DeviceReading objects."""
+        readings: List[DeviceReading] = []
+        for device_dict in devices_dict_list:
+            device_reading = self._convert_dict_to_device_reading(device_dict)
+            if device_reading:
+                readings.append(device_reading)
+        return readings
+
     def _enrich_history_device(self, device: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         device_id = device.get("id") if isinstance(device, dict) else None
         return self._enrich_device_entry(
@@ -912,7 +899,8 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         if not last_sync_date_obj:
             return None
 
-        month_context = self._get_month_context(last_sync_date_obj)
+        reference_date = date.today()
+        month_context = self._get_month_context(reference_date)
         monthly_history_cache = data.get("monthly_history_cache", {})
         if not isinstance(monthly_history_cache, dict):
             monthly_history_cache = {}
@@ -930,6 +918,24 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             last_year_usage=last_year_usage,
             last_year_average_usage=last_year_average_usage,
         )
+
+    @staticmethod
+    def _build_api_behind_current_data(
+        filter_status: List[Any],
+    ) -> Tuple[List[DeviceReading], Optional[float], Optional[float], float, float]:
+        """Build device readings and totals when the API data lags behind the current month.
+        
+        Returns:
+            Tuple of (devices_list, total_usage_start, total_usage_end, total_usage, average_usage_per_day)
+        """
+        end_readings_map = DataUtil.extract_device_readings_map(filter_status)
+        devices_list: List[DeviceReading] = []
+        for device_id_str, reading in end_readings_map.items():
+            device_id = DataUtil.safe_int(device_id_str)
+            if device_id is not None and reading is not None:
+                devices_list.append(DeviceReading(id=device_id, start=reading, end=reading, usage=0.0))
+        total_usage_end = DataUtil.calculate_filter_status_total(filter_status)
+        return devices_list, total_usage_end, total_usage_end, 0.0, 0.0
 
     def _build_current_data(self) -> Optional[CurrentData]:
         preconditions = self._get_current_data_preconditions(self.coordinator.data)
@@ -951,25 +957,34 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         start_date = DateUtil.get_first_day_of_month(current_month, current_year)
         start_date_str = DateUtil.format_date_for_api(start_date)
         last_day_of_month = DateUtil.get_last_day_of_month(current_month, current_year)
-        end_date = min(last_sync_date_obj, last_day_of_month)
-        end_date_str = DateUtil.format_date_for_api(end_date)
         last_update_date_str = DateUtil.format_date_for_api(last_sync_date_obj)
-        days = DateUtil.calculate_days_between(start_date_str, end_date_str)
+        api_behind = last_sync_date_obj < start_date
 
-        devices_list = self._build_devices_list_for_current_month(
-            filter_status,
-            monthly_history_cache,
-            current_month_key,
-            current_month,
-            current_year,
-        )
-        if not devices_list and days is None:
-            return None
+        if api_behind:
+            end_date_str = start_date_str
+            days = 0
+            devices_list, total_usage_start, total_usage_end, total_usage, average_usage_per_day = (
+                self._build_api_behind_current_data(filter_status)
+            )
+        else:
+            end_date = min(last_sync_date_obj, last_day_of_month)
+            end_date_str = DateUtil.format_date_for_api(end_date)
+            days = DateUtil.calculate_days_between(start_date_str, end_date_str)
 
-        total_usage_start, total_usage_end, total_usage = self._compute_current_month_totals(
-            devices_list, filter_status, monthly_history_cache, current_month_key
-        )
-        average_usage_per_day = self._calculate_average_per_day(total_usage, days)
+            devices_list = self._build_devices_list_for_current_month(
+                filter_status,
+                monthly_history_cache,
+                current_month_key,
+                current_month,
+                current_year,
+            )
+            if not devices_list and days is None:
+                return None
+
+            total_usage_start, total_usage_end, total_usage = self._compute_current_month_totals(
+                devices_list, filter_status, monthly_history_cache, current_month_key
+            )
+            average_usage_per_day = self._calculate_average_per_day(total_usage, days)
 
         return CurrentData(
             last_update_date=last_update_date_str,
@@ -993,12 +1008,9 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         monthly_history_cache = data.get("monthly_history_cache", {})
         if not isinstance(monthly_history_cache, dict) or not monthly_history_cache:
             return []
-        last_update = data.get("last_update")
-        last_sync_date_obj = DateUtil.parse_last_sync_date(last_update)
-        current_month_key = None
-        if last_sync_date_obj:
-            month_context = self._get_month_context(last_sync_date_obj)
-            current_month_key = month_context["current_month_key"]
+        reference_date = date.today()
+        month_context = self._get_month_context(reference_date)
+        current_month_key = month_context["current_month_key"]
         month_keys = list(monthly_history_cache.keys())
         month_keys.sort(key=self._history_month_sort_key, reverse=True)
         historical_readings_list: List[HistoryData] = []
