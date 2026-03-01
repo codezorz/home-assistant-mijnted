@@ -128,7 +128,15 @@ class DateUtil:
     
     @staticmethod
     def is_current_month(month: int, year: int) -> bool:
-        """Return True if the given month and year are the current month and year."""
+        """Return True if the given month and year are the current month and year.
+
+        Args:
+            month: Month number (1-12)
+            year: Year number
+
+        Returns:
+            True if month and year match current month and year, False otherwise
+        """
         now = datetime.now()
         return month == now.month and year == now.year
 
@@ -215,6 +223,55 @@ class DateUtil:
         except (ValueError, TypeError, AttributeError):
             return None
     
+    @staticmethod
+    def format_month_year_key(month: int, year: int) -> str:
+        """Format month and year as "M.YYYY" key (e.g. "3.2025").
+
+        Args:
+            month: Month number (1-12)
+            year: Year number
+
+        Returns:
+            Month-year key string in "M.YYYY" format
+        """
+        return f"{month}.{year}"
+
+    @staticmethod
+    def is_current_month_from_key(month_key: str) -> bool:
+        """Check if a YYYY-MM month key refers to the current month.
+
+        Args:
+            month_key: Month key string in YYYY-MM format
+
+        Returns:
+            True if the month key refers to the current month, False otherwise
+        """
+        try:
+            parts = month_key.split("-")
+            if len(parts) == 2:
+                return DateUtil.is_current_month(int(parts[1]), int(parts[0]))
+        except (ValueError, IndexError):
+            pass
+        return False
+
+    @staticmethod
+    def parse_month_key(month_key: str) -> Optional[Tuple[int, int]]:
+        """Parse a YYYY-MM month key into (year, month).
+
+        Args:
+            month_key: Month key string in YYYY-MM format
+
+        Returns:
+            Tuple of (year, month) if parsing succeeds, None on failure
+        """
+        try:
+            parts = month_key.split("-")
+            if len(parts) == 2:
+                return (int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            pass
+        return None
+
     @staticmethod
     def format_month_name(month: int, year: int) -> Optional[str]:
         """Format month and year as "MonthName YYYY" (e.g., "November 2025").
