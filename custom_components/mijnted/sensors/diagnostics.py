@@ -9,7 +9,13 @@ from ..const import CALCULATION_YEAR_MONTH_SORT_MULTIPLIER
 
 
 class MijnTedLastUpdateSensor(MijnTedSensor):
-    """Sensor for last update timestamp."""
+    """Sensor for last update timestamp.
+
+    Displays the timestamp of the most recent data update from the MijnTed API.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the last update sensor.
@@ -45,7 +51,13 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
 
 
 class MijnTedActiveModelSensor(MijnTedSensor):
-    """Sensor for active model information."""
+    """Sensor for active model information.
+
+    Displays the active model identifier from the MijnTed API.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the active model sensor.
@@ -71,7 +83,13 @@ class MijnTedActiveModelSensor(MijnTedSensor):
 
 
 class MijnTedDeliveryTypesSensor(MijnTedSensor):
-    """Sensor for delivery types."""
+    """Sensor for delivery types.
+
+    Displays the comma-separated list of delivery types from the MijnTed API.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the delivery types sensor.
@@ -101,7 +119,13 @@ class MijnTedDeliveryTypesSensor(MijnTedSensor):
 
 
 class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
-    """Sensor for residential unit details."""
+    """Sensor for residential unit details.
+
+    Displays the residential unit identifier with full detail data in attributes.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the residential unit detail sensor.
@@ -139,7 +163,13 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
 
 
 class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
-    """Sensor for unit of measures information."""
+    """Sensor for unit of measures information.
+
+    Displays the display name of the first unit of measure from the API.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the unit of measures sensor.
@@ -189,7 +219,13 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
 
 
 class MijnTedLastSuccessfulSyncSensor(MijnTedSensor):
-    """Sensor for the timestamp of the last successful data sync."""
+    """Sensor for the timestamp of the last successful data sync.
+
+    Displays the ISO timestamp of the last successful sync from the MijnTed API.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the last successful sync sensor.
@@ -213,7 +249,14 @@ class MijnTedLastSuccessfulSyncSensor(MijnTedSensor):
 
 
 class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
-    """Diagnostic sensor displaying the month with the last available insight data including average."""
+    """Diagnostic sensor displaying the month with the last available insight data including average.
+
+    Shows the month name (e.g. "November 2025") for the latest month with average
+    usage data from energy_usage_data, usage_last_year, or monthly_history_cache.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
         """Initialize the latest available insight sensor.
@@ -278,7 +321,7 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
             return None, None
         
         month_keys = list(monthly_history_cache.keys())
-        month_keys.sort(key=lambda k: (int(k.split("-")[0]), int(k.split("-")[1])), reverse=True)
+        month_keys.sort(key=lambda k: DateUtil.parse_month_key(k) or (0, 0), reverse=True)
         
         for month_key in month_keys:
             month_data = monthly_history_cache[month_key]
@@ -294,6 +337,32 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         
         return None, None
     
+    def _find_latest_from_energy_sources(
+        self, data: Dict[str, Any]
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Find the latest month with average from energy_usage_data and usage_last_year."""
+        month_num, year = self._find_latest_month_with_average_from_energy_data(
+            data.get("energy_usage_data", {})
+        )
+
+        usage_last_year = data.get("usage_last_year", {})
+        if not isinstance(usage_last_year, dict):
+            return month_num, year
+
+        ly_month, ly_year = self._find_latest_month_with_average_from_energy_data(usage_last_year)
+        if ly_month is None or ly_year is None:
+            return month_num, year
+
+        ly_sort = ly_year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + ly_month
+        if month_num is None or year is None:
+            return ly_month, ly_year
+
+        current_sort = year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + month_num
+        if ly_sort > current_sort:
+            return ly_month, ly_year
+
+        return month_num, year
+
     @property
     def state(self) -> Optional[str]:
         """Return the month name (e.g., "November 2025") for the latest available insight with average.
@@ -305,30 +374,14 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         data = self.coordinator.data
         if not data:
             return None
-        
-        latest_month_num, latest_year = self._find_latest_month_with_average_from_energy_data(
-            data.get("energy_usage_data", {})
-        )
-        
-        usage_last_year = data.get("usage_last_year", {})
-        if isinstance(usage_last_year, dict):
-            last_year_month_num, last_year_year = self._find_latest_month_with_average_from_energy_data(
-                usage_last_year
-            )
-            if last_year_month_num is not None and last_year_year is not None:
-                last_year_sort_key = last_year_year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + last_year_month_num
-                if latest_month_num is None or latest_year is None:
-                    latest_month_num, latest_year = last_year_month_num, last_year_year
-                else:
-                    current_sort_key = latest_year * CALCULATION_YEAR_MONTH_SORT_MULTIPLIER + latest_month_num
-                    if last_year_sort_key > current_sort_key:
-                        latest_month_num, latest_year = last_year_month_num, last_year_year
-        
+
+        latest_month_num, latest_year = self._find_latest_from_energy_sources(data)
+
         if latest_month_num is not None and latest_year is not None:
             formatted = DateUtil.format_month_name(latest_month_num, latest_year)
             if formatted:
                 return formatted
-        
+
         cache_month_num, cache_year = self._find_latest_month_with_average_from_cache(
             data.get("monthly_history_cache", {})
         )
@@ -336,7 +389,7 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
             formatted = DateUtil.format_month_name(cache_month_num, cache_year)
             if formatted:
                 return formatted
-        
+
         return None
     
     @property

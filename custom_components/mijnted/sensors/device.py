@@ -6,7 +6,14 @@ from ..utils import TranslationUtil
 
 
 class MijnTedDeviceSensor(MijnTedSensor):
-    """Sensor for Mijnted devices."""
+    """Sensor for individual MijnTed device readings.
+
+    Displays the current meter reading for a specific device from filter_status.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+        device_number: Zero-based index or identifier of the device in the filter_status list.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], device_number: str) -> None:
         """Initialize the device sensor.
@@ -26,6 +33,7 @@ class MijnTedDeviceSensor(MijnTedSensor):
 
     @property
     def _device_data(self) -> Optional[Dict[str, Any]]:
+        """Device data for this sensor from coordinator filter_status."""
         data = self.coordinator.data
         if not data:
             return None

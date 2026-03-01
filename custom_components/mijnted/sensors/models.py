@@ -5,14 +5,25 @@ from typing import Dict, Any, List, Optional
 
 @dataclass
 class DeviceReading:
-    """Represents a single device reading with start, end, and calculated usage."""
+    """Represents a single device reading with start, end, and calculated usage.
+
+    Attributes:
+        id: Device identifier.
+        start: Meter reading at the start of the period.
+        end: Meter reading at the end of the period.
+        usage: Calculated usage (end - start), or None if not computable.
+    """
     id: int
     start: float
     end: float
     usage: Optional[float] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation."""
+        """Convert to dictionary representation.
+        
+        Returns:
+            Dictionary with id, start, end, and usage keys.
+        """
         return {
             "id": self.id,
             "start": self.start,
@@ -22,7 +33,14 @@ class DeviceReading:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Optional["DeviceReading"]:
-        """Create DeviceReading from dictionary representation."""
+        """Create DeviceReading from dictionary representation.
+        
+        Args:
+            data: Dictionary with id, start, end, and optionally usage keys.
+        
+        Returns:
+            DeviceReading instance or None if required keys are missing or invalid.
+        """
         device_id = data.get("id")
         start_val = data.get("start")
         end_val = data.get("end")
@@ -43,7 +61,22 @@ class DeviceReading:
 
 @dataclass
 class CurrentData:
-    """Represents current month's usage data."""
+    """Represents current month's usage data.
+
+    Attributes:
+        last_update_date: Date of the last update.
+        month_id: Identifier for the month.
+        start_date: Start date of the period.
+        end_date: End date of the period.
+        devices: List of device readings for this period.
+        days: Number of days in the period, or None.
+        last_year_usage: Usage from the same period last year, or None.
+        last_year_average_usage: Average usage from last year, or None.
+        total_usage_start: Total meter reading at period start, or None.
+        total_usage_end: Total meter reading at period end, or None.
+        total_usage: Total usage for the period, or None.
+        average_usage_per_day: Average usage per day, or None.
+    """
     last_update_date: str
     month_id: str
     start_date: str
@@ -58,7 +91,11 @@ class CurrentData:
     average_usage_per_day: Optional[float] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation, recursively converting nested dataclasses."""
+        """Convert to dictionary representation, recursively converting nested dataclasses.
+        
+        Returns:
+            Dictionary with all CurrentData fields including nested device readings.
+        """
         return {
             "last_update_date": self.last_update_date,
             "month_id": self.month_id,
@@ -99,7 +136,22 @@ class CurrentData:
 
 @dataclass
 class HistoryData:
-    """Represents historical month's usage data."""
+    """Represents historical month's usage data.
+
+    Attributes:
+        month_id: Identifier for the month.
+        year: Year of the period.
+        month: Month of the period.
+        start_date: Start date of the period.
+        end_date: End date of the period.
+        average_usage: Average usage for the period, or None.
+        devices: List of device readings for this period.
+        days: Number of days in the period, or None.
+        total_usage: Total usage for the period, or None.
+        total_usage_start: Total meter reading at period start, or None.
+        total_usage_end: Total meter reading at period end, or None.
+        average_usage_per_day: Average usage per day, or None.
+    """
     month_id: str
     year: int
     month: int
@@ -114,7 +166,11 @@ class HistoryData:
     total_usage: Optional[float] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation, recursively converting nested dataclasses."""
+        """Convert to dictionary representation, recursively converting nested dataclasses.
+        
+        Returns:
+            Dictionary with all HistoryData fields including nested device readings.
+        """
         return {
             "month_id": self.month_id,
             "year": self.year,
@@ -146,7 +202,15 @@ class HistoryData:
 
 @dataclass
 class StatisticsTracking:
-    """Represents statistics tracking data - last month key injected per sensor type."""
+    """Tracks the last injected month key per sensor type for statistics injection.
+
+    Attributes:
+        monthly_usage: Last injected month key for monthly usage sensor, or None.
+        last_year_monthly_usage: Last injected month key for last year monthly usage, or None.
+        average_monthly_usage: Last injected month key for average monthly usage, or None.
+        last_year_average_monthly_usage: Last injected month key for last year average, or None.
+        total_usage: Last injected month key for total usage sensor, or None.
+    """
     monthly_usage: Optional[str] = None
     last_year_monthly_usage: Optional[str] = None
     average_monthly_usage: Optional[str] = None
@@ -154,7 +218,11 @@ class StatisticsTracking:
     total_usage: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation."""
+        """Convert to dictionary representation.
+        
+        Returns:
+            Dictionary with all StatisticsTracking keys.
+        """
         return {
             "monthly_usage": self.monthly_usage,
             "last_year_monthly_usage": self.last_year_monthly_usage,
@@ -166,7 +234,19 @@ class StatisticsTracking:
 
 @dataclass
 class MonthCacheEntry:
-    """Represents a month's cache entry for persistent storage."""
+    """Represents a month's cache entry for persistent storage.
+
+    Attributes:
+        month_id: Identifier for the month.
+        year: Year of the period.
+        month: Month of the period.
+        start_date: Start date of the period.
+        end_date: End date of the period.
+        total_usage: Total usage for the period, or None.
+        average_usage: Average usage for the period, or None.
+        devices: List of device readings (stored as dicts when serialized).
+        finalized: Whether the month's data is finalized.
+    """
     month_id: str
     year: int
     month: int
@@ -178,7 +258,11 @@ class MonthCacheEntry:
     finalized: bool = False
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation for storage."""
+        """Convert to dictionary representation for storage.
+        
+        Returns:
+            Dictionary with month_id, year, month, dates, usage, devices, finalized.
+        """
         return {
             "month_id": self.month_id,
             "year": self.year,
@@ -193,7 +277,14 @@ class MonthCacheEntry:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MonthCacheEntry":
-        """Create MonthCacheEntry from dictionary representation."""
+        """Create MonthCacheEntry from dictionary representation.
+        
+        Args:
+            data: Dictionary with month_id, year, month, dates, usage, devices, finalized.
+        
+        Returns:
+            MonthCacheEntry instance.
+        """
         devices = []
         devices_data = data.get("devices", [])
         if isinstance(devices_data, list):
