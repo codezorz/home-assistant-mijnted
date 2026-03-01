@@ -69,7 +69,7 @@ During the integration setup in Home Assistant, you'll be prompted to enter your
 
 Once configured, the integration will create several sensors in Home Assistant:
 
-- **Monthly usage** - Current month's energy usage (calculated from total_usage_end - total_usage_start). Includes attributes: `start_date`, `end_date`, `days`, and `month_id`.
+- **Monthly usage** - Current month's energy usage (calculated from total_usage_end - total_usage_start). The current month is the calendar month (sync date), not the API last update date; `last_update_date` in attributes is the date through which meter values are available (may be in the previous month when the API is behind). Includes attributes: `start_date`, `end_date`, `days`, `month_id`, and `last_update_date`.
 - **Last year monthly usage** - Last year's monthly usage for the corresponding month (prefers API-provided value from previous year's data)
 - **Average monthly usage** - Average usage extracted from historical monthly usage data
 - **Last year average monthly usage** - Last year's average monthly usage for the corresponding month (prefers API-provided value from previous year's data)

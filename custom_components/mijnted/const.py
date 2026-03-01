@@ -39,6 +39,8 @@ CALCULATION_AVERAGE_PER_DAY_DECIMAL_PLACES = 2
 
 # Cache constants
 CACHE_HISTORY_MONTHS = 16
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}_monthly_cache"
 
 # Sensor and calculation constants
 MONTH_YEAR_PARTS_COUNT = 2
