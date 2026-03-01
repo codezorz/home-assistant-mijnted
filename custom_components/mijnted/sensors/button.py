@@ -16,7 +16,16 @@ _STORAGE_KEY = f"{DOMAIN}_monthly_cache"
 
 
 class MijnTedResetStatisticsButton(CoordinatorEntity, ButtonEntity):
-    """Button entity to reset statistics tracking and trigger re-injection."""
+    """Button entity to reset statistics tracking and trigger re-injection.
+
+    Clears persisted storage, resets all statistics tracking fields, and triggers
+    a complete refresh from the MijnTed API on press.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+        hass: Home Assistant instance (optional; will try to get from coordinator).
+        entry_id: Config entry ID (optional; will try to find from coordinator).
+    """
     
     def __init__(
         self, 

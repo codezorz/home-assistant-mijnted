@@ -13,7 +13,6 @@ from ..const import (
     CALCULATION_AVERAGE_PER_DAY_DECIMAL_PLACES,
     DEFAULT_START_VALUE,
     DOMAIN,
-    MONTH_YEAR_PARTS_COUNT,
     UNIT_MIJNTED,
 )
 from ..utils import DateUtil, DataUtil
@@ -23,7 +22,16 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class CurrentDataPreconditions(NamedTuple):
-    """Validated inputs required to build CurrentData. Returned when preconditions pass."""
+    """Validated inputs required to build CurrentData.
+
+    Attributes:
+        filter_status: Filter status list.
+        last_sync_date_obj: Date object of the last sync.
+        month_context: Context dictionary for the current month.
+        monthly_history_cache: Cache of monthly history data.
+        last_year_usage: Usage from last year, or None.
+        last_year_average_usage: Average usage from last year, or None.
+    """
 
     filter_status: List[Any]
     last_sync_date_obj: date
@@ -34,7 +42,16 @@ class CurrentDataPreconditions(NamedTuple):
 
 
 class MijnTedSensor(CoordinatorEntity, SensorEntity):
-    """Base class for Mijnted sensors."""
+    """Base class for Mijnted sensors.
+
+    Provides common functionality for all MijnTed sensor entities including
+    coordinator integration, device info building, and value caching.
+
+    Args:
+        coordinator: DataUpdateCoordinator providing MijnTed API data.
+        sensor_type: Type identifier for the sensor (e.g. "last_update", "device_0").
+        name: Display name for the sensor entity.
+    """
     
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], sensor_type: str, name: str) -> None:
         """Initialize the sensor.
@@ -51,15 +68,25 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         self._last_known_value = None
 
     @staticmethod
+    def _build_device_name_from_address(residential_unit_detail: Dict[str, Any]) -> str:
+        """Build device name from address fields, falling back to 'MijnTed'."""
+        street = residential_unit_detail.get("street", "")
+        appartment_no = residential_unit_detail.get("appartmentNo", "")
+        zip_code = residential_unit_detail.get("zipCode", "")
+
+        address_parts = []
+        if street:
+            address_parts.append(f"{street} {appartment_no}" if appartment_no else street)
+        elif appartment_no:
+            address_parts.append(appartment_no)
+        if zip_code:
+            address_parts.append(zip_code)
+
+        return f"MijnTed - {', '.join(address_parts)}" if address_parts else "MijnTed"
+
+    @staticmethod
     def _build_device_info(data: Optional[Dict[str, Any]]) -> DeviceInfo:
-        """Build device information from coordinator data.
-        
-        Args:
-            data: Coordinator data dictionary containing residential unit information
-            
-        Returns:
-            DeviceInfo object with device identifiers and details
-        """
+        """Build device information from coordinator data."""
         if not data:
             return DeviceInfo(
                 identifiers={(DOMAIN, "unknown")},
@@ -67,31 +94,13 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
                 manufacturer="MijnTed",
                 model="Unknown",
             )
-        
+
         residential_unit = data.get("residential_unit", "unknown")
         residential_unit_detail = data.get("residential_unit_detail", {})
         device_name = "MijnTed"
-        
         if isinstance(residential_unit_detail, dict):
-            street = residential_unit_detail.get("street", "")
-            appartment_no = residential_unit_detail.get("appartmentNo", "")
-            zip_code = residential_unit_detail.get("zipCode", "")
-            
-            address_parts = []
-            if street:
-                if appartment_no:
-                    address_parts.append(f"{street} {appartment_no}")
-                else:
-                    address_parts.append(street)
-            elif appartment_no:
-                address_parts.append(appartment_no)
-            
-            if zip_code:
-                address_parts.append(zip_code)
-            
-            if address_parts:
-                device_name = f"MijnTed - {', '.join(address_parts)}"
-        
+            device_name = MijnTedSensor._build_device_name_from_address(residential_unit_detail)
+
         return DeviceInfo(
             identifiers={(DOMAIN, residential_unit)},
             name=device_name,
@@ -131,14 +140,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     
     @staticmethod
     def _get_month_cache_entry_dict(entry: Any) -> Optional[Dict[str, Any]]:
-        """Convert cache entry to dictionary format.
-        
-        Args:
-            entry: MonthCacheEntry instance or dict
-            
-        Returns:
-            Dictionary representation of the entry, or None if invalid
-        """
+        """Convert cache entry to dictionary format."""
         if isinstance(entry, MonthCacheEntry):
             return entry.to_dict()
         if isinstance(entry, dict):
@@ -147,14 +149,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     
     @staticmethod
     def _get_devices_from_cache_entry(entry: Any) -> List[Dict[str, Any]]:
-        """Extract devices list from a cache entry.
-        
-        Args:
-            entry: MonthCacheEntry instance or dict
-            
-        Returns:
-            List of device dictionaries
-        """
+        """Extract devices list from a cache entry."""
         if isinstance(entry, MonthCacheEntry):
             return [device.to_dict() for device in entry.devices]
         if isinstance(entry, dict):
@@ -163,15 +158,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     
     @staticmethod
     def _extract_value_from_cache_entry(entry: Any, field_name: str) -> Optional[Any]:
-        """Extract a value from a cache entry (MonthCacheEntry or dict).
-        
-        Args:
-            entry: MonthCacheEntry instance or dict
-            field_name: Name of the field to extract
-            
-        Returns:
-            Extracted value or None if not found
-        """
+        """Extract a value from a cache entry (MonthCacheEntry or dict)."""
         if isinstance(entry, MonthCacheEntry):
             return getattr(entry, field_name, None)
         if isinstance(entry, dict):
@@ -179,12 +166,14 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return None
     
     def _get_last_successful_sync(self) -> Optional[str]:
+        """Return the last successful sync timestamp from coordinator data."""
         data = self.coordinator.data
         if not data:
             return None
         return data.get("last_successful_sync")
     
     def _update_last_known_value(self, value: Any) -> None:
+        """Update _last_known_value when value is not None."""
         if value is not None:
             self._last_known_value = value
     
@@ -228,6 +217,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return end - start
     
     def _validate_statistics_injection(self) -> bool:
+        """Return True if statistics injection is possible (entity_id, hass, recorder)."""
         if not self.entity_id:
             return False
         if not self.hass:
@@ -237,6 +227,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return True
     
     def _compare_month_keys(self, month_key1: Optional[str], month_key2: Optional[str]) -> bool:
+        """Return True if month_key1 is chronologically before or equal to month_key2."""
         if not month_key1 or not month_key2:
             return False
         
@@ -256,6 +247,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return month1 <= month2
     
     def _get_tracking_field_name(self) -> Optional[str]:
+        """Map sensor_type to the corresponding statistics tracking field name."""
         sensor_type = getattr(self, 'sensor_type', None)
         if not sensor_type:
             return None
@@ -269,6 +261,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return mapping.get(sensor_type.lower())
     
     def _update_statistics_tracking(self, month_key: str) -> None:
+        """Update the statistics tracking field for this sensor with the given month_key."""
         data = self.coordinator.data if hasattr(self, 'coordinator') else None
         if not data:
             return
@@ -310,15 +303,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return self._compare_month_keys(month_key, last_injected)
     
     def _create_statistics_metadata(self, mean_type: StatisticMeanType, has_sum: bool = False) -> StatisticMetaData:
-        """Create statistics metadata for recorder.
-        
-        Args:
-            mean_type: Type of mean calculation for statistics
-            has_sum: Whether statistics should include sum values
-            
-        Returns:
-            StatisticMetaData object configured for this sensor
-        """
+        """Create statistics metadata for recorder."""
         return StatisticMetaData(
             has_mean=False,
             has_sum=has_sum,
@@ -341,6 +326,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         metadata: StatisticMetaData,
         statistics: List[StatisticData]
     ) -> None:
+        """Import statistics into recorder, logging success or catching exceptions."""
         if not statistics:
             return
         
@@ -363,6 +349,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             )
     
     async def _setup_statistics_injection(self) -> None:
+        """Register coordinator listener for injection and trigger initial injection if data exists."""
         def _inject_on_update() -> None:
             if self.hass and self.coordinator.data:
                 self.hass.async_create_task(self._async_inject_statistics())
@@ -389,6 +376,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         value: Optional[Any],
         max_month_key: Optional[str]
     ) -> Optional[str]:
+        """Add statistic to list if valid and not already injected; return updated max_month_key."""
         if not month_id or month_id in injected_periods:
             return max_month_key
         
@@ -415,6 +403,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         max_month_key: Optional[str],
         has_sum: bool = False
     ) -> None:
+        """Import statistics and update tracking with max_month_key."""
         if not statistics:
             return
         
@@ -424,136 +413,140 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         if max_month_key:
             self._update_statistics_tracking(max_month_key)
     
+    async def _collect_last_year_statistics(
+        self,
+        history: List[HistoryData],
+        monthly_history_cache: Dict[str, Any],
+        cache_field_name: str,
+    ) -> Tuple[list, set, Optional[str]]:
+        """Collect statistics by looking up last-year values from the cache for each history entry."""
+        injected_periods: set[str] = set()
+        statistics: list = []
+        max_month_key: Optional[str] = None
+
+        for entry in history:
+            if not entry.month_id:
+                continue
+            parsed = DataUtil.parse_month_year(entry.month_id)
+            if not parsed:
+                continue
+            month_num, year = parsed
+            last_year_month_key = DateUtil.format_month_key(year - 1, month_num)
+            last_year_data = monthly_history_cache.get(last_year_month_key)
+            if not last_year_data:
+                continue
+            last_year_value = DataUtil.safe_float(
+                self._extract_value_from_cache_entry(last_year_data, cache_field_name)
+            )
+            if last_year_value is None:
+                continue
+            max_month_key = await self._add_statistic_if_valid(
+                statistics, injected_periods, entry.month_id, entry.start_date,
+                last_year_value, max_month_key,
+            )
+        return (statistics, injected_periods, max_month_key)
+
     async def _async_inject_last_year_statistics(
         self,
         cache_field_name: str,
         current_field_name: str,
-        mean_type: StatisticMeanType
+        mean_type: StatisticMeanType,
     ) -> None:
+        """Inject last-year statistics from cache and current month into recorder."""
         if not self._validate_statistics_injection():
             return
-        
         data = self.coordinator.data
         if not data:
             return
-        
         monthly_history_cache = data.get("monthly_history_cache", {})
         if not isinstance(monthly_history_cache, dict):
             return
-        
+
         history = self._build_history_data()
         current = self._build_current_data()
-        
-        injected_periods: set[str] = set()
-        statistics = []
-        max_month_key = None
-        
-        for entry in history:
-            if not entry.month_id:
-                continue
-            
-            parsed = DataUtil.parse_month_year(entry.month_id)
-            if not parsed:
-                continue
-            
-            month_num, year = parsed
-            last_year = year - 1
-            last_year_month_key = DateUtil.format_month_key(last_year, month_num)
-            
-            last_year_data = monthly_history_cache.get(last_year_month_key)
-            if not last_year_data:
-                continue
-            
-            last_year_value = self._extract_value_from_cache_entry(last_year_data, cache_field_name)
-            if last_year_value is None:
-                continue
-            
-            last_year_value = DataUtil.safe_float(last_year_value)
-            if last_year_value is None:
-                continue
-            
-            max_month_key = await self._add_statistic_if_valid(
-                statistics,
-                injected_periods,
-                entry.month_id,
-                entry.start_date,
-                last_year_value,
-                max_month_key
-            )
-        
+
+        statistics, injected_periods, max_month_key = await self._collect_last_year_statistics(
+            history, monthly_history_cache, cache_field_name,
+        )
+
         current_field_value = getattr(current, current_field_name, None) if current else None
         if current and current.month_id and current_field_value is not None:
             max_month_key = await self._add_statistic_if_valid(
-                statistics,
-                injected_periods,
-                current.month_id,
-                current.start_date,
-                current_field_value,
-                max_month_key
+                statistics, injected_periods, current.month_id,
+                current.start_date, current_field_value, max_month_key,
             )
-        
+
         await self._finalize_statistics_injection(statistics, mean_type, max_month_key)
     
-    async def _build_statistics_from_history(
+    async def _collect_history_statistics(
         self,
+        history: List[HistoryData],
         history_field: str,
-        mean_type: StatisticMeanType,
-        include_current: bool = False,
-        current_value_calculator: Optional[Callable[[CurrentData], Optional[float]]] = None
-    ) -> None:
-        history = self._build_history_data()
-        if not history:
-            return
-        
-        if not self._validate_statistics_injection():
-            return
-        
+    ) -> Tuple[list, set, Optional[str]]:
+        """Iterate history entries and collect statistics for the given field."""
         injected_periods: set[str] = set()
-        statistics = []
-        max_month_key = None
-        
+        statistics: list = []
+        max_month_key: Optional[str] = None
         for entry in history:
             value = getattr(entry, history_field, None)
             if value is None:
                 continue
             max_month_key = await self._add_statistic_if_valid(
-                statistics,
-                injected_periods,
-                entry.month_id,
-                entry.start_date,
-                value,
-                max_month_key
+                statistics, injected_periods, entry.month_id,
+                entry.start_date, value, max_month_key,
             )
-        
+        return (statistics, injected_periods, max_month_key)
+
+    async def _add_current_month_statistic(
+        self,
+        history_field: str,
+        current_value_calculator: Optional[Callable[[CurrentData], Optional[float]]],
+        statistics: list,
+        injected_periods: set,
+        max_month_key: Optional[str],
+    ) -> Optional[str]:
+        """Append the current month's statistic if applicable."""
+        current = self._build_current_data()
+        if not current or not current.month_id:
+            return max_month_key
+        usage_value = (
+            current_value_calculator(current)
+            if current_value_calculator
+            else getattr(current, history_field, None)
+        )
+        if usage_value is not None:
+            max_month_key = await self._add_statistic_if_valid(
+                statistics, injected_periods, current.month_id,
+                current.start_date, usage_value, max_month_key,
+            )
+        return max_month_key
+
+    async def _build_statistics_from_history(
+        self,
+        history_field: str,
+        mean_type: StatisticMeanType,
+        include_current: bool = False,
+        current_value_calculator: Optional[Callable[[CurrentData], Optional[float]]] = None,
+    ) -> None:
+        """Build and inject statistics from history data, optionally including current month."""
+        history = self._build_history_data()
+        if not history or not self._validate_statistics_injection():
+            return
+
+        statistics, injected_periods, max_month_key = await self._collect_history_statistics(
+            history, history_field,
+        )
+
         if include_current:
-            current = self._build_current_data()
-            if current and current.month_id:
-                if current_value_calculator:
-                    usage_value = current_value_calculator(current)
-                else:
-                    usage_value = getattr(current, history_field, None)
-                
-                if usage_value is not None:
-                    max_month_key = await self._add_statistic_if_valid(
-                        statistics,
-                        injected_periods,
-                        current.month_id,
-                        current.start_date,
-                        usage_value,
-                        max_month_key
-                    )
-        
+            max_month_key = await self._add_current_month_statistic(
+                history_field, current_value_calculator,
+                statistics, injected_periods, max_month_key,
+            )
+
         await self._finalize_statistics_injection(statistics, mean_type, max_month_key)
     
     def _parse_start_date_to_datetime(self, start_date_str: str) -> Optional[datetime]:
-        """Parse start date string to datetime object.
-        
-        Args:
-            start_date_str: Date string in "YYYY-MM-DD" format
-            
-        Returns:
-            Datetime object with UTC timezone, or None if parsing fails
-        """
+        """Parse start date string to datetime object."""
         if not start_date_str:
             return None
         
@@ -567,13 +560,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     @staticmethod
     def _history_month_sort_key(key: str) -> Tuple[int, int]:
         """Sort key for month keys in YYYY-MM format; (0, 0) for invalid."""
-        try:
-            parts = key.split("-")
-            if len(parts) == MONTH_YEAR_PARTS_COUNT:
-                return (int(parts[0]), int(parts[1]))
-        except (ValueError, IndexError):
-            pass
-        return (0, 0)
+        return DateUtil.parse_month_key(key) or (0, 0)
 
     def _build_devices_list_for_current_month(
         self,
@@ -675,6 +662,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         )
 
     def _get_month_context(self, last_sync_date_obj: date) -> Dict[str, Any]:
+        """Build month context dict with current/prev month keys from the given date."""
         current_month = last_sync_date_obj.month
         current_year = last_sync_date_obj.year
         month_year_key = f"{current_month}.{current_year}"
@@ -697,6 +685,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         current_month: int,
         current_year: int
     ) -> Optional[Dict[str, Any]]:
+        """Return previous month's cache entry as dict, or None if not found."""
         if not isinstance(monthly_history_cache, dict):
             return None
         
@@ -718,6 +707,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         current_year: int,
         monthly_history_cache: Dict[str, Any]
     ) -> Optional[float]:
+        """Return device start value from device dict or previous month's end value."""
         start_val = device.get("start")
         
         if start_val is not None:
@@ -756,6 +746,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         self,
         devices_list: List[DeviceReading]
     ) -> Tuple[Optional[float], Optional[float]]:
+        """Return (total_usage_start, total_usage_end) summed from devices list."""
         if not devices_list:
             return (None, None)
         
@@ -783,6 +774,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     
     @staticmethod
     def _calculate_average_per_day(total_usage: Optional[float], days: Optional[int]) -> Optional[float]:
+        """Return average usage per day from total_usage and days, or None if invalid."""
         if total_usage is None or days is None or days <= 0:
             return None
         
@@ -807,6 +799,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         monthly_history_cache: Dict[str, Any],
         use_month_transition: bool = False
     ) -> Optional[Dict[str, Any]]:
+        """Enrich device dict with start/end/usage; return None if invalid."""
         if not isinstance(device, dict):
             return None
         
@@ -843,6 +836,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return device_entry
     
     def _convert_dict_to_device_reading(self, device_dict: Dict[str, Any]) -> Optional[DeviceReading]:
+        """Convert device dict to DeviceReading, or None if required fields are missing."""
         if not isinstance(device_dict, dict):
             return None
         
@@ -874,6 +868,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return readings
 
     def _enrich_history_device(self, device: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Enrich history device dict with start/end/usage (no month transition)."""
         device_id = device.get("id") if isinstance(device, dict) else None
         return self._enrich_device_entry(
             device,
@@ -887,6 +882,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     def _get_current_data_preconditions(
         self, data: Optional[Dict[str, Any]]
     ) -> Optional[CurrentDataPreconditions]:
+        """Validate coordinator data and return CurrentDataPreconditions, or None if invalid."""
         if not data:
             return None
 
@@ -923,11 +919,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     def _build_api_behind_current_data(
         filter_status: List[Any],
     ) -> Tuple[List[DeviceReading], Optional[float], Optional[float], float, float]:
-        """Build device readings and totals when the API data lags behind the current month.
-        
-        Returns:
-            Tuple of (devices_list, total_usage_start, total_usage_end, total_usage, average_usage_per_day)
-        """
+        """Build device readings and totals when the API data lags behind the current month."""
         end_readings_map = DataUtil.extract_device_readings_map(filter_status)
         devices_list: List[DeviceReading] = []
         for device_id_str, reading in end_readings_map.items():
@@ -938,6 +930,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return devices_list, total_usage_end, total_usage_end, 0.0, 0.0
 
     def _build_current_data(self) -> Optional[CurrentData]:
+        """Build CurrentData from coordinator data, or None if preconditions fail."""
         preconditions = self._get_current_data_preconditions(self.coordinator.data)
         if not preconditions:
             return None
@@ -1002,6 +995,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         )
     
     def _build_history_data(self) -> List[HistoryData]:
+        """Build list of HistoryData from monthly_history_cache, excluding current month."""
         data = self.coordinator.data
         if not data:
             return []

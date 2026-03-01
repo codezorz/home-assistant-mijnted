@@ -53,7 +53,14 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     async def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
-        """Create options flow handler."""
+        """Create options flow handler.
+
+        Args:
+            config_entry: The config entry to create options flow for.
+
+        Returns:
+            The options flow handler instance.
+        """
         return MijnTedOptionsFlowHandler(config_entry)
 
     def _handle_validation_error(
@@ -64,6 +71,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         exception_class: type,
         user_message_template: str
     ) -> None:
+        """Log validation error and raise the appropriate exception."""
         error_msg = str(err) if err else ""
         _LOGGER.debug(
             f"{log_message}: %s",
@@ -80,6 +88,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def _get_data_schema() -> vol.Schema:
+        """Return the data schema for the config form."""
         return vol.Schema(
             {
                 vol.Required(CONF_CLIENT_ID): str,
@@ -96,7 +105,14 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
-        """Handle the initial step."""
+        """Handle the initial step.
+
+        Args:
+            user_input: User-provided configuration data, or None if not yet submitted.
+
+        Returns:
+            FlowResult: The next step in the config flow.
+        """
         errors: Dict[str, str] = {}
 
         if user_input is not None:
@@ -122,13 +138,27 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reauth(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
-        """Handle reauthorization flow."""
+        """Handle reauthorization flow.
+
+        Args:
+            user_input: User-provided data, or None if not yet submitted.
+
+        Returns:
+            FlowResult: The next step in the reauth flow.
+        """
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: Optional[Dict[str, Any]] = None
     ) -> FlowResult:
-        """Handle reauthorization confirmation."""
+        """Handle reauthorization confirmation.
+
+        Args:
+            user_input: User-provided credentials, or None if not yet submitted.
+
+        Returns:
+            FlowResult: The next step in the reauth flow.
+        """
         errors: Dict[str, str] = {}
 
         if user_input is not None:
@@ -159,6 +189,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _validate_input(self, user_input: Dict[str, Any]) -> None:
+        """Validate credentials and populate tokens in user_input."""
         connector = aiohttp.TCPConnector()
         cookie_jar = aiohttp.CookieJar()
         session = aiohttp.ClientSession(connector=connector, cookie_jar=cookie_jar)
@@ -213,14 +244,32 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for MijnTed."""
+    """Handle options flow for MijnTed.
+
+    Manages the options configuration UI for an existing MijnTed integration
+    instance (e.g. polling interval).
+
+    Args:
+        config_entry: The ConfigEntry to configure options for.
+    """
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
+        """Initialize options flow.
+
+        Args:
+            config_entry: The config entry being configured.
+        """
         self.config_entry = config_entry
 
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
-        """Manage the options."""
+        """Manage the options.
+
+        Args:
+            user_input: User-provided options, or None if not yet submitted.
+
+        Returns:
+            FlowResult: The next step in the options flow.
+        """
         if user_input is not None:
             updated_data = {**self.config_entry.data, **user_input}
             self.hass.config_entries.async_update_entry(

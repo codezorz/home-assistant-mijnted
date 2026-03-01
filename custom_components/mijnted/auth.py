@@ -40,8 +40,23 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class MijntedAuth:
-    """Handles authentication for MijnTed API."""
-    
+    """Handles authentication for MijnTed API.
+
+    Manages OAuth token refresh, access token lifecycle, and re-authentication
+    when refresh tokens expire.
+
+    Args:
+        hass: HomeAssistant instance.
+        session: aiohttp ClientSession for HTTP requests.
+        client_id: OAuth client ID.
+        refresh_token: OAuth refresh token (optional).
+        access_token: OAuth access token (optional).
+        residential_unit: Residential unit identifier (optional).
+        refresh_token_expires_at: Refresh token expiration datetime (optional).
+        token_update_callback: Async callback invoked when tokens are refreshed (optional).
+        credentials_callback: Async callback to retrieve credentials for re-authentication (optional).
+    """
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -85,6 +100,7 @@ class MijntedAuth:
         self.extension_user_role: Optional[str] = None
 
     def _calculate_refresh_token_expires_at(self, refresh_token_expires_in: Optional[Any]) -> datetime:
+        """Compute refresh token expiration datetime from expires_in or use default."""
         if refresh_token_expires_in is not None:
             try:
                 expires_in_seconds = int(refresh_token_expires_in)
@@ -97,6 +113,7 @@ class MijntedAuth:
         return expires_at
     
     async def _invoke_token_update_callback(self) -> None:
+        """Invoke the token update callback with current tokens."""
         if not self.token_update_callback:
             return
         
@@ -111,6 +128,7 @@ class MijntedAuth:
             _LOGGER.warning("Error in token update callback: %s", err, exc_info=True)
     
     async def _populate_claims_from_id_token(self, id_token: str) -> None:
+        """Populate extension claims from ID token payload."""
         payload = JwtUtil.decode_token(id_token)
         if not payload:
             return
@@ -128,6 +146,7 @@ class MijntedAuth:
             self.residential_unit = payload.get(ID_TOKEN_CLAIM_RESIDENTIAL_UNITS)
     
     def _perform_oauth_flow_sync(self, username, password) -> Dict[str, Any]:
+        """Perform OAuth flow synchronously with username and password."""
         return OAuthUtil.perform_oauth_flow(self.client_id, username, password)
 
     async def async_authenticate_with_credentials(self, username: str, password: str) -> Dict[str, Any]:
@@ -169,62 +188,107 @@ class MijntedAuth:
             _LOGGER.exception("Unexpected error during authentication: %s", exc)
             raise MijntedApiError(f"Unexpected error during authentication: {exc}") from exc
     
+    async def _apply_tokens_from_response(self, tokens: Dict[str, Any]) -> str:
+        """Store tokens from an auth response, populate claims, and invoke the update callback."""
+        access_token = tokens.get("access_token") or tokens.get("id_token")
+        if not access_token:
+            raise MijntedAuthenticationError("Access token missing in response")
+
+        new_refresh_token = tokens.get("refresh_token")
+        if not new_refresh_token:
+            raise MijntedAuthenticationError("Refresh token missing in response")
+
+        self.access_token = access_token
+        self.refresh_token = new_refresh_token
+        self.refresh_token_expires_at = tokens.get("refresh_token_expires_at")
+
+        id_token = tokens.get("id_token")
+        if id_token:
+            await self._populate_claims_from_id_token(id_token)
+        await self._invoke_token_update_callback()
+        return self.access_token
+
     async def _rotate_refresh_token_with_credentials(self) -> str:
         if not self.credentials_callback:
             raise MijntedGrantExpiredError(
                 "Refresh token expired but no credentials callback available. Please re-authenticate."
             )
-        
+
         _LOGGER.info(
             "Refresh token expired or expiring soon. Using stored credentials to obtain new tokens.",
-            extra={"has_residential_unit": bool(self.residential_unit)}
+            extra={"has_residential_unit": bool(self.residential_unit)},
         )
-        
+
         async def _rotate_tokens_attempt() -> str:
             username, password = await self.credentials_callback()
             tokens = await self.async_authenticate_with_credentials(username, password)
-            
-            access_token = tokens.get("access_token") or tokens.get("id_token")
-            if not access_token:
-                raise MijntedAuthenticationError("Access token missing in response")
-            
-            new_refresh_token = tokens.get("refresh_token")
-            if not new_refresh_token:
-                raise MijntedAuthenticationError("Refresh token missing in response")
-            
-            self.access_token = access_token
-            self.refresh_token = new_refresh_token
-            self.refresh_token_expires_at = tokens.get("refresh_token_expires_at")
-            
-            id_token = tokens.get("id_token")
-            if id_token:
-                await self._populate_claims_from_id_token(id_token)
-            await self._invoke_token_update_callback()
-            
+            result = await self._apply_tokens_from_response(tokens)
             _LOGGER.info(
                 "Successfully obtained new tokens using stored credentials",
-                extra={"has_residential_unit": bool(self.residential_unit)}
+                extra={"has_residential_unit": bool(self.residential_unit)},
             )
-            return self.access_token
-        
+            return result
+
         try:
             return await RetryUtil.async_retry_with_backoff(
                 _rotate_tokens_attempt,
                 TOKEN_REFRESH_MAX_RETRIES,
                 TOKEN_REFRESH_RETRY_DELAY,
                 (Exception,),
-                "credential authentication"
+                "credential authentication",
             )
         except Exception as err:
             _LOGGER.error(
                 "Failed to get new tokens after %d attempts with stored credentials. Credentials may be invalid.",
                 TOKEN_REFRESH_MAX_RETRIES + 1,
-                extra={"has_residential_unit": bool(self.residential_unit)}
+                extra={"has_residential_unit": bool(self.residential_unit)},
             )
             raise MijntedGrantExpiredError(
                 f"Refresh token expired and credential-based refresh failed after {TOKEN_REFRESH_MAX_RETRIES + 1} attempts. Please re-authenticate: {err}"
             ) from err
     
+    async def _handle_refresh_success(self, result: Dict[str, Any]) -> str:
+        """Process a successful token refresh response: store tokens and invoke callback."""
+        access_token = result.get("access_token")
+        id_token = result.get("id_token")
+        if not access_token and id_token:
+            _LOGGER.debug("No access_token in response, using id_token")
+            access_token = id_token
+        if not access_token:
+            raise MijntedAuthenticationError("Access token missing in response")
+
+        self.access_token = access_token
+        new_refresh_token = result.get("refresh_token")
+        if new_refresh_token:
+            self.refresh_token = new_refresh_token
+        refresh_token_expires_in = result.get("refresh_token_expires_in")
+        if refresh_token_expires_in is not None:
+            self.refresh_token_expires_at = self._calculate_refresh_token_expires_at(refresh_token_expires_in)
+        await self._invoke_token_update_callback()
+        return self.access_token
+
+    async def _handle_refresh_error(self, response: aiohttp.ClientResponse) -> str:
+        """Process a failed token refresh response: log, attempt credential rotation, or raise."""
+        try:
+            error_json = await response.json()
+            error_code, error_description = ResponseParserUtil.parse_error_response(error_json)
+        except (ValueError, KeyError):
+            error_code, error_description = ("", "")
+
+        error_msg = error_code or error_description or "Unknown error"
+        _LOGGER.error(
+            "Token refresh failed: HTTP %d - %s", response.status, error_msg,
+            extra={"status_code": response.status, "has_residential_unit": bool(self.residential_unit)},
+        )
+
+        if response.status in (HTTP_STATUS_UNAUTHORIZED, HTTP_STATUS_BAD_REQUEST) and error_code == OAUTH_ERROR_INVALID_GRANT:
+            _LOGGER.warning("Refresh token invalid, attempting to rotate with credentials")
+            return await self._rotate_refresh_token_with_credentials()
+
+        if response.status == HTTP_STATUS_UNAUTHORIZED:
+            raise MijntedAuthenticationError(f"Authentication failed: {error_msg}")
+        raise MijntedApiError(f"Token refresh failed: {response.status} - {error_msg}")
+
     async def refresh_access_token(self) -> str:
         """Refresh the access token using the refresh token.
         
@@ -256,63 +320,15 @@ class MijntedAuth:
             "client_id": self.client_id,
             "grant_type": OAUTH_GRANT_TYPE_REFRESH_TOKEN,
             "refresh_token": self.refresh_token,
-            "scope": f"{self.client_id} {OAUTH_SCOPE}"
+            "scope": f"{self.client_id} {OAUTH_SCOPE}",
         }
-        
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        
+
         async def _refresh_token_attempt() -> str:
             async with self.session.post(self.auth_url, data=data, timeout=timeout) as response:
                 if response.status == HTTP_STATUS_OK:
-                    result = await response.json()
-                    
-                    access_token = result.get("access_token")
-                    id_token = result.get("id_token")
-                    if not access_token and id_token:
-                        _LOGGER.debug("No access_token in response, using id_token")
-                        access_token = id_token
-                    
-                    if not access_token:
-                        raise MijntedAuthenticationError("Access token missing in response")
-                    
-                    self.access_token = access_token
-                    
-                    new_refresh_token = result.get("refresh_token")
-                    if new_refresh_token:
-                        self.refresh_token = new_refresh_token
-                    
-                    refresh_token_expires_in = result.get("refresh_token_expires_in")
-                    if refresh_token_expires_in is not None:
-                        self.refresh_token_expires_at = self._calculate_refresh_token_expires_at(refresh_token_expires_in)
-                    
-                    await self._invoke_token_update_callback()
-                    
-                    return self.access_token
-                else:
-                    try:
-                        error_json = await response.json()
-                        error_code, error_description = ResponseParserUtil.parse_error_response(error_json)
-                    except (ValueError, KeyError):
-                        error_code, error_description = ("", "")
-                    
-                    _LOGGER.error(
-                        "Token refresh failed: HTTP %d - %s",
-                        response.status,
-                        error_code or error_description or "Unknown error",
-                        extra={"status_code": response.status, "has_residential_unit": bool(self.residential_unit)}
-                    )
-                    
-                    if response.status in (HTTP_STATUS_UNAUTHORIZED, HTTP_STATUS_BAD_REQUEST) and error_code == OAUTH_ERROR_INVALID_GRANT:
-                        _LOGGER.warning("Refresh token invalid, attempting to rotate with credentials")
-                        return await self._rotate_refresh_token_with_credentials()
-                    
-                    if response.status == HTTP_STATUS_UNAUTHORIZED:
-                        raise MijntedAuthenticationError(
-                            f"Authentication failed: {error_code or error_description or 'Unknown error'}"
-                        )
-                    raise MijntedApiError(
-                        f"Token refresh failed: {response.status} - {error_code or error_description or 'Unknown error'}"
-                    )
+                    return await self._handle_refresh_success(await response.json())
+                return await self._handle_refresh_error(response)
         
         try:
             return await RetryUtil.async_retry_with_backoff(
@@ -362,9 +378,19 @@ class MijntedAuth:
     
     async def authenticate(self) -> None:
         """Authenticate with the Mijnted API using refresh token.
-        
+
         Refreshes refresh token if expired or expiring within 15 minutes, otherwise
         always requests a new access token for every update/polling cycle.
+
+        Returns:
+            None
+
+        Raises:
+            MijntedAuthenticationError: If authentication fails
+            MijntedGrantExpiredError: If refresh token has expired
+            MijntedTimeoutError: If request times out
+            MijntedConnectionError: If network error occurs after retries exhausted
+            MijntedApiError: For other API errors
         """
         await self.refresh_access_token()
 
