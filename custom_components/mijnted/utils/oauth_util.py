@@ -44,6 +44,7 @@ class OAuthUtil:
     
     @staticmethod
     def _parse_csrf_token(html_text: str) -> Optional[str]:
+        """Extract CSRF token from authorization page HTML."""
         if not html_text or not isinstance(html_text, str):
             return None
         
@@ -54,6 +55,7 @@ class OAuthUtil:
     
     @staticmethod
     def _parse_transaction_id(html_text: str) -> Optional[str]:
+        """Extract transaction ID from authorization page HTML."""
         if not html_text or not isinstance(html_text, str):
             return None
         
@@ -64,6 +66,7 @@ class OAuthUtil:
     
     @staticmethod
     def _parse_authorization_code_from_location(location_header: str) -> Optional[str]:
+        """Extract authorization code from Location header URL."""
         if not location_header or not isinstance(location_header, str):
             return None
         
@@ -81,6 +84,7 @@ class OAuthUtil:
     
     @staticmethod
     def _parse_authorization_code_from_body(response_text: str) -> Optional[str]:
+        """Extract authorization code from response body text."""
         if not response_text or not isinstance(response_text, str):
             return None
         
