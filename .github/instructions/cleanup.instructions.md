@@ -12,6 +12,7 @@ applyTo: "custom_components/mijnted/**"
 - **Avoid duplication**: Same logic in multiple places → move to a shared helper (in the same module or `utils/`). Do not copy-paste blocks; refactor once and reuse.
 - **Imports**: Group and order: standard library, then third-party, then `homeassistant`, then relative (`.const`, `.utils`, etc.). One import per line for clarity when the list is long.
 - **Comments**: Prefer clear names and small functions over comments. When you do comment, explain *why* (invariants, API quirks, workarounds), not *what* the next line does.
+- **Docstrings**: Public methods get a multi-line docstring with `Args:`, `Returns:`, and `Raises:` sections where applicable. Private methods (`_`-prefixed) get a single-line docstring only — the name itself should convey the purpose. Every method must have at least a one-liner; omitting the docstring entirely is not acceptable. Classes get a multi-line docstring describing their purpose, with an `Args:` section for constructor parameters or an `Attributes:` section for dataclass/NamedTuple fields.
 - **Refactors**: When touching code, leave it cleaner than you found it: remove dead code, fix obvious style drift, update names that no longer match behavior. Do not mix refactors with new behavior in one PR unless necessary.
 
 Apply these when writing or editing code in this integration.
