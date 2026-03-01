@@ -21,6 +21,7 @@ Work happens on a **topic branch** (feature, enhancement, fix, etc.). No dedicat
 - **First commit**: Bump **version** in `custom_components/mijnted/manifest.json` (semantic versioning: patch for fixes, minor for new features, major for breaking changes). Commit with a clear message (e.g. `Bump version to 1.0.22`).
 - **Next commits**: Implement the fix or feature in **logically split commits** (one concern per commit, descriptive messages).
 - **Push** the branch and **open a PR** targeting the default branch (`main`). Summarize changes and the version bump in the PR description. Request review from `CODEOWNERS` if applicable.
+- **PR body**: Always write the PR body to a temporary file and use `gh pr create --body-file <file>` (then delete the file). Never pass the body inline with `-m` or `--body` — PowerShell mangles backticks and special characters.
 
 **Releases**: On GitHub, releases are **tags on main**. After the PR is merged to main, create a tag (e.g. `v1.0.22`) on the merged commit and mark it as a release (manually or by the agent). No release branch; tagging happens only after merge.
 
