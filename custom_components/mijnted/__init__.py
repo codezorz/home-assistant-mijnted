@@ -717,7 +717,7 @@ async def _update_current_month_cache(
     last_update: Any,
     energy_usage_data: Dict[str, Any],
     now: datetime,
-) -> None:
+) -> bool:
     """Update the current month's cache entry with latest filter status and API data."""
     current_month = now.month
     current_year = now.year
@@ -735,7 +735,7 @@ async def _update_current_month_cache(
             "Skipping current month %s cache update: filter_status is empty, preserving existing cache",
             current_month_key,
         )
-        return
+        return False
     end_total = DataUtil.calculate_filter_status_total(filter_status)
 
     devices_list, start_total = await _resolve_current_month_devices(
@@ -763,6 +763,7 @@ async def _update_current_month_cache(
         state=month_state,
         start_locked=existing_start_locked,
     )
+    return True
 
 
 async def _lock_current_month_starts_when_previous_complete(
@@ -843,13 +844,14 @@ async def _lock_current_month_starts_when_previous_complete(
         monthly_history_cache[current_month_key] = current_month_cache
     if not current_month_cache:
         try:
-            await _update_current_month_cache(
+            cache_updated = await _update_current_month_cache(
                 api, monthly_history_cache, filter_status, last_update, energy_usage_data, now
             )
             current_month_cache = _normalize_cache_entry_state(monthly_history_cache.get(current_month_key))
             if isinstance(current_month_cache, MonthCacheEntry):
                 monthly_history_cache[current_month_key] = current_month_cache
-            modified = True
+            if cache_updated:
+                modified = True
         except Exception as err:
             _LOGGER.warning(
                 "Failed to create current month cache %s while locking starts: %s",
@@ -1499,21 +1501,30 @@ async def _update_and_enrich_cache(
     energy_usage_data: Dict[str, Any],
     last_update_date_changed: bool,
     now: datetime,
-) -> bool:
-    """Update cache, apply month-boundary lock, enrich averages, and run finalization fallback."""
+) -> Tuple[bool, bool]:
+    """Update cache, apply month-boundary lock, enrich averages, and run finalization fallback.
+
+    Returns:
+        Tuple of (modified, current_month_refresh_skipped).
+    """
     modified = False
+    current_month_refresh_skipped = False
 
     if last_update_date_changed:
         try:
-            await _update_current_month_cache(
+            cache_updated = await _update_current_month_cache(
                 api, monthly_history_cache, filter_status, last_update, energy_usage_data, now
             )
-            modified = True
+            if cache_updated:
+                modified = True
+            else:
+                current_month_refresh_skipped = True
         except Exception as err:
             _LOGGER.warning(
                 "Failed to refresh current month in cache: %s", err,
                 extra={"error_type": type(err).__name__}, exc_info=True,
             )
+            current_month_refresh_skipped = True
 
     try:
         boundary_lock_modified = await _lock_current_month_starts_when_previous_complete(
@@ -1547,7 +1558,7 @@ async def _update_and_enrich_cache(
             err, extra={"error_type": type(err).__name__}, exc_info=True,
         )
 
-    return modified
+    return modified, current_month_refresh_skipped
 
 
 async def _ensure_monthly_history_cache(
@@ -1564,11 +1575,12 @@ async def _ensure_monthly_history_cache(
     _, cached_last_update_date = _load_cache_from_coordinator(hass, entry)
     last_update_date_changed = current_last_update_date != cached_last_update_date
 
+    current_month_refresh_skipped = False
     try:
         monthly_history_cache, cache_was_modified = await _load_or_build_cache(
             api, hass, entry, last_update, energy_usage_data, now
         )
-        enrichment_modified = await _update_and_enrich_cache(
+        enrichment_modified, current_month_refresh_skipped = await _update_and_enrich_cache(
             api, monthly_history_cache, filter_status,
             last_update, energy_usage_data, last_update_date_changed, now,
         )
@@ -1584,8 +1596,12 @@ async def _ensure_monthly_history_cache(
         )
         monthly_history_cache = {}
 
+    effective_last_update_date = (
+        cached_last_update_date if current_month_refresh_skipped
+        else current_last_update_date
+    )
     statistics_tracking = _get_or_create_statistics_tracking(hass, entry)
-    return (monthly_history_cache, current_last_update_date, statistics_tracking)
+    return (monthly_history_cache, effective_last_update_date, statistics_tracking)
 
 
 def _build_coordinator_return_dict(
