@@ -186,11 +186,9 @@ def _is_month_cache_complete(
     return True
 
 
-def _is_previous_month_readings_complete(last_update: Any) -> bool:
+def _is_previous_month_readings_complete(last_update: Any, now: datetime) -> bool:
     """Return True when last_update has reached previous month last day."""
-    current_month = datetime.now().month
-    current_year = datetime.now().year
-    first_day_current = DateUtil.get_first_day_of_month(current_month, current_year)
+    first_day_current = DateUtil.get_first_day_of_month(now.month, now.year)
     prev_month, prev_year = DateUtil.get_previous_month_from_date(first_day_current)
     return _has_complete_readings_for_month(last_update, prev_month, prev_year)
 
@@ -233,25 +231,22 @@ def _build_updated_month_cache_entry(
     )
 
 
-def _is_state_valid_for_month_cache(state: str) -> bool:
-    """Return True if state is one of the known month states."""
-    return state in VALID_MONTH_STATES
-
-
 def _normalize_month_state(state: Any, finalized: bool = False) -> str:
-    """Normalize arbitrary state value to a known month state."""
-    if isinstance(state, str) and _is_state_valid_for_month_cache(state):
-        if finalized and state != MONTH_STATE_FINALIZED:
-            return MONTH_STATE_FINALIZED
+    """Normalize arbitrary state value to a known month state.
+
+    Priority: finalized always wins, then a valid state string, else OPEN.
+    """
+    if finalized:
+        return MONTH_STATE_FINALIZED
+    if isinstance(state, str) and state in VALID_MONTH_STATES:
         return state
-    return MONTH_STATE_FINALIZED if finalized else MONTH_STATE_OPEN
+    return MONTH_STATE_OPEN
 
 
 def _mark_month_complete_readings(cache_entry: Any) -> Any:
     """Set month state to COMPLETE_READINGS unless already finalized."""
     if isinstance(cache_entry, MonthCacheEntry):
-        normalized_state = _normalize_month_state(cache_entry.state, cache_entry.finalized)
-        new_state = MONTH_STATE_FINALIZED if normalized_state == MONTH_STATE_FINALIZED else MONTH_STATE_COMPLETE_READINGS
+        new_state = MONTH_STATE_FINALIZED if cache_entry.finalized else MONTH_STATE_COMPLETE_READINGS
         if cache_entry.state == new_state:
             return cache_entry
         return _build_updated_month_cache_entry(
@@ -291,27 +286,31 @@ def _mark_month_finalized(cache_entry: Any, average_usage: float) -> Any:
     return cache_entry
 
 
-def _is_current_month_start_locked(monthly_history_cache: Dict[str, Any]) -> bool:
+def _is_current_month_start_locked(monthly_history_cache: Dict[str, Any], now: datetime) -> bool:
     """Return True when current month cache entry has start lock enabled."""
-    current_month = datetime.now().month
-    current_year = datetime.now().year
-    current_month_key = DateUtil.format_month_key(current_year, current_month)
+    current_month_key = DateUtil.format_month_key(now.year, now.month)
     return _is_cache_entry_start_locked(monthly_history_cache.get(current_month_key))
 
 
 def _should_lock_current_month_starts(
     monthly_history_cache: Dict[str, Any],
-    last_update: Any
+    last_update: Any,
+    now: datetime,
 ) -> bool:
     """Return True when previous month reached complete readings and current start is not locked."""
-    if not _is_previous_month_readings_complete(last_update):
+    if not _is_previous_month_readings_complete(last_update, now):
         return False
-    return not _is_current_month_start_locked(monthly_history_cache)
+    return not _is_current_month_start_locked(monthly_history_cache, now)
 
 
 def _ensure_month_cache_entry_state(entry: MonthCacheEntry) -> MonthCacheEntry:
     """Normalize state/finalized relationship for MonthCacheEntry."""
-    normalized_state = _normalize_month_state(entry.state, entry.finalized)
+    if entry.finalized:
+        normalized_state = MONTH_STATE_FINALIZED
+    elif isinstance(entry.state, str) and entry.state in VALID_MONTH_STATES:
+        normalized_state = entry.state
+    else:
+        normalized_state = MONTH_STATE_OPEN
     if normalized_state == entry.state:
         return entry
     return _build_updated_month_cache_entry(
@@ -328,7 +327,13 @@ def _ensure_month_cache_entry_state(entry: MonthCacheEntry) -> MonthCacheEntry:
 def _ensure_dict_cache_entry_state(entry: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize state/finalized relationship for dict cache entries."""
     finalized = bool(entry.get("finalized", False))
-    entry["state"] = _normalize_month_state(entry.get("state"), finalized)
+    state_raw = entry.get("state")
+    if finalized:
+        entry["state"] = MONTH_STATE_FINALIZED
+    elif isinstance(state_raw, str) and state_raw in VALID_MONTH_STATES:
+        entry["state"] = state_raw
+    else:
+        entry["state"] = MONTH_STATE_OPEN
     if "start_locked" not in entry:
         entry["start_locked"] = False
     return entry
@@ -600,7 +605,8 @@ async def _build_initial_monthly_history_cache(
     api: MijntedApi,
     last_update: Any,
     energy_usage_data: Dict[str, Any],
-    existing_cache: Optional[Dict[str, MonthCacheEntry]] = None
+    now: datetime,
+    existing_cache: Optional[Dict[str, MonthCacheEntry]] = None,
 ) -> Dict[str, MonthCacheEntry]:
     """Build the initial N-month history cache from API data."""
     monthly_history_cache: Dict[str, MonthCacheEntry] = {}
@@ -608,9 +614,8 @@ async def _build_initial_monthly_history_cache(
         monthly_history_cache = existing_cache.copy()
     
     _LOGGER.info(f"Building {CACHE_HISTORY_MONTHS}-month history cache (this may take a moment)")
-    reference_now = datetime.now()
     prev_month, prev_year = DateUtil.get_previous_month_from_date(
-        date(reference_now.year, reference_now.month, 1)
+        date(now.year, now.month, 1)
     )
     prev_month_date = DateUtil.get_first_day_of_month(prev_month, prev_year)
     months_to_build = DateUtil.get_last_n_months_from_date(CACHE_HISTORY_MONTHS, prev_month_date)
@@ -702,10 +707,11 @@ async def _update_current_month_cache(
     filter_status: List[Dict[str, Any]],
     last_update: Any,
     energy_usage_data: Dict[str, Any],
+    now: datetime,
 ) -> None:
     """Update the current month's cache entry with latest filter status and API data."""
-    current_month = datetime.now().month
-    current_year = datetime.now().year
+    current_month = now.month
+    current_year = now.year
     current_month_key = DateUtil.format_month_key(current_year, current_month)
     current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
     current_month_cache = _normalize_cache_entry_state(monthly_history_cache.get(current_month_key))
@@ -750,15 +756,16 @@ async def _lock_current_month_starts_when_previous_complete(
     filter_status: List[Dict[str, Any]],
     last_update: Any,
     energy_usage_data: Dict[str, Any],
+    now: datetime,
 ) -> bool:
     """Lock current-month start values once previous month reached complete readings."""
-    current_month = datetime.now().month
-    current_year = datetime.now().year
+    current_month = now.month
+    current_year = now.year
     current_month_key = DateUtil.format_month_key(current_year, current_month)
 
     if current_month == 1:
         return False
-    if not _should_lock_current_month_starts(monthly_history_cache, last_update):
+    if not _should_lock_current_month_starts(monthly_history_cache, last_update, now):
         return False
 
     prev_month, prev_year, prev_month_key = _extract_prev_month_keys_from_current(current_month, current_year)
@@ -822,7 +829,7 @@ async def _lock_current_month_starts_when_previous_complete(
     if not current_month_cache:
         try:
             await _update_current_month_cache(
-                api, monthly_history_cache, filter_status, last_update, energy_usage_data
+                api, monthly_history_cache, filter_status, last_update, energy_usage_data, now
             )
             current_month_cache = _normalize_cache_entry_state(monthly_history_cache.get(current_month_key))
             if isinstance(current_month_cache, MonthCacheEntry):
@@ -973,11 +980,12 @@ async def _recalculate_current_month_starts_if_previous_finalized(
     monthly_history_cache: Dict[str, MonthCacheEntry],
     filter_status: List[Dict[str, Any]],
     cache_before_enrich: Dict[str, Optional[float]],
-    cache_after_enrich: Dict[str, Optional[float]]
+    cache_after_enrich: Dict[str, Optional[float]],
+    now: datetime,
 ) -> bool:
     """Fallback recalculation when previous month just finalized and starts are not yet locked."""
-    current_month = datetime.now().month
-    current_year = datetime.now().year
+    current_month = now.month
+    current_year = now.year
     current_month_key = DateUtil.format_month_key(current_year, current_month)
     current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
 
@@ -1074,11 +1082,11 @@ async def _fetch_missing_years_data(
     api: MijntedApi,
     years_needed: set[int],
     energy_usage_data: Dict[str, Any],
+    current_year: int,
 ) -> Dict[int, Dict[str, Any]]:
     """Fetch energy-usage data for each required year, reusing current-year data when available."""
     years_with_data: Dict[int, Dict[str, Any]] = {}
     if isinstance(energy_usage_data, dict):
-        current_year = datetime.now().year
         if current_year in years_needed:
             years_with_data[current_year] = energy_usage_data
 
@@ -1141,10 +1149,11 @@ async def _enrich_cache_with_api_data(
     api: MijntedApi,
     monthly_history_cache: Dict[str, MonthCacheEntry],
     energy_usage_data: Dict[str, Any],
+    now: datetime,
 ) -> None:
     """Enrich cache entries with average usage from API data for each required year."""
     years_needed = _collect_years_from_cache(monthly_history_cache)
-    years_with_data = await _fetch_missing_years_data(api, years_needed, energy_usage_data)
+    years_with_data = await _fetch_missing_years_data(api, years_needed, energy_usage_data, now.year)
     _apply_enrichment_to_cache_entries(monthly_history_cache, years_with_data)
 
 
@@ -1442,6 +1451,7 @@ async def _load_or_build_cache(
     entry: ConfigEntry,
     last_update: Any,
     energy_usage_data: Dict[str, Any],
+    now: datetime,
 ) -> Tuple[Dict[str, MonthCacheEntry], bool]:
     """Load cache from coordinator/storage, or build initial. Returns (cache, was_modified)."""
     monthly_history_cache, _ = _load_cache_from_coordinator(hass, entry)
@@ -1454,13 +1464,13 @@ async def _load_or_build_cache(
 
     if not monthly_history_cache:
         cache = await _build_initial_monthly_history_cache(
-            api, last_update, energy_usage_data, existing_cache=monthly_history_cache
+            api, last_update, energy_usage_data, now, existing_cache=monthly_history_cache
         )
         return (cache, True)
 
     cache_before = len(monthly_history_cache)
     monthly_history_cache = await _build_initial_monthly_history_cache(
-        api, last_update, energy_usage_data, existing_cache=monthly_history_cache
+        api, last_update, energy_usage_data, now, existing_cache=monthly_history_cache
     )
     was_modified = len(monthly_history_cache) > cache_before
     return (monthly_history_cache, was_modified)
@@ -1473,6 +1483,7 @@ async def _update_and_enrich_cache(
     last_update: Any,
     energy_usage_data: Dict[str, Any],
     last_update_date_changed: bool,
+    now: datetime,
 ) -> bool:
     """Update cache, apply month-boundary lock, enrich averages, and run finalization fallback."""
     modified = False
@@ -1480,7 +1491,7 @@ async def _update_and_enrich_cache(
     if last_update_date_changed:
         try:
             await _update_current_month_cache(
-                api, monthly_history_cache, filter_status, last_update, energy_usage_data
+                api, monthly_history_cache, filter_status, last_update, energy_usage_data, now
             )
             modified = True
         except Exception as err:
@@ -1491,7 +1502,7 @@ async def _update_and_enrich_cache(
 
     try:
         boundary_lock_modified = await _lock_current_month_starts_when_previous_complete(
-            api, monthly_history_cache, filter_status, last_update, energy_usage_data
+            api, monthly_history_cache, filter_status, last_update, energy_usage_data, now
         )
         if boundary_lock_modified:
             modified = True
@@ -1502,7 +1513,7 @@ async def _update_and_enrich_cache(
         )
 
     cache_before_enrich = _snapshot_cache_averages(monthly_history_cache)
-    await _enrich_cache_with_api_data(api, monthly_history_cache, energy_usage_data)
+    await _enrich_cache_with_api_data(api, monthly_history_cache, energy_usage_data, now)
     cache_after_enrich = _snapshot_cache_averages(monthly_history_cache)
 
     if cache_before_enrich != cache_after_enrich:
@@ -1511,7 +1522,7 @@ async def _update_and_enrich_cache(
     try:
         fallback_recalc_modified = await _recalculate_current_month_starts_if_previous_finalized(
             api, monthly_history_cache, filter_status,
-            cache_before_enrich, cache_after_enrich,
+            cache_before_enrich, cache_after_enrich, now,
         )
         if fallback_recalc_modified:
             modified = True
@@ -1533,17 +1544,18 @@ async def _ensure_monthly_history_cache(
     filter_status: List[Dict[str, Any]],
 ) -> Tuple[Dict[str, MonthCacheEntry], Optional[str], StatisticsTracking]:
     """Load/build/update/enrich/persist monthly history cache."""
+    now = datetime.now()
     current_last_update_date = _extract_last_update_date(last_update)
     _, cached_last_update_date = _load_cache_from_coordinator(hass, entry)
     last_update_date_changed = current_last_update_date != cached_last_update_date
 
     try:
         monthly_history_cache, cache_was_modified = await _load_or_build_cache(
-            api, hass, entry, last_update, energy_usage_data
+            api, hass, entry, last_update, energy_usage_data, now
         )
         enrichment_modified = await _update_and_enrich_cache(
             api, monthly_history_cache, filter_status,
-            last_update, energy_usage_data, last_update_date_changed,
+            last_update, energy_usage_data, last_update_date_changed, now,
         )
         if cache_was_modified or enrichment_modified:
             try:

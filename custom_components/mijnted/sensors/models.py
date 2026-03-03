@@ -311,15 +311,12 @@ class MonthCacheEntry:
         
         finalized = bool(data.get("finalized", False))
         state_raw = data.get("state")
-        if isinstance(state_raw, str) and state_raw in VALID_MONTH_STATES:
-            state = state_raw
-        elif finalized:
+        if finalized:
             state = MONTH_STATE_FINALIZED
+        elif isinstance(state_raw, str) and state_raw in VALID_MONTH_STATES:
+            state = state_raw
         else:
             state = MONTH_STATE_OPEN
-
-        if finalized and state != MONTH_STATE_FINALIZED:
-            state = MONTH_STATE_FINALIZED
 
         return cls(
             month_id=data.get("month_id", ""),
