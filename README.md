@@ -69,13 +69,18 @@ During the integration setup in Home Assistant, you'll be prompted to enter your
 
 Once configured, the integration will create several sensors in Home Assistant:
 
+- Detailed references:
+  - `doc/SENSORS.md` - full sensor catalog, attributes, and edge cases
+  - `doc/MONTH_SWITCH.md` - detailed month-switch behavior and timeline
+  - `doc/ENDPOINTS.md` - API endpoints, request/response details, and auth-related notes
+
 - **Monthly usage** - Current month's energy usage (calculated from total_usage_end - total_usage_start). The current month is the calendar month (sync date), not the API last update date; `last_update_date` in attributes is the date through which meter values are available (may be in the previous month when the API is behind). Includes attributes: `start_date`, `end_date`, `days`, `month_id`, and `last_update_date`.
 - **Last year monthly usage** - Last year's monthly usage for the corresponding month (prefers API-provided value from previous year's data)
 - **Average monthly usage** - Average usage extracted from historical monthly usage data
 - **Last year average monthly usage** - Last year's average monthly usage for the corresponding month (prefers API-provided value from previous year's data)
 - **Total usage** - Sum of all device readings (cumulative filter status, accumulating counter). Automatically injects historical data for proper history graphs.
-- **Last update** - Timestamp of the last data synchronization from the API
-- **Last successful sync** - Timestamp of the last successful data synchronization from the API
+- **Last update** - Date for which device readings are currently available from the API (often 1-2 days behind)
+- **Last successful sync** - Calendar timestamp of the most recent successful API refresh by this integration
 - **Active model** - The active model identifier (e.g., "F71")
 - **Delivery type** - Available delivery types for your residential unit
 - **Residential unit** - Detailed information about your residential unit

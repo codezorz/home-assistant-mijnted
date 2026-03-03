@@ -614,14 +614,18 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         total_usage_start, _ = self._calculate_total_usage(devices_list)
         total_usage_end = DataUtil.calculate_filter_status_total(filter_status)
         total_usage = None
-        if isinstance(monthly_history_cache, dict) and current_month_key in monthly_history_cache:
-            current_month_data = monthly_history_cache[current_month_key]
-            total_usage = self._extract_value_from_cache_entry(current_month_data, "total_usage")
-        if total_usage is None and total_usage_start is not None and total_usage_end is not None:
+
+        # Derive usage from current start/end totals whenever available to avoid stale cache values.
+        if total_usage_start is not None and total_usage_end is not None:
             if total_usage_end < total_usage_start:
                 total_usage = total_usage_end
             else:
                 total_usage = total_usage_end - total_usage_start
+
+        if total_usage is None and isinstance(monthly_history_cache, dict) and current_month_key in monthly_history_cache:
+            current_month_data = monthly_history_cache[current_month_key]
+            total_usage = self._extract_value_from_cache_entry(current_month_data, "total_usage")
+
         return (total_usage_start, total_usage_end, total_usage)
 
     def _month_cache_entry_to_history_data(
