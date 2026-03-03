@@ -85,6 +85,7 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
     async def _async_inject_statistics(self) -> None:
         """Inject statistics for monthly usage into Home Assistant recorder."""
         def calculate_current_value(current: CurrentData) -> Optional[float]:
+            """Compute current month usage from start/end totals."""
             return self._calculate_usage_from_start_end(
                 current.total_usage_start,
                 current.total_usage_end,

@@ -123,8 +123,9 @@ class CurrentData:
     def to_attributes_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation for sensor attributes, filtering out None values.
         
-        Returns only the fields typically used in sensor attributes: month_id, start_date, end_date, days.
-        None values are excluded to match the behavior of manual attribute extraction.
+        Returns:
+            Dictionary with month_id, start_date, end_date, and days fields,
+            excluding any that are None.
         """
         attributes: Dict[str, Any] = {}
         
@@ -198,8 +199,8 @@ class HistoryData:
     def to_attributes_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation for sensor attributes, filtering out None/empty values.
         
-        Returns only the month_id field typically used in sensor attributes.
-        None/empty values are excluded to match the behavior of manual attribute extraction.
+        Returns:
+            Dictionary with the month_id field, excluding it if None or empty.
         """
         attributes: Dict[str, Any] = {}
         
