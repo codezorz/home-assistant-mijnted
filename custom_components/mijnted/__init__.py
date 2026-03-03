@@ -232,10 +232,7 @@ def _build_updated_month_cache_entry(
 
 
 def _normalize_month_state(state: Any, finalized: bool = False) -> str:
-    """Normalize arbitrary state value to a known month state.
-
-    Priority: finalized always wins, then a valid state string, else OPEN.
-    """
+    """Normalize arbitrary state value to a known month state."""
     if finalized:
         return MONTH_STATE_FINALIZED
     if isinstance(state, str) and state in VALID_MONTH_STATES:

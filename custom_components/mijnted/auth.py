@@ -209,6 +209,7 @@ class MijntedAuth:
         return self.access_token
 
     async def _rotate_refresh_token_with_credentials(self) -> str:
+        """Obtain new tokens using stored credentials when refresh token expires."""
         if not self.credentials_callback:
             raise MijntedGrantExpiredError(
                 "Refresh token expired but no credentials callback available. Please re-authenticate."

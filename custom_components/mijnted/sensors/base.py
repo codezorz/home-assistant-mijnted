@@ -205,6 +205,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         total_usage_end: Optional[float],
         month_id: Optional[str]
     ) -> Optional[float]:
+        """Calculate usage from start and end meter readings."""
         start = DataUtil.safe_float(total_usage_start, DEFAULT_START_VALUE)
         end = DataUtil.safe_float(total_usage_end, DEFAULT_START_VALUE)
         
@@ -282,6 +283,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             setattr(statistics_tracking, tracking_field, month_key)
     
     async def _has_already_injected_period(self, start_time: datetime) -> bool:
+        """Return True if statistics for the given period were already injected."""
         month_key = f"{start_time.month}.{start_time.year}"
         
         data = self.coordinator.data if hasattr(self, 'coordinator') else None
@@ -316,6 +318,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         )
     
     def _update_max_month_key(self, stat_time: datetime, max_month_key: Optional[str]) -> Optional[str]:
+        """Return the newer of the given month key and the current maximum."""
         month_key = f"{stat_time.month}.{stat_time.year}"
         if not max_month_key or not self._compare_month_keys(month_key, max_month_key):
             return month_key
