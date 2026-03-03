@@ -2,6 +2,15 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional
 
+MONTH_STATE_OPEN = "OPEN"
+MONTH_STATE_COMPLETE_READINGS = "COMPLETE_READINGS"
+MONTH_STATE_FINALIZED = "FINALIZED"
+VALID_MONTH_STATES = {
+    MONTH_STATE_OPEN,
+    MONTH_STATE_COMPLETE_READINGS,
+    MONTH_STATE_FINALIZED,
+}
+
 
 @dataclass
 class DeviceReading:
@@ -246,6 +255,8 @@ class MonthCacheEntry:
         average_usage: Average usage for the period, or None.
         devices: List of device readings (stored as dicts when serialized).
         finalized: Whether the month's data is finalized.
+        state: Month lifecycle state (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`).
+        start_locked: Whether this month's start readings are locked.
     """
     month_id: str
     year: int
@@ -256,6 +267,8 @@ class MonthCacheEntry:
     average_usage: Optional[float]
     devices: List[DeviceReading] = field(default_factory=list)
     finalized: bool = False
+    state: str = MONTH_STATE_OPEN
+    start_locked: bool = False
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation for storage.
@@ -272,7 +285,9 @@ class MonthCacheEntry:
             "total_usage": self.total_usage,
             "average_usage": self.average_usage,
             "devices": [device.to_dict() for device in self.devices],
-            "finalized": self.finalized
+            "finalized": self.finalized,
+            "state": self.state,
+            "start_locked": self.start_locked,
         }
     
     @classmethod
@@ -294,6 +309,18 @@ class MonthCacheEntry:
                     if device:
                         devices.append(device)
         
+        finalized = bool(data.get("finalized", False))
+        state_raw = data.get("state")
+        if isinstance(state_raw, str) and state_raw in VALID_MONTH_STATES:
+            state = state_raw
+        elif finalized:
+            state = MONTH_STATE_FINALIZED
+        else:
+            state = MONTH_STATE_OPEN
+
+        if finalized and state != MONTH_STATE_FINALIZED:
+            state = MONTH_STATE_FINALIZED
+
         return cls(
             month_id=data.get("month_id", ""),
             year=data.get("year", 0),
@@ -303,5 +330,7 @@ class MonthCacheEntry:
             total_usage=data.get("total_usage"),
             average_usage=data.get("average_usage"),
             devices=devices,
-            finalized=data.get("finalized", False)
+            finalized=finalized,
+            state=state,
+            start_locked=bool(data.get("start_locked", False)),
         )

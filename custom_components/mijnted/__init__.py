@@ -28,7 +28,15 @@ from .exceptions import (
 )
 from .utils import ApiUtil, DataUtil, DateUtil, TimestampUtil
 from .sensors.base import MijnTedSensor
-from .sensors.models import DeviceReading, MonthCacheEntry, StatisticsTracking
+from .sensors.models import (
+    DeviceReading,
+    MONTH_STATE_COMPLETE_READINGS,
+    MONTH_STATE_FINALIZED,
+    MONTH_STATE_OPEN,
+    MonthCacheEntry,
+    StatisticsTracking,
+    VALID_MONTH_STATES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -108,6 +116,50 @@ async def _clear_persisted_cache(hass: HomeAssistant, entry_id: str) -> None:
         _LOGGER.warning("Failed to clear persisted cache: %s", err)
 
 
+def _derive_month_state(finalized: bool, complete_readings: bool) -> str:
+    """Return normalized month state from finalized and complete-readings flags."""
+    if finalized:
+        return MONTH_STATE_FINALIZED
+    if complete_readings:
+        return MONTH_STATE_COMPLETE_READINGS
+    return MONTH_STATE_OPEN
+
+
+def _get_cache_entry_state(cache_entry: Any) -> str:
+    """Return cache-entry state with backward-compatible fallback rules."""
+    state: Optional[str] = None
+    finalized = False
+
+    if isinstance(cache_entry, MonthCacheEntry):
+        state = cache_entry.state
+        finalized = cache_entry.finalized
+    elif isinstance(cache_entry, dict):
+        state = cache_entry.get("state")
+        finalized = bool(cache_entry.get("finalized", False))
+
+    if isinstance(state, str) and state in VALID_MONTH_STATES:
+        return state
+    return MONTH_STATE_FINALIZED if finalized else MONTH_STATE_OPEN
+
+
+def _is_cache_entry_start_locked(cache_entry: Any) -> bool:
+    """Return True when cache entry has start values marked as locked."""
+    if isinstance(cache_entry, MonthCacheEntry):
+        return cache_entry.start_locked
+    if isinstance(cache_entry, dict):
+        return bool(cache_entry.get("start_locked", False))
+    return False
+
+
+def _has_complete_readings_for_month(last_update: Any, month_num: int, year: int) -> bool:
+    """Return True when last_update is at or beyond the month's last day."""
+    last_sync_date = DateUtil.parse_last_sync_date(last_update)
+    if not last_sync_date:
+        return False
+    month_last_day = DateUtil.get_last_day_of_month(month_num, year)
+    return last_sync_date >= month_last_day
+
+
 def _is_month_cache_complete(
     cache_entry: Dict[str, Any],
     is_current_month: bool = False
@@ -125,12 +177,170 @@ def _is_month_cache_complete(
         return False
     
     if not is_current_month:
-        finalized = cache_entry.get("finalized", False)
-        if not finalized:
-            return False
+        state = cache_entry.get("state")
+        if state not in (MONTH_STATE_COMPLETE_READINGS, MONTH_STATE_FINALIZED):
+            finalized = bool(cache_entry.get("finalized", False))
+            if not finalized:
+                return False
     
     return True
 
+
+def _is_previous_month_readings_complete(last_update: Any) -> bool:
+    """Return True when last_update has reached previous month last day."""
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    first_day_current = DateUtil.get_first_day_of_month(current_month, current_year)
+    prev_month, prev_year = DateUtil.get_previous_month_from_date(first_day_current)
+    return _has_complete_readings_for_month(last_update, prev_month, prev_year)
+
+
+def _readings_list_to_dicts(device_readings: List[DeviceReading]) -> List[Dict[str, Any]]:
+    """Convert a list of DeviceReading objects to dictionaries."""
+    return [reading.to_dict() for reading in device_readings]
+
+
+def _extract_prev_month_keys_from_current(current_month: int, current_year: int) -> Tuple[int, int, str]:
+    """Return (prev_month, prev_year, prev_month_key) for the current month context."""
+    current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
+    prev_month, prev_year = DateUtil.get_previous_month_from_date(current_month_first_day)
+    return prev_month, prev_year, DateUtil.format_month_key(prev_year, prev_month)
+
+
+def _build_updated_month_cache_entry(
+    cache_entry: MonthCacheEntry,
+    *,
+    total_usage: Optional[float],
+    average_usage: Optional[float],
+    devices: List[DeviceReading],
+    finalized: bool,
+    state: str,
+    start_locked: bool
+) -> MonthCacheEntry:
+    """Build updated MonthCacheEntry while preserving date and id fields."""
+    return MonthCacheEntry(
+        month_id=cache_entry.month_id,
+        year=cache_entry.year,
+        month=cache_entry.month,
+        start_date=cache_entry.start_date,
+        end_date=cache_entry.end_date,
+        total_usage=total_usage,
+        average_usage=average_usage,
+        devices=devices,
+        finalized=finalized,
+        state=state,
+        start_locked=start_locked,
+    )
+
+
+def _is_state_valid_for_month_cache(state: str) -> bool:
+    """Return True if state is one of the known month states."""
+    return state in VALID_MONTH_STATES
+
+
+def _normalize_month_state(state: Any, finalized: bool = False) -> str:
+    """Normalize arbitrary state value to a known month state."""
+    if isinstance(state, str) and _is_state_valid_for_month_cache(state):
+        if finalized and state != MONTH_STATE_FINALIZED:
+            return MONTH_STATE_FINALIZED
+        return state
+    return MONTH_STATE_FINALIZED if finalized else MONTH_STATE_OPEN
+
+
+def _mark_month_complete_readings(cache_entry: Any) -> Any:
+    """Set month state to COMPLETE_READINGS unless already finalized."""
+    if isinstance(cache_entry, MonthCacheEntry):
+        normalized_state = _normalize_month_state(cache_entry.state, cache_entry.finalized)
+        new_state = MONTH_STATE_FINALIZED if normalized_state == MONTH_STATE_FINALIZED else MONTH_STATE_COMPLETE_READINGS
+        if cache_entry.state == new_state:
+            return cache_entry
+        return _build_updated_month_cache_entry(
+            cache_entry,
+            total_usage=cache_entry.total_usage,
+            average_usage=cache_entry.average_usage,
+            devices=cache_entry.devices,
+            finalized=cache_entry.finalized,
+            state=new_state,
+            start_locked=cache_entry.start_locked,
+        )
+    if isinstance(cache_entry, dict):
+        finalized = bool(cache_entry.get("finalized", False))
+        new_state = MONTH_STATE_FINALIZED if finalized else MONTH_STATE_COMPLETE_READINGS
+        cache_entry["state"] = new_state
+        return cache_entry
+    return cache_entry
+
+
+def _mark_month_finalized(cache_entry: Any, average_usage: float) -> Any:
+    """Set month state to FINALIZED and persist the provided average usage."""
+    if isinstance(cache_entry, MonthCacheEntry):
+        return _build_updated_month_cache_entry(
+            cache_entry,
+            total_usage=cache_entry.total_usage,
+            average_usage=average_usage,
+            devices=cache_entry.devices,
+            finalized=True,
+            state=MONTH_STATE_FINALIZED,
+            start_locked=cache_entry.start_locked,
+        )
+    if isinstance(cache_entry, dict):
+        cache_entry["average_usage"] = average_usage
+        cache_entry["finalized"] = True
+        cache_entry["state"] = MONTH_STATE_FINALIZED
+        return cache_entry
+    return cache_entry
+
+
+def _is_current_month_start_locked(monthly_history_cache: Dict[str, Any]) -> bool:
+    """Return True when current month cache entry has start lock enabled."""
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    current_month_key = DateUtil.format_month_key(current_year, current_month)
+    return _is_cache_entry_start_locked(monthly_history_cache.get(current_month_key))
+
+
+def _should_lock_current_month_starts(
+    monthly_history_cache: Dict[str, Any],
+    last_update: Any
+) -> bool:
+    """Return True when previous month reached complete readings and current start is not locked."""
+    if not _is_previous_month_readings_complete(last_update):
+        return False
+    return not _is_current_month_start_locked(monthly_history_cache)
+
+
+def _ensure_month_cache_entry_state(entry: MonthCacheEntry) -> MonthCacheEntry:
+    """Normalize state/finalized relationship for MonthCacheEntry."""
+    normalized_state = _normalize_month_state(entry.state, entry.finalized)
+    if normalized_state == entry.state:
+        return entry
+    return _build_updated_month_cache_entry(
+        entry,
+        total_usage=entry.total_usage,
+        average_usage=entry.average_usage,
+        devices=entry.devices,
+        finalized=entry.finalized,
+        state=normalized_state,
+        start_locked=entry.start_locked,
+    )
+
+
+def _ensure_dict_cache_entry_state(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize state/finalized relationship for dict cache entries."""
+    finalized = bool(entry.get("finalized", False))
+    entry["state"] = _normalize_month_state(entry.get("state"), finalized)
+    if "start_locked" not in entry:
+        entry["start_locked"] = False
+    return entry
+
+
+def _normalize_cache_entry_state(cache_entry: Any) -> Any:
+    """Normalize state fields for MonthCacheEntry or dict cache entries."""
+    if isinstance(cache_entry, MonthCacheEntry):
+        return _ensure_month_cache_entry_state(cache_entry)
+    if isinstance(cache_entry, dict):
+        return _ensure_dict_cache_entry_state(cache_entry)
+    return cache_entry
 
 
 def _devices_have_start_values(devices: List[Dict[str, Any]]) -> bool:
@@ -164,6 +374,20 @@ def _extract_end_values_from_devices(devices_list: List[Dict[str, Any]]) -> Dict
                 if converted is not None:
                     end_readings[str(device_id)] = converted
     return end_readings
+
+
+def _extract_start_values_from_devices(devices_list: List[Dict[str, Any]]) -> Dict[str, float]:
+    """Extract start values from devices list."""
+    start_readings = {}
+    for device in devices_list:
+        if isinstance(device, dict):
+            device_id = device.get("id")
+            start_value = device.get("start")
+            if device_id is not None and start_value is not None:
+                converted = DataUtil.safe_float(start_value)
+                if converted is not None:
+                    start_readings[str(device_id)] = converted
+    return start_readings
 
 
 
@@ -265,7 +489,9 @@ def _empty_month_cache_entry(month_num: int, year: int) -> MonthCacheEntry:
         total_usage=None,
         average_usage=None,
         devices=[],
-        finalized=False
+        finalized=False,
+        state=MONTH_STATE_OPEN,
+        start_locked=False,
     )
 
 
@@ -316,6 +542,7 @@ async def _build_month_cache_entry(
     year: int,
     monthly_history_cache: Dict[str, Any],
     energy_usage_data: Dict[str, Any],
+    complete_readings: bool = False,
 ) -> MonthCacheEntry:
     """Build a MonthCacheEntry for a specific month from API anchors and energy data."""
     month_key = DateUtil.format_month_key(year, month_num)
@@ -339,6 +566,7 @@ async def _build_month_cache_entry(
     )
     total_usage = _calculate_total_usage_from_start_end(start_total, end_total, month_num)
     average_usage, finalized = await _resolve_average_usage(api, energy_usage_data, month_num, year)
+    month_state = _derive_month_state(finalized, complete_readings)
 
     return MonthCacheEntry(
         month_id=DateUtil.format_month_year_key(month_num, year),
@@ -350,6 +578,8 @@ async def _build_month_cache_entry(
         average_usage=average_usage,
         devices=_convert_device_dicts_to_readings(devices_list),
         finalized=finalized,
+        state=month_state,
+        start_locked=False,
     )
 
 
@@ -394,11 +624,12 @@ async def _build_initial_monthly_history_cache(
             continue
         
         try:
+            complete_readings = _has_complete_readings_for_month(last_update, month_num, year)
             cache_entry = await _build_month_cache_entry(
                 api, month_num, year, monthly_history_cache,
-                energy_usage_data
+                energy_usage_data, complete_readings=complete_readings
             )
-            monthly_history_cache[month_key] = cache_entry
+            monthly_history_cache[month_key] = _normalize_cache_entry_state(cache_entry)
         except Exception as err:
             _LOGGER.warning(
                 "Failed to build cache entry for %s: %s",
@@ -420,29 +651,41 @@ async def _resolve_current_month_devices(
     current_year: int,
     current_month_first_day: date,
     end_readings: Dict[str, float],
+    start_locked: bool,
 ) -> Tuple[List[Any], Optional[float]]:
     """Resolve device list and start_total for the current month cache update."""
-    if not _devices_have_start_values(existing_devices):
-        if current_month == 1:
-            return (_build_devices_list_for_january(end_readings), DEFAULT_START_VALUE)
-        start_readings, start_total = await _get_start_readings_from_previous_month(
-            api, monthly_history_cache, current_month, current_year, current_month_first_day
-        )
-        return (DataUtil.calculate_per_device_usage(start_readings, end_readings), start_total)
-
     if current_month == 1:
-        return (existing_devices, DEFAULT_START_VALUE)
+        return (_build_devices_list_for_january(end_readings), DEFAULT_START_VALUE)
 
-    _, start_total = await _get_start_readings_from_previous_month(
+    if start_locked and _devices_have_start_values(existing_devices):
+        locked_start_readings = _extract_start_values_from_devices(existing_devices)
+        if locked_start_readings:
+            locked_start_total = sum(locked_start_readings.values())
+            locked_devices = DataUtil.calculate_per_device_usage(locked_start_readings, end_readings)
+            if locked_devices:
+                return (locked_devices, locked_start_total)
+
+    start_readings, start_total = await _get_start_readings_from_previous_month(
         api, monthly_history_cache, current_month, current_year, current_month_first_day
     )
-    if start_total is None:
-        prev_month, prev_year = DateUtil.get_previous_month()
-        prev_last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
-        prev_anchor = await api.get_device_statuses_for_date(prev_last_day)
-        start_total = DataUtil.calculate_filter_status_total(prev_anchor)
 
-    return (existing_devices, start_total)
+    recalculated_devices = DataUtil.calculate_per_device_usage(start_readings, end_readings)
+    if recalculated_devices:
+        return (recalculated_devices, start_total)
+
+    # Fallback: preserve existing month starts if previous-month anchors are unavailable.
+    if _devices_have_start_values(existing_devices):
+        existing_start_readings = _extract_start_values_from_devices(existing_devices)
+        if existing_start_readings:
+            fallback_start_total = sum(existing_start_readings.values())
+            fallback_devices = DataUtil.calculate_per_device_usage(
+                existing_start_readings, end_readings
+            )
+            if fallback_devices:
+                return (fallback_devices, fallback_start_total)
+        return (existing_devices, start_total)
+
+    return ([], start_total)
 
 
 def _resolve_current_month_end_date(last_update: Any, current_month: int, current_year: int) -> str:
@@ -465,9 +708,11 @@ async def _update_current_month_cache(
     current_year = datetime.now().year
     current_month_key = DateUtil.format_month_key(current_year, current_month)
     current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
+    current_month_cache = _normalize_cache_entry_state(monthly_history_cache.get(current_month_key))
+    existing_start_locked = _is_cache_entry_start_locked(current_month_cache)
 
     existing_devices = MijnTedSensor._get_devices_from_cache_entry(
-        monthly_history_cache.get(current_month_key)
+        current_month_cache
     )
     end_readings = DataUtil.extract_device_readings_map(filter_status)
     end_total = DataUtil.calculate_filter_status_total(filter_status)
@@ -475,12 +720,14 @@ async def _update_current_month_cache(
     devices_list, start_total = await _resolve_current_month_devices(
         api, monthly_history_cache, existing_devices,
         current_month, current_year, current_month_first_day, end_readings,
+        existing_start_locked,
     )
     total_usage = _calculate_total_usage_from_start_end(start_total, end_total, current_month)
     end_date_str = _resolve_current_month_end_date(last_update, current_month, current_year)
     average_usage, finalized = _extract_average_usage_from_energy_data(
         energy_usage_data, current_month, current_year
     )
+    month_state = _derive_month_state(finalized, False)
 
     monthly_history_cache[current_month_key] = MonthCacheEntry(
         month_id=DateUtil.format_month_year_key(current_month, current_year),
@@ -492,7 +739,140 @@ async def _update_current_month_cache(
         average_usage=average_usage,
         devices=_convert_device_dicts_to_readings(devices_list),
         finalized=finalized,
+        state=month_state,
+        start_locked=existing_start_locked,
     )
+
+
+async def _lock_current_month_starts_when_previous_complete(
+    api: MijntedApi,
+    monthly_history_cache: Dict[str, MonthCacheEntry],
+    filter_status: List[Dict[str, Any]],
+    last_update: Any,
+    energy_usage_data: Dict[str, Any],
+) -> bool:
+    """Lock current-month start values once previous month reached complete readings."""
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    current_month_key = DateUtil.format_month_key(current_year, current_month)
+
+    if current_month == 1:
+        return False
+    if not _should_lock_current_month_starts(monthly_history_cache, last_update):
+        return False
+
+    prev_month, prev_year, prev_month_key = _extract_prev_month_keys_from_current(current_month, current_year)
+    modified = False
+
+    prev_month_data = _normalize_cache_entry_state(monthly_history_cache.get(prev_month_key))
+    if isinstance(prev_month_data, MonthCacheEntry):
+        monthly_history_cache[prev_month_key] = prev_month_data
+    if not prev_month_data:
+        try:
+            prev_month_data = await _build_month_cache_entry(
+                api,
+                prev_month,
+                prev_year,
+                monthly_history_cache,
+                energy_usage_data,
+                complete_readings=True,
+            )
+            monthly_history_cache[prev_month_key] = _mark_month_complete_readings(prev_month_data)
+            prev_month_data = monthly_history_cache.get(prev_month_key)
+            modified = True
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to build previous month %s while locking current starts: %s",
+                prev_month_key,
+                err,
+                extra={"error_type": type(err).__name__},
+                exc_info=True,
+            )
+            return modified
+
+    prev_state_before = _get_cache_entry_state(prev_month_data)
+    if prev_state_before == MONTH_STATE_OPEN:
+        monthly_history_cache[prev_month_key] = _mark_month_complete_readings(prev_month_data)
+        prev_month_data = monthly_history_cache.get(prev_month_key)
+        modified = True
+        _LOGGER.info(
+            "Month %s transitioned OPEN -> COMPLETE_READINGS based on last_update.",
+            prev_month_key
+        )
+
+    prev_devices = MijnTedSensor._get_devices_from_cache_entry(prev_month_data)
+    prev_end_readings = _extract_end_values_from_devices(prev_devices)
+    if not prev_end_readings:
+        try:
+            prev_last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
+            prev_anchor = await api.get_device_statuses_for_date(prev_last_day)
+            prev_end_readings = DataUtil.extract_device_readings_map(prev_anchor)
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to fetch previous month end readings for start lock: %s",
+                err,
+                extra={"error_type": type(err).__name__},
+                exc_info=True,
+            )
+            return modified
+
+    current_month_cache = _normalize_cache_entry_state(monthly_history_cache.get(current_month_key))
+    if isinstance(current_month_cache, MonthCacheEntry):
+        monthly_history_cache[current_month_key] = current_month_cache
+    if not current_month_cache:
+        try:
+            await _update_current_month_cache(
+                api, monthly_history_cache, filter_status, last_update, energy_usage_data
+            )
+            current_month_cache = _normalize_cache_entry_state(monthly_history_cache.get(current_month_key))
+            if isinstance(current_month_cache, MonthCacheEntry):
+                monthly_history_cache[current_month_key] = current_month_cache
+            modified = True
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to create current month cache %s while locking starts: %s",
+                current_month_key,
+                err,
+                extra={"error_type": type(err).__name__},
+                exc_info=True,
+            )
+            return modified
+
+    if not current_month_cache:
+        return modified
+
+    current_end_readings = DataUtil.extract_device_readings_map(filter_status)
+    if not current_end_readings:
+        return modified
+
+    recalculated_devices = DataUtil.calculate_per_device_usage(prev_end_readings, current_end_readings)
+    if not recalculated_devices:
+        return modified
+
+    existing_devices = MijnTedSensor._get_devices_from_cache_entry(current_month_cache)
+    current_locked = _is_cache_entry_start_locked(current_month_cache)
+    needs_recalc = _needs_device_start_recalculation(existing_devices, recalculated_devices)
+    if not needs_recalc and current_locked:
+        return modified
+
+    _LOGGER.info(
+        "Locking current month %s start values from previous month %s end readings.",
+        current_month_key,
+        prev_month_key
+    )
+    _apply_recalculated_devices(
+        monthly_history_cache,
+        current_month_key,
+        current_month_cache,
+        _convert_device_dicts_to_readings(recalculated_devices),
+        prev_end_readings,
+        filter_status,
+        current_month,
+        current_year,
+        state=MONTH_STATE_OPEN,
+        start_locked=True,
+    )
+    return True
 
 
 def _did_previous_month_just_finalize(
@@ -539,7 +919,9 @@ def _apply_recalculated_devices(
     prev_end_readings: Dict[str, float],
     filter_status: List[Dict[str, Any]],
     current_month: int,
-    current_year: int
+    current_year: int,
+    state: Optional[str] = None,
+    start_locked: Optional[bool] = None,
 ) -> None:
     """Apply recalculated device readings and totals to the current month cache entry."""
     start_total = sum(prev_end_readings.values()) if prev_end_readings else None
@@ -552,6 +934,11 @@ def _apply_recalculated_devices(
             end_date_str = DateUtil.format_date_for_api(
                 DateUtil.get_last_day_of_month(current_month, current_year)
             )
+        current_state = _normalize_month_state(current_month_cache.state, current_month_cache.finalized)
+        next_state = current_state if state is None else _normalize_month_state(
+            state, current_month_cache.finalized
+        )
+        next_start_locked = current_month_cache.start_locked if start_locked is None else start_locked
         monthly_history_cache[current_month_key] = MonthCacheEntry(
             month_id=current_month_cache.month_id,
             year=current_month_cache.year,
@@ -561,15 +948,24 @@ def _apply_recalculated_devices(
             total_usage=total_usage,
             average_usage=current_month_cache.average_usage,
             devices=device_readings,
-            finalized=current_month_cache.finalized
+            finalized=current_month_cache.finalized,
+            state=next_state,
+            start_locked=next_start_locked,
         )
     elif isinstance(current_month_cache, dict):
-        current_month_cache["devices"] = [device.to_dict() for device in device_readings]
+        current_month_cache["devices"] = _readings_list_to_dicts(device_readings)
         current_month_cache["total_usage"] = total_usage
         if "total_usage_start" in current_month_cache:
             current_month_cache["total_usage_start"] = start_total
         if "total_usage_end" in current_month_cache:
             current_month_cache["total_usage_end"] = end_total
+        finalized = bool(current_month_cache.get("finalized", False))
+        if state is not None:
+            current_month_cache["state"] = _normalize_month_state(state, finalized)
+        elif "state" in current_month_cache:
+            current_month_cache["state"] = _normalize_month_state(current_month_cache.get("state"), finalized)
+        if start_locked is not None:
+            current_month_cache["start_locked"] = start_locked
 
 
 async def _recalculate_current_month_starts_if_previous_finalized(
@@ -578,25 +974,25 @@ async def _recalculate_current_month_starts_if_previous_finalized(
     filter_status: List[Dict[str, Any]],
     cache_before_enrich: Dict[str, Optional[float]],
     cache_after_enrich: Dict[str, Optional[float]]
-) -> None:
-    """Recalculate current month device start values if previous month just became finalized."""
+) -> bool:
+    """Fallback recalculation when previous month just finalized and starts are not yet locked."""
     current_month = datetime.now().month
     current_year = datetime.now().year
     current_month_key = DateUtil.format_month_key(current_year, current_month)
     current_month_first_day = DateUtil.get_first_day_of_month(current_month, current_year)
 
     if current_month == 1:
-        return
+        return False
 
     prev_month, prev_year = DateUtil.get_previous_month_from_date(current_month_first_day)
     prev_month_key = DateUtil.format_month_key(prev_year, prev_month)
 
     if not _did_previous_month_just_finalize(cache_before_enrich, cache_after_enrich, prev_month_key):
-        return
+        return False
 
     prev_month_data = monthly_history_cache.get(prev_month_key)
     if not prev_month_data:
-        return
+        return False
 
     prev_finalized = False
     if isinstance(prev_month_data, MonthCacheEntry):
@@ -604,11 +1000,13 @@ async def _recalculate_current_month_starts_if_previous_finalized(
     elif isinstance(prev_month_data, dict):
         prev_finalized = prev_month_data.get("finalized", False) and prev_month_data.get("average_usage") is not None
     if not prev_finalized:
-        return
+        return False
 
     current_month_cache = monthly_history_cache.get(current_month_key)
     if not current_month_cache:
-        return
+        return False
+    if _is_cache_entry_start_locked(current_month_cache):
+        return False
 
     prev_devices = MijnTedSensor._get_devices_from_cache_entry(prev_month_data)
     prev_end_readings = _extract_end_values_from_devices(prev_devices)
@@ -622,22 +1020,22 @@ async def _recalculate_current_month_starts_if_previous_finalized(
                 "Failed to get previous month end readings from API for recalculation: %s",
                 err
             )
-            return
+            return False
 
     current_end_readings = DataUtil.extract_device_readings_map(filter_status)
     if not current_end_readings:
-        return
+        return False
 
     recalculated_devices = DataUtil.calculate_per_device_usage(prev_end_readings, current_end_readings)
     if not recalculated_devices:
-        return
+        return False
 
     existing_devices = MijnTedSensor._get_devices_from_cache_entry(current_month_cache)
     if not _needs_device_start_recalculation(existing_devices, recalculated_devices):
-        return
+        return False
 
     _LOGGER.info(
-        "Previous month %s just became finalized. Recalculating current month %s start values.",
+        "Previous month %s just became finalized. Recalculating and locking current month %s start values.",
         prev_month_key,
         current_month_key
     )
@@ -650,8 +1048,11 @@ async def _recalculate_current_month_starts_if_previous_finalized(
         prev_end_readings,
         filter_status,
         current_month,
-        current_year
+        current_year,
+        state=MONTH_STATE_OPEN,
+        start_locked=True,
     )
+    return True
 
 
 def _collect_years_from_cache(monthly_history_cache: Dict[str, MonthCacheEntry]) -> set[int]:
@@ -728,22 +1129,11 @@ def _apply_enrichment_to_cache_entries(
             cache_entry = monthly_history_cache[month_key]
             if isinstance(cache_entry, MonthCacheEntry):
                 if not cache_entry.finalized or cache_entry.average_usage is None:
-                    monthly_history_cache[month_key] = MonthCacheEntry(
-                        month_id=cache_entry.month_id,
-                        year=cache_entry.year,
-                        month=cache_entry.month,
-                        start_date=cache_entry.start_date,
-                        end_date=cache_entry.end_date,
-                        total_usage=cache_entry.total_usage,
-                        average_usage=average_usage,
-                        devices=cache_entry.devices,
-                        finalized=True,
-                    )
+                    monthly_history_cache[month_key] = _mark_month_finalized(cache_entry, average_usage)
                     _LOGGER.debug("Enriched month %s with average: %s", month_key, average_usage)
             elif isinstance(cache_entry, dict):
                 if not cache_entry.get("finalized", False) or cache_entry.get("average_usage") is None:
-                    cache_entry["average_usage"] = average_usage
-                    cache_entry["finalized"] = True
+                    _mark_month_finalized(cache_entry, average_usage)
                     _LOGGER.debug("Enriched month %s with average: %s", month_key, average_usage)
 
 
@@ -989,10 +1379,12 @@ def _load_cache_from_coordinator(
                 converted_cache: Dict[str, MonthCacheEntry] = {}
                 for month_key, entry_data in cache_data.items():
                     if isinstance(entry_data, MonthCacheEntry):
-                        converted_cache[month_key] = entry_data
+                        converted_cache[month_key] = _ensure_month_cache_entry_state(entry_data)
                     elif isinstance(entry_data, dict):
                         try:
-                            converted_cache[month_key] = MonthCacheEntry.from_dict(entry_data)
+                            converted_cache[month_key] = MonthCacheEntry.from_dict(
+                                _ensure_dict_cache_entry_state(entry_data)
+                            )
                         except Exception as err:
                             _LOGGER.warning("Failed to convert cache entry for %s: %s", month_key, err)
                     else:
@@ -1082,7 +1474,7 @@ async def _update_and_enrich_cache(
     energy_usage_data: Dict[str, Any],
     last_update_date_changed: bool,
 ) -> bool:
-    """Update current month, enrich with API averages, recalculate if previous finalized. Returns True if modified."""
+    """Update cache, apply month-boundary lock, enrich averages, and run finalization fallback."""
     modified = False
 
     if last_update_date_changed:
@@ -1097,6 +1489,18 @@ async def _update_and_enrich_cache(
                 extra={"error_type": type(err).__name__}, exc_info=True,
             )
 
+    try:
+        boundary_lock_modified = await _lock_current_month_starts_when_previous_complete(
+            api, monthly_history_cache, filter_status, last_update, energy_usage_data
+        )
+        if boundary_lock_modified:
+            modified = True
+    except Exception as err:
+        _LOGGER.warning(
+            "Failed to lock current month starts from previous-month complete readings: %s",
+            err, extra={"error_type": type(err).__name__}, exc_info=True,
+        )
+
     cache_before_enrich = _snapshot_cache_averages(monthly_history_cache)
     await _enrich_cache_with_api_data(api, monthly_history_cache, energy_usage_data)
     cache_after_enrich = _snapshot_cache_averages(monthly_history_cache)
@@ -1105,10 +1509,12 @@ async def _update_and_enrich_cache(
         modified = True
 
     try:
-        await _recalculate_current_month_starts_if_previous_finalized(
+        fallback_recalc_modified = await _recalculate_current_month_starts_if_previous_finalized(
             api, monthly_history_cache, filter_status,
             cache_before_enrich, cache_after_enrich,
         )
+        if fallback_recalc_modified:
+            modified = True
     except Exception as err:
         _LOGGER.warning(
             "Failed to recalculate current month start values after previous month finalization: %s",

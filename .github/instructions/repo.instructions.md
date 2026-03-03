@@ -12,4 +12,4 @@ This repo is the **Home Assistant MijnTed** custom integration: Python component
 - **Validation**: Manual test in a real Home Assistant instance. Copy `custom_components/mijnted` into HA `custom_components`, restart or reload the integration, check sensors and behavior. Debug: `logger` / `custom_components.mijnted: debug` in `configuration.yaml`.
 - **Version**: Bump `version` in `custom_components/mijnted/manifest.json` for user-facing or behavior changes (semantic versioning).
 
-**Docs**: README.md (install, config, sensors, troubleshooting). ENDPOINTS.md (API reference). More guidance in `.github/instructions/` for the integration code.
+**Docs**: README.md (install, config, sensors, troubleshooting). `doc/ENDPOINTS.md` (API reference), `doc/SENSORS.md` (sensor behavior), and `doc/MONTH_SWITCH.md` (month-switch behavior). More guidance in `.github/instructions/` for the integration code.
