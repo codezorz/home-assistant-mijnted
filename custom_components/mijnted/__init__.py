@@ -381,6 +381,18 @@ def _extract_end_values_from_devices(devices_list: List[Dict[str, Any]]) -> Dict
     return end_readings
 
 
+def _has_usable_cache_data(entry: Any) -> bool:
+    """Return True if cache entry has data worth preserving."""
+    devices = MijnTedSensor._get_devices_from_cache_entry(entry)
+    if _extract_end_values_from_devices(devices):
+        return True
+    if isinstance(entry, MonthCacheEntry):
+        return entry.total_usage is not None
+    if isinstance(entry, dict):
+        return entry.get("total_usage") is not None
+    return False
+
+
 def _extract_start_values_from_devices(devices_list: List[Dict[str, Any]]) -> Dict[str, float]:
     """Extract start values from devices list."""
     start_readings = {}
@@ -721,6 +733,12 @@ async def _update_current_month_cache(
         current_month_cache
     )
     end_readings = DataUtil.extract_device_readings_map(filter_status)
+    if not end_readings and _has_usable_cache_data(current_month_cache):
+        _LOGGER.debug(
+            "Skipping current month %s cache update: filter_status is empty, preserving existing cache",
+            current_month_key,
+        )
+        return
     end_total = DataUtil.calculate_filter_status_total(filter_status)
 
     devices_list, start_total = await _resolve_current_month_devices(
