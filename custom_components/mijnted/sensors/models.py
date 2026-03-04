@@ -13,7 +13,15 @@ VALID_MONTH_STATES = {
 
 
 def normalize_month_status(state: Any, finalized: bool = False) -> str:
-    """Normalize a month state value to one of the supported constants."""
+    """Normalize a month state value to one of the supported constants.
+
+    Args:
+        state: Raw month state value from cache.
+        finalized: Whether the month is finalized.
+
+    Returns:
+        Normalized month state (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`).
+    """
     if isinstance(state, str) and state in VALID_MONTH_STATES:
         if finalized and state != MONTH_STATE_FINALIZED:
             return MONTH_STATE_FINALIZED
@@ -117,7 +125,11 @@ class CurrentData:
     status: str = MONTH_STATE_OPEN
 
     def to_month_payload(self) -> Dict[str, Any]:
-        """Convert to aligned month payload used by total-usage attributes."""
+        """Build the aligned month payload used by total-usage attributes.
+
+        Returns:
+            Dictionary with shared month-level properties for current/history.
+        """
         return {
             "month_id": self.month_id,
             "year": self.year,
@@ -207,7 +219,11 @@ class HistoryData:
     status: str = MONTH_STATE_OPEN
 
     def to_month_payload(self) -> Dict[str, Any]:
-        """Convert to aligned month payload used by total-usage attributes."""
+        """Build the aligned month payload used by total-usage attributes.
+
+        Returns:
+            Dictionary with shared month-level properties for current/history.
+        """
         return {
             "month_id": self.month_id,
             "year": self.year,
