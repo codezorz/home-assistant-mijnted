@@ -476,7 +476,7 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         """Return entity specific state attributes.
         
         Returns:
-            Dictionary containing current and historical usage data
+            Dictionary containing aligned current/history month payloads
         """
         attributes: Dict[str, Any] = {}
         
@@ -484,9 +484,8 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         historical_readings_list = self._build_history_data()
         
         if current_readings is not None:
-            attributes["current"] = current_readings.to_dict()
+            attributes["current"] = current_readings.to_month_payload()
         if historical_readings_list:
-            attributes["history"] = [entry.to_dict() for entry in historical_readings_list]
+            attributes["history"] = [entry.to_month_payload() for entry in historical_readings_list]
         
         return attributes
-

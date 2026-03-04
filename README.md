@@ -78,7 +78,7 @@ Once configured, the integration will create several sensors in Home Assistant:
 - **Last year monthly usage** - Last year's monthly usage for the corresponding month (prefers API-provided value from previous year's data)
 - **Average monthly usage** - Average usage extracted from historical monthly usage data
 - **Last year average monthly usage** - Last year's average monthly usage for the corresponding month (prefers API-provided value from previous year's data)
-- **Total usage** - Sum of all device readings (cumulative filter status, accumulating counter). Automatically injects historical data for proper history graphs.
+- **Total usage** - Sum of all device readings (cumulative filter status, accumulating counter). Attributes expose aligned month payloads for `current` and `history`, including month `status` (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`). Automatically injects historical data for proper history graphs.
 - **Last update** - Date for which device readings are currently available from the API (often 1-2 days behind)
 - **Last successful sync** - Calendar timestamp of the most recent successful API refresh by this integration
 - **Active model** - The active model identifier (e.g., "F71")
@@ -160,4 +160,3 @@ The integration uses the following dependencies:
 - `PyJWT` - For JWT token decoding
 - `pkce` - For PKCE code generation in OAuth flow
 - `requests` - For synchronous HTTP requests during authentication
-

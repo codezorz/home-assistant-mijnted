@@ -12,6 +12,15 @@ VALID_MONTH_STATES = {
 }
 
 
+def normalize_month_status(state: Any, finalized: bool = False) -> str:
+    """Normalize a month state value to one of the supported constants."""
+    if isinstance(state, str) and state in VALID_MONTH_STATES:
+        if finalized and state != MONTH_STATE_FINALIZED:
+            return MONTH_STATE_FINALIZED
+        return state
+    return MONTH_STATE_FINALIZED if finalized else MONTH_STATE_OPEN
+
+
 @dataclass
 class DeviceReading:
     """Represents a single device reading with start, end, and calculated usage.
@@ -26,10 +35,10 @@ class DeviceReading:
     start: float
     end: float
     usage: Optional[float] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation.
-        
+
         Returns:
             Dictionary with id, start, end, and usage keys.
         """
@@ -39,24 +48,24 @@ class DeviceReading:
             "end": self.end,
             "usage": self.usage
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Optional["DeviceReading"]:
         """Create DeviceReading from dictionary representation.
-        
+
         Args:
             data: Dictionary with id, start, end, and optionally usage keys.
-        
+
         Returns:
             DeviceReading instance or None if required keys are missing or invalid.
         """
         device_id = data.get("id")
         start_val = data.get("start")
         end_val = data.get("end")
-        
+
         if device_id is None or start_val is None or end_val is None:
             return None
-        
+
         try:
             return cls(
                 id=int(device_id),
@@ -77,70 +86,90 @@ class CurrentData:
         month_id: Identifier for the month.
         start_date: Start date of the period.
         end_date: End date of the period.
+        year: Calendar year for the period.
+        month: Calendar month for the period.
         devices: List of device readings for this period.
         days: Number of days in the period, or None.
+        average_usage: Finalized monthly average usage from cache, or None.
         last_year_usage: Usage from the same period last year, or None.
         last_year_average_usage: Average usage from last year, or None.
         total_usage_start: Total meter reading at period start, or None.
         total_usage_end: Total meter reading at period end, or None.
         total_usage: Total usage for the period, or None.
         average_usage_per_day: Average usage per day, or None.
+        status: Month lifecycle status (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`).
     """
     last_update_date: str
     month_id: str
     start_date: str
     end_date: str
+    year: Optional[int] = None
+    month: Optional[int] = None
     devices: List[DeviceReading] = field(default_factory=list)
     days: Optional[int] = None
+    average_usage: Optional[float] = None
     last_year_usage: Optional[float] = None
     last_year_average_usage: Optional[float] = None
     total_usage_start: Optional[float] = None
     total_usage_end: Optional[float] = None
     total_usage: Optional[float] = None
     average_usage_per_day: Optional[float] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation, recursively converting nested dataclasses.
-        
-        Returns:
-            Dictionary with all CurrentData fields including nested device readings.
-        """
+    status: str = MONTH_STATE_OPEN
+
+    def to_month_payload(self) -> Dict[str, Any]:
+        """Convert to aligned month payload used by total-usage attributes."""
         return {
-            "last_update_date": self.last_update_date,
             "month_id": self.month_id,
+            "year": self.year,
+            "month": self.month,
             "start_date": self.start_date,
             "end_date": self.end_date,
+            "average_usage": self.average_usage,
             "devices": [device.to_dict() for device in self.devices],
             "days": self.days,
-            "last_year_usage": self.last_year_usage,
-            "last_year_average_usage": self.last_year_average_usage,
+            "average_usage_per_day": self.average_usage_per_day,
             "total_usage_start": self.total_usage_start,
             "total_usage_end": self.total_usage_end,
             "total_usage": self.total_usage,
-            "average_usage_per_day": self.average_usage_per_day
+            "status": self.status,
         }
-    
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary representation, recursively converting nested dataclasses.
+
+        Returns:
+            Dictionary with all CurrentData fields including nested device readings.
+        """
+        payload = self.to_month_payload()
+        payload.update(
+            {
+                "last_update_date": self.last_update_date,
+                "last_year_usage": self.last_year_usage,
+                "last_year_average_usage": self.last_year_average_usage,
+            }
+        )
+        return payload
+
     def to_attributes_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation for sensor attributes, filtering out None values.
-        
-        Returns:
-            Dictionary with month_id, start_date, end_date, and days fields,
-            excluding any that are None.
+
+        Returns only the fields typically used in sensor attributes: month_id, start_date, end_date, days.
+        None values are excluded to match the behavior of manual attribute extraction.
         """
         attributes: Dict[str, Any] = {}
-        
+
         if self.month_id:
             attributes["month_id"] = self.month_id
-        
+
         if self.start_date:
             attributes["start_date"] = self.start_date
-        
+
         if self.end_date:
             attributes["end_date"] = self.end_date
-        
+
         if self.days is not None:
             attributes["days"] = self.days
-        
+
         return attributes
 
 
@@ -155,6 +184,7 @@ class HistoryData:
         start_date: Start date of the period.
         end_date: End date of the period.
         average_usage: Average usage for the period, or None.
+        status: Month lifecycle status (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`).
         devices: List of device readings for this period.
         days: Number of days in the period, or None.
         total_usage: Total usage for the period, or None.
@@ -174,13 +204,10 @@ class HistoryData:
     total_usage_start: Optional[float] = None
     total_usage_end: Optional[float] = None
     total_usage: Optional[float] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation, recursively converting nested dataclasses.
-        
-        Returns:
-            Dictionary with all HistoryData fields including nested device readings.
-        """
+    status: str = MONTH_STATE_OPEN
+
+    def to_month_payload(self) -> Dict[str, Any]:
+        """Convert to aligned month payload used by total-usage attributes."""
         return {
             "month_id": self.month_id,
             "year": self.year,
@@ -193,20 +220,29 @@ class HistoryData:
             "average_usage_per_day": self.average_usage_per_day,
             "total_usage_start": self.total_usage_start,
             "total_usage_end": self.total_usage_end,
-            "total_usage": self.total_usage
+            "total_usage": self.total_usage,
+            "status": self.status,
         }
-    
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary representation, recursively converting nested dataclasses.
+
+        Returns:
+            Dictionary with all HistoryData fields including nested device readings.
+        """
+        return self.to_month_payload()
+
     def to_attributes_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation for sensor attributes, filtering out None/empty values.
-        
-        Returns:
-            Dictionary with the month_id field, excluding it if None or empty.
+
+        Returns only the month_id field typically used in sensor attributes.
+        None/empty values are excluded to match the behavior of manual attribute extraction.
         """
         attributes: Dict[str, Any] = {}
-        
+
         if self.month_id:
             attributes["month_id"] = self.month_id
-        
+
         return attributes
 
 
@@ -226,10 +262,10 @@ class StatisticsTracking:
     average_monthly_usage: Optional[str] = None
     last_year_average_monthly_usage: Optional[str] = None
     total_usage: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation.
-        
+
         Returns:
             Dictionary with all StatisticsTracking keys.
         """
@@ -270,10 +306,10 @@ class MonthCacheEntry:
     finalized: bool = False
     state: str = MONTH_STATE_OPEN
     start_locked: bool = False
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation for storage.
-        
+
         Returns:
             Dictionary with month_id, year, month, dates, usage, devices, finalized.
         """
@@ -290,14 +326,14 @@ class MonthCacheEntry:
             "state": self.state,
             "start_locked": self.start_locked,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MonthCacheEntry":
         """Create MonthCacheEntry from dictionary representation.
-        
+
         Args:
             data: Dictionary with month_id, year, month, dates, usage, devices, finalized.
-        
+
         Returns:
             MonthCacheEntry instance.
         """
@@ -309,16 +345,8 @@ class MonthCacheEntry:
                     device = DeviceReading.from_dict(device_dict)
                     if device:
                         devices.append(device)
-        
         finalized = bool(data.get("finalized", False))
-        state_raw = data.get("state")
-        if finalized:
-            state = MONTH_STATE_FINALIZED
-        elif isinstance(state_raw, str) and state_raw in VALID_MONTH_STATES:
-            state = state_raw
-        else:
-            state = MONTH_STATE_OPEN
-
+        state = normalize_month_status(data.get("state"), finalized)
         return cls(
             month_id=data.get("month_id", ""),
             year=data.get("year", 0),
