@@ -16,7 +16,14 @@ from ..const import (
     UNIT_MIJNTED,
 )
 from ..utils import DateUtil, DataUtil
-from .models import DeviceReading, CurrentData, HistoryData, StatisticsTracking, MonthCacheEntry
+from .models import (
+    CurrentData,
+    DeviceReading,
+    HistoryData,
+    MonthCacheEntry,
+    StatisticsTracking,
+    normalize_month_status,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -164,6 +171,15 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         if isinstance(entry, dict):
             return entry.get(field_name)
         return None
+
+    @staticmethod
+    def _extract_month_status_from_cache_entry(entry: Any) -> str:
+        """Extract normalized month lifecycle status from cache entry."""
+        if isinstance(entry, MonthCacheEntry):
+            return normalize_month_status(entry.state, entry.finalized)
+        if isinstance(entry, dict):
+            return normalize_month_status(entry.get("state"), bool(entry.get("finalized", False)))
+        return normalize_month_status(None, False)
     
     def _get_last_successful_sync(self) -> Optional[str]:
         """Return the last successful sync timestamp from coordinator data."""
@@ -651,6 +667,10 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         end_date_str = month_data.get("end_date", "")
         days = DateUtil.calculate_days_between(start_date_str, end_date_str)
         total_usage = month_data.get("total_usage")
+        month_status = normalize_month_status(
+            month_data.get("state"),
+            bool(month_data.get("finalized", False)),
+        )
         average_usage_per_day = self._calculate_average_per_day(total_usage, days)
         total_usage_start, total_usage_end = self._calculate_total_usage(devices_list)
         return HistoryData(
@@ -665,7 +685,8 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             average_usage_per_day=average_usage_per_day,
             total_usage_start=total_usage_start,
             total_usage_end=total_usage_end,
-            total_usage=total_usage
+            total_usage=total_usage,
+            status=month_status,
         )
 
     def _get_month_context(self, last_sync_date_obj: date) -> Dict[str, Any]:
@@ -953,6 +974,9 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         current_year = month_context["current_year"]
         month_year_key = month_context["month_year_key"]
         current_month_key = month_context["current_month_key"]
+        current_month_data = monthly_history_cache.get(current_month_key)
+        month_status = self._extract_month_status_from_cache_entry(current_month_data)
+        current_average_usage = self._extract_value_from_cache_entry(current_month_data, "average_usage")
 
         start_date = DateUtil.get_first_day_of_month(current_month, current_year)
         start_date_str = DateUtil.format_date_for_api(start_date)
@@ -991,14 +1015,18 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             month_id=month_year_key,
             start_date=start_date_str,
             end_date=end_date_str,
+            year=current_year,
+            month=current_month,
             devices=devices_list,
             days=days,
+            average_usage=current_average_usage,
             last_year_usage=last_year_usage,
             last_year_average_usage=last_year_average_usage,
             total_usage_start=total_usage_start,
             total_usage_end=total_usage_end,
             total_usage=total_usage,
             average_usage_per_day=average_usage_per_day,
+            status=month_status,
         )
     
     def _build_history_data(self) -> List[HistoryData]:
@@ -1026,4 +1054,3 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             if history_entry:
                 historical_readings_list.append(history_entry)
         return historical_readings_list
-

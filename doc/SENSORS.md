@@ -98,8 +98,22 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - Value source: `filter_status`.
 - Missing data behavior: returns last known value.
 - Attributes:
-  - `current`: full `CurrentData` structure for current month
-  - `history`: list of historical month entries (`HistoryData`)
+  - `current`: month payload for current month
+  - `history`: list of month payloads for historical months
+  - `current` and every `history` entry share the same month-level keys:
+    - `month_id`
+    - `year`
+    - `month`
+    - `start_date`
+    - `end_date`
+    - `average_usage`
+    - `devices`
+    - `days`
+    - `average_usage_per_day`
+    - `total_usage_start`
+    - `total_usage_end`
+    - `total_usage`
+    - `status` (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`)
 
 ## Diagnostic Sensors
 
