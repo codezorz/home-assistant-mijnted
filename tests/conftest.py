@@ -8,6 +8,8 @@ import sys
 from unittest.mock import MagicMock
 
 _ha = MagicMock()
+_pkce = MagicMock()
+_pkce.generate_pkce_pair.return_value = ("test_verifier", "test_challenge")
 
 # Provide concrete values that const.py relies on at module scope
 _ha.const.Platform.SENSOR = "sensor"
@@ -34,6 +36,9 @@ _SUBMODULES = {
 
 for name, mock in _SUBMODULES.items():
     sys.modules[name] = mock
+
+# Mock runtime dependency imported at module scope by oauth_util.
+sys.modules["pkce"] = _pkce
 
 
 # HA entity classes must be real classes so multiple-inheritance in sensor
