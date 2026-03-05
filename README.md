@@ -145,6 +145,13 @@ logger:
     custom_components.mijnted: debug
 ```
 
+## Reporting issues
+
+When opening a GitHub issue, include reproducible steps, expected vs actual behavior, logs, and environment details.
+
+- See `doc/ISSUE_REPORTING.md` for a full checklist and copy/paste bug report template.
+- Use the default GitHub issue forms (`Bug report`, `Feature request`, `Question`) to start with the right structure.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

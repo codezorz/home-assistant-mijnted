@@ -1,0 +1,96 @@
+name: Bug report
+description: Report a reproducible problem in the MijnTed integration
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include clear reproduction steps and relevant logs.
+        Remove secrets from logs and screenshots (client ID, tokens, email, password).
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the problem.
+      placeholder: The config flow fails with a 500 error when opening options for an already registered device.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide exact steps so we can reproduce the issue.
+      placeholder: |
+        1. Go to Settings > Devices & Services
+        2. Open MijnTed integration options
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The options flow should open and show configuration fields.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: A 500 Internal Server Error dialog is shown.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste the full warning/traceback block.
+      render: text
+      placeholder: |
+        Logger:
+        Source:
+        Traceback:
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: integration_version
+    attributes:
+      label: MijnTed integration version
+      description: See custom_components/mijnted/manifest.json
+      placeholder: 1.0.22
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      placeholder: 3.13.x
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I removed or masked secrets from logs and screenshots.
+          required: true

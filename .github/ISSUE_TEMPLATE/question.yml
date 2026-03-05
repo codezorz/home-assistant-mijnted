@@ -1,0 +1,50 @@
+name: Question
+description: Ask for clarification about setup or behavior
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for support-style questions. For reproducible defects, use the bug report template.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      placeholder: How should I interpret the "last update" sensor when data is delayed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you already tried
+      placeholder: I checked README troubleshooting and enabled debug logs.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.2.0
+    validations:
+      required: false
+
+  - type: input
+    id: integration_version
+    attributes:
+      label: MijnTed integration version
+      placeholder: 1.0.22
+    validations:
+      required: false
