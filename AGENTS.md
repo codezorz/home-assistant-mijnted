@@ -32,7 +32,11 @@ This file is the first place to look for how to work in this repo.
 Work happens on a **topic branch** (feature, enhancement, fix, etc.). No dedicated "release branch"; releases are created by **tagging on main** after the PR is merged.
 
 - **Branch**: If you are already on a topic branch that has a version bump commit, continue working on it — do not create a new branch. Otherwise, create a branch from the default branch (e.g. `fix/xyz`, `feature/abc`).
-- **First commit**: Bump **version** in `custom_components/mijnted/manifest.json` (semantic versioning: patch for fixes, minor for new features, major for breaking changes). Commit with a clear message (e.g. `Bump version to 1.0.22`). Skip this step if the current branch already contains a version bump.
+- **Version bump policy**:
+  - Only bump `custom_components/mijnted/manifest.json` for integration runtime/user-facing changes in `custom_components/mijnted/**` (not for repo-maintenance changes like `.github/**`, docs, or tooling-only updates).
+  - Bump only when needed: compare `manifest.json` version with the latest GitHub release version.
+  - If `manifest.json` equals the latest release version, add a version bump commit first (semantic versioning: patch for fixes, minor for new features, major for breaking changes).
+  - If `manifest.json` is already higher than the latest release version, do not bump again; your PR can be part of that upcoming unreleased version.
 - **Next commits**: Implement the fix or feature in **logically split commits** (one concern per commit, descriptive messages).
 - **Push** the branch and **open a PR** targeting the default branch (`main`). Summarize changes and the version bump in the PR description. Request review from `CODEOWNERS` if applicable.
 - **Commit messages**: Always write the commit message to a temporary file and use `git commit --file <file>` (then delete the file). Never pass the message inline with `-m` — PowerShell does not support heredoc and mangles parentheses, backticks, and special characters.
