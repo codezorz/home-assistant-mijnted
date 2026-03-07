@@ -6,6 +6,7 @@ that statistics dedupe allows one-time reinjection for those hinted periods.
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.components.recorder.models import StatisticMeanType
 import custom_components.mijnted.__init__ as init_mod
 from custom_components.mijnted.sensors.base import MijnTedSensor
 from custom_components.mijnted.sensors.models import (
@@ -14,7 +15,10 @@ from custom_components.mijnted.sensors.models import (
     MONTH_STATE_OPEN,
     StatisticsTracking,
 )
-from custom_components.mijnted.sensors.usage import MijnTedAverageMonthlyUsageSensor
+from custom_components.mijnted.sensors.usage import (
+    MijnTedAverageMonthlyUsageSensor,
+    MijnTedLastYearAverageMonthlyUsageSensor,
+)
 from custom_components.mijnted.utils import DateUtil
 
 
@@ -295,3 +299,33 @@ class TestAverageMonthlyUsageSensorInjection:
         assert statistics[0]["start"].year == 2026
         assert statistics[0]["start"].month == 2
         assert statistics[0]["start"].day == 1
+
+
+class TestAverageStatisticsMeanType:
+    """Verify average sensors inject state-only statistics metadata."""
+
+    async def test_average_monthly_usage_injection_uses_mean_type_none(self):
+        """Average monthly usage should inject with StatisticMeanType.NONE."""
+        sensor = object.__new__(MijnTedAverageMonthlyUsageSensor)
+        sensor._build_statistics_from_history = AsyncMock()
+
+        await sensor._async_inject_statistics()
+
+        sensor._build_statistics_from_history.assert_awaited_once_with(
+            "average_usage",
+            StatisticMeanType.NONE,
+            include_current=False,
+        )
+
+    async def test_last_year_average_injection_uses_mean_type_none(self):
+        """Last year average monthly usage should inject with StatisticMeanType.NONE."""
+        sensor = object.__new__(MijnTedLastYearAverageMonthlyUsageSensor)
+        sensor._async_inject_last_year_statistics = AsyncMock()
+
+        await sensor._async_inject_statistics()
+
+        sensor._async_inject_last_year_statistics.assert_awaited_once_with(
+            "average_usage",
+            "last_year_average_usage",
+            StatisticMeanType.NONE,
+        )

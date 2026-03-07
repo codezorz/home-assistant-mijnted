@@ -98,7 +98,7 @@ The integration automatically injects historical data into Home Assistant's reco
 - **Monthly Usage Sensor**: Injects monthly consumption statistics
 - **Late month corrections**: If a previous month is corrected after month switch (for example final-day readings arrive later), the corrected historical month is re-injected once so recorder history is updated
 - **Last Year Monthly Usage Sensor**: Injects historical data for the previous year's corresponding month
-- **Average Monthly Usage Sensors**: Inject historical average values for trend analysis
+- **Average Monthly Usage Sensors**: Inject historical average values for trend analysis. These statistics are imported as monthly state values; use state view in Statistics for `average_monthly_usage` and `last_year_average_monthly_usage`
 
 All usage sensors use appropriate state classes (`TOTAL` or `TOTAL_INCREASING`) to ensure correct behavior in Home Assistant's statistics and history system, enabling proper historical data tracking and graph visualization:
 - **Monthly Usage**: `TOTAL` - for tracking monthly consumption

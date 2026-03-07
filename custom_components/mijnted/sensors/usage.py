@@ -245,7 +245,7 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
         """Inject average usage statistics into recorder from history."""
         await self._build_statistics_from_history(
             "average_usage",
-            StatisticMeanType.ARITHMETIC,
+            StatisticMeanType.NONE,
             include_current=False
         )
     
@@ -321,7 +321,7 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
 
     async def _async_inject_statistics(self) -> None:
         """Inject last year average statistics into recorder."""
-        await self._async_inject_last_year_statistics("average_usage", "last_year_average_usage", StatisticMeanType.ARITHMETIC)
+        await self._async_inject_last_year_statistics("average_usage", "last_year_average_usage", StatisticMeanType.NONE)
     
 
     @property
