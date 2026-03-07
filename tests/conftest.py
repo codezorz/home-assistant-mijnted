@@ -11,9 +11,34 @@ _ha = MagicMock()
 _pkce = MagicMock()
 _pkce.generate_pkce_pair.return_value = ("test_verifier", "test_challenge")
 
+
+class _ConfigFlow:
+    """Minimal stand-in for Home Assistant ConfigFlow."""
+
+    def __init_subclass__(cls, domain=None, **kwargs):
+        """Allow class declarations with ``domain=...``."""
+        super().__init_subclass__(**kwargs)
+        cls.DOMAIN = domain
+
+
+class _OptionsFlow:
+    """Minimal stand-in for Home Assistant OptionsFlow."""
+
+    @property
+    def config_entry(self):
+        """Mirror HA's read-only config_entry property."""
+        return getattr(self, "_config_entry", None)
+
+
+class _ConfigEntry:
+    """Minimal stand-in for Home Assistant ConfigEntry."""
+
 # Provide concrete values that const.py relies on at module scope
 _ha.const.Platform.SENSOR = "sensor"
 _ha.const.Platform.BUTTON = "button"
+_ha.config_entries.ConfigFlow = _ConfigFlow
+_ha.config_entries.OptionsFlow = _OptionsFlow
+_ha.config_entries.ConfigEntry = _ConfigEntry
 
 _SUBMODULES = {
     "homeassistant": _ha,

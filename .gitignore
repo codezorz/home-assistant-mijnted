@@ -161,5 +161,10 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Local dependency scratch space
+.pydeps/
+
 # Scripts folder
-scripts/
+scripts/*
+!scripts/activate_env.ps1
+!scripts/activate_env.sh

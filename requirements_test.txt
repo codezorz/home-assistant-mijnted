@@ -1,3 +1,7 @@
 pytest
 pytest-asyncio
 PyJWT
+aiohttp
+pkce
+requests
+voluptuous

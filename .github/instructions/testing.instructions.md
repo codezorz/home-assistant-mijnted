@@ -6,14 +6,20 @@ applyTo: "tests/**"
 
 ## Running tests
 
+Activate the Home Assistant venv first (cross-OS):
+
+- Linux/macOS (`bash`/`zsh`): `source ~/.venv-home-assistant/bin/activate`
+- Windows PowerShell: `& "$HOME\.venv-home-assistant\Scripts\Activate.ps1"`
+- Windows cmd: `%USERPROFILE%\.venv-home-assistant\Scripts\activate.bat`
+
 ```
-pip install -r requirements_test.txt
+python -m pip install -r requirements_test.txt
 pytest
 ```
 
 Config lives in `pytest.ini`: test discovery in `tests/`, async mode `auto` (no `@pytest.mark.asyncio` needed).
 
-Dependencies (`requirements_test.txt`): `pytest`, `pytest-asyncio`, `PyJWT`.
+Dependencies (`requirements_test.txt`): `pytest`, `pytest-asyncio`, `PyJWT`, `aiohttp`, `pkce`, `requests`.
 
 ## How the Home Assistant mock works
 

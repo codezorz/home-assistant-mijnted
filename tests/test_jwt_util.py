@@ -6,12 +6,14 @@ import pytest
 
 from custom_components.mijnted.utils.jwt_util import JwtUtil
 
+_TEST_JWT_SECRET = "test-secret-key-with-32-byte-minimum!!"
+
 
 def _make_token(payload: dict, exp_offset: int | None = None) -> str:
     """Helper to create a signed JWT for testing."""
     if exp_offset is not None:
         payload["exp"] = int(time.time()) + exp_offset
-    return pyjwt.encode(payload, "secret", algorithm="HS256")
+    return pyjwt.encode(payload, _TEST_JWT_SECRET, algorithm="HS256")
 
 
 class TestDecodeToken:

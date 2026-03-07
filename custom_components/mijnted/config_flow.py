@@ -52,7 +52,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._client_id: Optional[str] = None
 
     @staticmethod
-    async def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         """Create options flow handler.
 
         Args:
@@ -259,7 +259,7 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
         Args:
             config_entry: The config entry being configured.
         """
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Manage the options.
@@ -296,4 +296,3 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
                 }
             ),
         )
-
