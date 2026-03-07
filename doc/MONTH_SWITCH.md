@@ -126,6 +126,7 @@ Expected behavior:
 - After February insight finalization:
   - February averages are populated.
   - March start alignment remains consistent with February end.
+- If February monthly totals are corrected after March already started, recorder statistics for February are re-injected once so history reflects the corrected value.
 
 ## Manual Recovery
 

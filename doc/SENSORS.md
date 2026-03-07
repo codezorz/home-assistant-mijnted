@@ -268,6 +268,7 @@ Usage sensors inject historical statistics into Home Assistant recorder when pos
   - Recorder integration is loaded
 - Duplicate protection:
   - `statistics_tracking` stores the last injected month key per sensor type
+  - When a historical month value is corrected later (for example previous month final-day data arrives after month switch), a one-time reinjection hint allows that corrected month to be imported even if it is older than `last_injected`
 - `total_usage` injection:
   - Uses monthly `total_usage_end` states and updates `sum` cumulatively
 - Reset path:

@@ -288,7 +288,7 @@ class TestEnsureMonthlyHistoryCacheRetryBehavior:
                 return_value=(False, True),
             ),
         ):
-            _, returned_date, _ = await init_mod._ensure_monthly_history_cache(
+            _, returned_date, _, _ = await init_mod._ensure_monthly_history_cache(
                 api, hass, entry,
                 last_update={"lastSyncDate": self.NEW_DATE},
                 energy_usage_data={},
@@ -312,7 +312,7 @@ class TestEnsureMonthlyHistoryCacheRetryBehavior:
                 return_value=(False, True),
             ),
         ):
-            _, returned_date, _ = await init_mod._ensure_monthly_history_cache(
+            _, returned_date, _, _ = await init_mod._ensure_monthly_history_cache(
                 api, hass, entry,
                 last_update={"lastSyncDate": self.NEW_DATE},
                 energy_usage_data={},
@@ -336,7 +336,7 @@ class TestEnsureMonthlyHistoryCacheRetryBehavior:
                 return_value=(True, False),
             ),
         ):
-            _, returned_date, _ = await init_mod._ensure_monthly_history_cache(
+            _, returned_date, _, _ = await init_mod._ensure_monthly_history_cache(
                 api, hass, entry,
                 last_update={"lastSyncDate": self.NEW_DATE},
                 energy_usage_data={},
@@ -370,7 +370,7 @@ class TestEnsureMonthlyHistoryCacheRetryBehavior:
         ):
             # Poll 1: date rollover, filter_status empty -> skip
             with self._patch_load_cache(self.OLD_DATE):
-                _, date_after_poll1, _ = await init_mod._ensure_monthly_history_cache(
+                _, date_after_poll1, _, _ = await init_mod._ensure_monthly_history_cache(
                     api, hass, entry,
                     last_update={"lastSyncDate": self.NEW_DATE},
                     energy_usage_data={},
@@ -381,7 +381,7 @@ class TestEnsureMonthlyHistoryCacheRetryBehavior:
 
             # Poll 2: same new date, but now coordinator has the held old date
             with self._patch_load_cache(date_after_poll1):
-                _, date_after_poll2, _ = await init_mod._ensure_monthly_history_cache(
+                _, date_after_poll2, _, _ = await init_mod._ensure_monthly_history_cache(
                     api, hass, entry,
                     last_update={"lastSyncDate": self.NEW_DATE},
                     energy_usage_data={},
