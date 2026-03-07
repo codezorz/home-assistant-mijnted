@@ -71,3 +71,4 @@ Copy this into a new issue and fill it in:
 - `bug` for failures and regressions
 - `enhancement` for feature requests
 - `question` for support-style issues
+- Maintainers may adjust labels during triage or closure (for example: `duplicate`, `invalid`, `wontfix`).
