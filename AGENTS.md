@@ -7,6 +7,7 @@ This file is the first place to look for how to work in this repo.
 - **Purpose**: You are helping develop the **Home Assistant MijnTed** custom integration (Python). It talks to the MijnTed cloud API and exposes energy usage and device data as sensors and buttons in Home Assistant.
 - **Where the code lives**: Integration code is under `custom_components/mijnted/`. Entry point: `__init__.py`. No separate build step; it runs inside Home Assistant.
 - **Quick validation**: Use `python -m compileall custom_components/mijnted` to run a fast syntax check. If sandboxed execution cannot write `__pycache__`, rerun it outside the sandbox.
+- **Preferred local test environment**: Activate `~/.venv-home-assistant` before `pytest` or Python checks; system Python may miss required packages (`aiohttp`, `pytest-asyncio`, etc.). Linux/macOS: `source ~/.venv-home-assistant/bin/activate`. Windows PowerShell: `& "$HOME\.venv-home-assistant\Scripts\Activate.ps1"`. Windows cmd: `%USERPROFILE%\.venv-home-assistant\Scripts\activate.bat`.
 - **Validation scope outside HA**: This repo is not always executed in a full Home Assistant runtime during local checks. Treat HA-environment/runtime-specific failures as non-blocking for local validation, but treat Python syntax/parse errors as blocking.
 - **Git commands**: Always run `git` commands outside the sandbox — the sandbox lacks permissions for git operations.
 - **File deletion policy**: Always run file-removal commands (for example `Remove-Item`, `del`, `git rm`) outside the sandbox with escalation.

@@ -15,6 +15,16 @@ Run a syntax check first:
 
 If sandbox mode cannot write `__pycache__`, rerun outside sandbox.
 
+## Environment
+
+Activate the project venv before running checks:
+
+- Linux/macOS (`bash`/`zsh`): `source ~/.venv-home-assistant/bin/activate`
+- Windows PowerShell: `& "$HOME\.venv-home-assistant\Scripts\Activate.ps1"`
+- Windows cmd: `%USERPROFILE%\.venv-home-assistant\Scripts\activate.bat`
+
+Using system Python can fail with missing test/runtime deps (for example `aiohttp` or `pytest-asyncio`).
+
 ## Test guidance
 
 - Tests are in `tests/`, configured via `pytest.ini`.
@@ -40,4 +50,3 @@ If sandbox mode cannot write `__pycache__`, rerun outside sandbox.
 - `.github/instructions/testing.instructions.md`
 - `requirements_test.txt`
 - `pytest.ini`
-
