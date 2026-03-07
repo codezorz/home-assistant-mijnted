@@ -26,6 +26,8 @@ Use this skill for branch/commit/PR tasks in this repository.
 3. Keep commits logically split and descriptive.
 4. Push branch and open PR targeting `main`.
 5. Include a clear PR summary and note version bump behavior when relevant.
+6. Apply/update labels on PR and linked issue(s) according to repo label policy.
+7. When closing an issue, apply fixed-or-closure-reason labels and add a traceable closing comment.
 
 ## Required command conventions
 
@@ -39,8 +41,14 @@ Use this skill for branch/commit/PR tasks in this repository.
   - Use `gh pr create --body-file <file>`.
   - Delete the temp file.
 
+## Mandatory checklist
+
+- PR has appropriate labels before/after creation.
+- Linked issue(s) have appropriate labels.
+- Closed issue(s) fixed by PR/commit keep type label (`bug`, `enhancement`, `question`); otherwise include closure-reason label (`duplicate`, `invalid`, `wontfix`).
+- Closed issue comment references fixing PR/commit (or explicit non-fix reason).
+
 ## References
 
 - `AGENTS.md`
 - `.github/instructions/repo.instructions.md`
-

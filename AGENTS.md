@@ -42,6 +42,14 @@ Work happens on a **topic branch** (feature, enhancement, fix, etc.). No dedicat
 - **Push** the branch and **open a PR** targeting the default branch (`main`). Summarize changes and the version bump in the PR description. Request review from `CODEOWNERS` if applicable.
 - **Commit messages**: Always write the commit message to a temporary file and use `git commit --file <file>` (then delete the file). Never pass the message inline with `-m` — PowerShell does not support heredoc and mangles parentheses, backticks, and special characters.
 - **PR body**: Always write the PR body to a temporary file and use `gh pr create --body-file <file>` (then delete the file). Never pass the body inline with `-m` or `--body` — PowerShell mangles backticks and special characters.
+- **PR label policy**:
+  - Always apply appropriate labels when creating or updating a PR.
+  - Keep labels on merged PRs only; remove labels from closed, unmerged PRs when closing or during cleanup.
+  - Use only existing repo labels from the GitHub Labels list (for example: `bug`, `enhancement`, `documentation`, `github-actions`, `dependencies`, `question`).
+- **Issue label policy**:
+  - Always ensure issues are labeled appropriately during triage and before closure.
+  - If fixed by a PR/commit, keep the issue type label (`bug`, `enhancement`, or `question`) and add a closing comment that references the fixing PR/commit.
+  - If not fixed, apply the closure reason label (`duplicate`, `invalid`, or `wontfix`) and add a closing comment with the explicit closure reason.
 
 **Releases**: On GitHub, releases are **tags on main**. After the PR is merged to main, create a tag (e.g. `v1.0.22`) on the merged commit and mark it as a release (manually or by the agent). No release branch; tagging happens only after merge.
 
