@@ -96,6 +96,7 @@ All usage sensors display values with zero decimal places for a cleaner interfac
 The integration automatically injects historical data into Home Assistant's recorder for proper history graphs:
 - **Total Usage Sensor**: Injects historical `total_usage_end` values (accumulated counter) for each month, enabling standard history graphs to display consumption trends over time
 - **Monthly Usage Sensor**: Injects monthly consumption statistics
+- **Late month corrections**: If a previous month is corrected after month switch (for example final-day readings arrive later), the corrected historical month is re-injected once so recorder history is updated
 - **Last Year Monthly Usage Sensor**: Injects historical data for the previous year's corresponding month
 - **Average Monthly Usage Sensors**: Inject historical average values for trend analysis
 

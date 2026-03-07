@@ -297,10 +297,73 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             setattr(statistics_tracking, tracking_field, month_key)
         elif not self._compare_month_keys(month_key, current_value):
             setattr(statistics_tracking, tracking_field, month_key)
+
+    def _get_statistics_reinject_months(self) -> set[str]:
+        """Return pending reinject month keys for this sensor type."""
+        data = self.coordinator.data if hasattr(self, "coordinator") else None
+        if not data:
+            return set()
+
+        reinject = data.get("statistics_reinject")
+        if not isinstance(reinject, dict):
+            return set()
+
+        tracking_field = self._get_tracking_field_name()
+        if not tracking_field:
+            return set()
+
+        raw_months = reinject.get(tracking_field)
+        if isinstance(raw_months, str):
+            return {raw_months}
+        if isinstance(raw_months, (list, tuple, set)):
+            return {month for month in raw_months if isinstance(month, str)}
+        return set()
+
+    def _consume_statistics_reinject_months(self, months: set[str]) -> None:
+        """Remove consumed reinject month keys for this sensor type.
+
+        Mutates coordinator data in place so consumed hints remain cleared on
+        subsequent coordinator refresh cycles.
+        """
+        if not months:
+            return
+
+        data = self.coordinator.data if hasattr(self, "coordinator") else None
+        if not data:
+            return
+
+        reinject = data.get("statistics_reinject")
+        if not isinstance(reinject, dict):
+            return
+
+        tracking_field = self._get_tracking_field_name()
+        if not tracking_field:
+            return
+
+        raw_months = reinject.get(tracking_field)
+        existing_months: set[str] = set()
+        if isinstance(raw_months, str):
+            existing_months = {raw_months}
+        elif isinstance(raw_months, (list, tuple, set)):
+            existing_months = {month for month in raw_months if isinstance(month, str)}
+
+        if not existing_months:
+            return
+
+        remaining = existing_months.difference(months)
+        if remaining:
+            reinject[tracking_field] = sorted(remaining)
+        elif tracking_field in reinject:
+            del reinject[tracking_field]
+
+        if not reinject:
+            data.pop("statistics_reinject", None)
     
     async def _has_already_injected_period(self, start_time: datetime) -> bool:
         """Return True if statistics for the given period were already injected."""
         month_key = f"{start_time.month}.{start_time.year}"
+        if month_key in self._get_statistics_reinject_months():
+            return False
         
         data = self.coordinator.data if hasattr(self, 'coordinator') else None
         if not data:
@@ -344,10 +407,10 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         self,
         metadata: StatisticMetaData,
         statistics: List[StatisticData]
-    ) -> None:
+    ) -> bool:
         """Import statistics into recorder, logging success or catching exceptions."""
         if not statistics:
-            return
+            return False
         
         try:
             result = async_import_statistics(self.hass, metadata, statistics)
@@ -360,12 +423,14 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
                 self.entity_id,
                 len(statistics)
             )
+            return True
         except Exception as err:
             _LOGGER.warning(
                 "Failed to inject statistics for %s: %s (stat may not be available yet, will retry next time)",
                 self.entity_id,
                 err
             )
+            return False
     
     async def _setup_statistics_injection(self) -> None:
         """Register coordinator listener for injection and trigger initial injection if data exists."""
@@ -393,7 +458,8 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         month_id: Optional[str],
         start_date: Optional[str],
         value: Optional[Any],
-        max_month_key: Optional[str]
+        max_month_key: Optional[str],
+        consumed_reinject_months: Optional[set[str]] = None,
     ) -> Optional[str]:
         """Add statistic to list if valid and not already injected; return updated max_month_key."""
         if not month_id or month_id in injected_periods:
@@ -402,6 +468,9 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         stat_time = self._parse_start_date_to_datetime(start_date) if start_date else None
         if not stat_time:
             return max_month_key
+
+        tracking_month_key = f"{stat_time.month}.{stat_time.year}"
+        reinject_months = self._get_statistics_reinject_months()
         
         if await self._has_already_injected_period(stat_time):
             injected_periods.add(month_id)
@@ -412,6 +481,8 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             return max_month_key
         
         statistics.append(StatisticData(start=stat_time, state=usage_value))
+        if tracking_month_key in reinject_months and consumed_reinject_months is not None:
+            consumed_reinject_months.add(tracking_month_key)
         injected_periods.add(month_id)
         return self._update_max_month_key(stat_time, max_month_key)
     
@@ -420,23 +491,27 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         statistics: List[StatisticData],
         mean_type: StatisticMeanType,
         max_month_key: Optional[str],
-        has_sum: bool = False
+        has_sum: bool = False,
+        consumed_reinject_months: Optional[set[str]] = None,
     ) -> None:
         """Import statistics and update tracking with max_month_key."""
         if not statistics:
             return
         
         metadata = self._create_statistics_metadata(mean_type, has_sum=has_sum)
-        await self._async_safe_import_statistics(metadata, statistics)
-        
-        if max_month_key:
+        import_succeeded = await self._async_safe_import_statistics(metadata, statistics)
+
+        if import_succeeded and max_month_key:
             self._update_statistics_tracking(max_month_key)
+        if import_succeeded and consumed_reinject_months:
+            self._consume_statistics_reinject_months(consumed_reinject_months)
     
     async def _collect_last_year_statistics(
         self,
         history: List[HistoryData],
         monthly_history_cache: Dict[str, Any],
         cache_field_name: str,
+        consumed_reinject_months: Optional[set[str]] = None,
     ) -> Tuple[list, set, Optional[str]]:
         """Collect statistics by looking up last-year values from the cache for each history entry."""
         injected_periods: set[str] = set()
@@ -461,7 +536,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
                 continue
             max_month_key = await self._add_statistic_if_valid(
                 statistics, injected_periods, entry.month_id, entry.start_date,
-                last_year_value, max_month_key,
+                last_year_value, max_month_key, consumed_reinject_months,
             )
         return (statistics, injected_periods, max_month_key)
 
@@ -483,24 +558,31 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
 
         history = self._build_history_data()
         current = self._build_current_data()
+        consumed_reinject_months: set[str] = set()
 
         statistics, injected_periods, max_month_key = await self._collect_last_year_statistics(
-            history, monthly_history_cache, cache_field_name,
+            history, monthly_history_cache, cache_field_name, consumed_reinject_months,
         )
 
         current_field_value = getattr(current, current_field_name, None) if current else None
         if current and current.month_id and current_field_value is not None:
             max_month_key = await self._add_statistic_if_valid(
                 statistics, injected_periods, current.month_id,
-                current.start_date, current_field_value, max_month_key,
+                current.start_date, current_field_value, max_month_key, consumed_reinject_months,
             )
 
-        await self._finalize_statistics_injection(statistics, mean_type, max_month_key)
+        await self._finalize_statistics_injection(
+            statistics,
+            mean_type,
+            max_month_key,
+            consumed_reinject_months=consumed_reinject_months,
+        )
     
     async def _collect_history_statistics(
         self,
         history: List[HistoryData],
         history_field: str,
+        consumed_reinject_months: Optional[set[str]] = None,
     ) -> Tuple[list, set, Optional[str]]:
         """Iterate history entries and collect statistics for the given field."""
         injected_periods: set[str] = set()
@@ -512,7 +594,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
                 continue
             max_month_key = await self._add_statistic_if_valid(
                 statistics, injected_periods, entry.month_id,
-                entry.start_date, value, max_month_key,
+                entry.start_date, value, max_month_key, consumed_reinject_months,
             )
         return (statistics, injected_periods, max_month_key)
 
@@ -523,6 +605,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         statistics: list,
         injected_periods: set,
         max_month_key: Optional[str],
+        consumed_reinject_months: Optional[set[str]] = None,
     ) -> Optional[str]:
         """Append the current month's statistic if applicable."""
         current = self._build_current_data()
@@ -536,7 +619,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         if usage_value is not None:
             max_month_key = await self._add_statistic_if_valid(
                 statistics, injected_periods, current.month_id,
-                current.start_date, usage_value, max_month_key,
+                current.start_date, usage_value, max_month_key, consumed_reinject_months,
             )
         return max_month_key
 
@@ -552,17 +635,23 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         if not history or not self._validate_statistics_injection():
             return
 
+        consumed_reinject_months: set[str] = set()
         statistics, injected_periods, max_month_key = await self._collect_history_statistics(
-            history, history_field,
+            history, history_field, consumed_reinject_months,
         )
 
         if include_current:
             max_month_key = await self._add_current_month_statistic(
                 history_field, current_value_calculator,
-                statistics, injected_periods, max_month_key,
+                statistics, injected_periods, max_month_key, consumed_reinject_months,
             )
 
-        await self._finalize_statistics_injection(statistics, mean_type, max_month_key)
+        await self._finalize_statistics_injection(
+            statistics,
+            mean_type,
+            max_month_key,
+            consumed_reinject_months=consumed_reinject_months,
+        )
     
     def _parse_start_date_to_datetime(self, start_date_str: str) -> Optional[datetime]:
         """Parse start date string to datetime object."""

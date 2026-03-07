@@ -1442,6 +1442,150 @@ def _snapshot_cache_averages(
     return snapshot
 
 
+def _snapshot_historical_month_usage_values(
+    monthly_history_cache: Dict[str, MonthCacheEntry],
+    now: datetime,
+) -> Dict[str, Dict[str, Optional[float]]]:
+    """Snapshot historical-month total/average usage values for change detection."""
+    current_month_key = DateUtil.format_month_key(now.year, now.month)
+    snapshot: Dict[str, Dict[str, Optional[float]]] = {}
+
+    for month_key, cache_entry in monthly_history_cache.items():
+        if month_key == current_month_key:
+            continue
+
+        total_usage: Optional[float] = None
+        average_usage: Optional[float] = None
+        if isinstance(cache_entry, MonthCacheEntry):
+            total_usage = DataUtil.safe_float(cache_entry.total_usage)
+            average_usage = DataUtil.safe_float(cache_entry.average_usage)
+        elif isinstance(cache_entry, dict):
+            total_usage = DataUtil.safe_float(cache_entry.get("total_usage"))
+            average_usage = DataUtil.safe_float(cache_entry.get("average_usage"))
+        else:
+            continue
+
+        snapshot[month_key] = {
+            "total_usage": total_usage,
+            "average_usage": average_usage,
+        }
+
+    return snapshot
+
+
+def _to_tracking_month_key(month_key: str) -> Optional[str]:
+    """Convert YYYY-MM cache key to M.YYYY tracking key."""
+    parsed = DateUtil.parse_month_key(month_key)
+    if not parsed:
+        return None
+    year, month = parsed
+    return DateUtil.format_month_year_key(month, year)
+
+
+def _detect_statistics_reinject_hints(
+    before_snapshot: Dict[str, Dict[str, Optional[float]]],
+    after_snapshot: Dict[str, Dict[str, Optional[float]]],
+) -> Dict[str, set[str]]:
+    """Detect historical months whose corrected values should be re-injected."""
+    hints: Dict[str, set[str]] = {
+        "monthly_usage": set(),
+        "average_monthly_usage": set(),
+    }
+
+    for month_key, after_values in after_snapshot.items():
+        tracking_month_key = _to_tracking_month_key(month_key)
+        if not tracking_month_key:
+            continue
+
+        before_values = before_snapshot.get(month_key, {})
+
+        before_total = before_values.get("total_usage")
+        after_total = after_values.get("total_usage")
+        if after_total is not None and before_total != after_total:
+            hints["monthly_usage"].add(tracking_month_key)
+
+        before_average = before_values.get("average_usage")
+        after_average = after_values.get("average_usage")
+        if after_average is not None and before_average != after_average:
+            hints["average_monthly_usage"].add(tracking_month_key)
+
+    return {sensor_type: months for sensor_type, months in hints.items() if months}
+
+
+def _normalize_statistics_reinject(raw: Any) -> Dict[str, set[str]]:
+    """Normalize statistics reinject hints to {sensor_type: set(month_keys)}."""
+    normalized: Dict[str, set[str]] = {}
+    if not isinstance(raw, dict):
+        return normalized
+
+    for sensor_type, months_raw in raw.items():
+        if not isinstance(sensor_type, str):
+            continue
+
+        month_values: set[str] = set()
+        if isinstance(months_raw, str):
+            parsed = DataUtil.parse_month_year(months_raw)
+            if parsed:
+                month_values.add(months_raw)
+        elif isinstance(months_raw, (list, tuple, set)):
+            for month_value in months_raw:
+                if isinstance(month_value, str) and DataUtil.parse_month_year(month_value):
+                    month_values.add(month_value)
+
+        if month_values:
+            normalized[sensor_type] = month_values
+
+    return normalized
+
+
+def _merge_statistics_reinject_hints(
+    existing_hints: Dict[str, set[str]],
+    detected_hints: Dict[str, set[str]],
+) -> Dict[str, set[str]]:
+    """Merge detected reinject hints into existing pending hints."""
+    merged: Dict[str, set[str]] = {
+        sensor_type: set(months)
+        for sensor_type, months in existing_hints.items()
+    }
+    for sensor_type, months in detected_hints.items():
+        merged.setdefault(sensor_type, set()).update(months)
+    return merged
+
+
+def _serialize_statistics_reinject(hints: Dict[str, set[str]]) -> Dict[str, List[str]]:
+    """Serialize reinject hints as sorted lists for coordinator data."""
+    def _sort_key(month_key: str) -> Tuple[int, int]:
+        parsed = DataUtil.parse_month_year(month_key)
+        if not parsed:
+            return (0, 0)
+        month, year = parsed
+        return (year, month)
+
+    serialized: Dict[str, List[str]] = {}
+    for sensor_type, months in hints.items():
+        clean_months = sorted(
+            (month for month in months if isinstance(month, str)),
+            key=_sort_key,
+        )
+        if clean_months:
+            serialized[sensor_type] = clean_months
+    return serialized
+
+
+def _get_existing_statistics_reinject(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+) -> Dict[str, set[str]]:
+    """Read pending statistics reinject hints from existing coordinator data."""
+    if entry.entry_id in hass.data.get(DOMAIN, {}):
+        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
+        if existing_coordinator and existing_coordinator.data:
+            return _normalize_statistics_reinject(
+                existing_coordinator.data.get("statistics_reinject")
+            )
+    return {}
+
+
 def _get_or_create_statistics_tracking(
     hass: HomeAssistant,
     entry: ConfigEntry
@@ -1568,7 +1712,7 @@ async def _ensure_monthly_history_cache(
     last_update: Any,
     energy_usage_data: Dict[str, Any],
     filter_status: List[Dict[str, Any]],
-) -> Tuple[Dict[str, MonthCacheEntry], Optional[str], StatisticsTracking]:
+) -> Tuple[Dict[str, MonthCacheEntry], Optional[str], StatisticsTracking, Dict[str, List[str]]]:
     """Load/build/update/enrich/persist monthly history cache."""
     now = datetime.now()
     current_last_update_date = _extract_last_update_date(last_update)
@@ -1576,13 +1720,28 @@ async def _ensure_monthly_history_cache(
     last_update_date_changed = current_last_update_date != cached_last_update_date
 
     current_month_refresh_skipped = False
+    pending_statistics_reinject = _get_existing_statistics_reinject(hass, entry)
     try:
         monthly_history_cache, cache_was_modified = await _load_or_build_cache(
             api, hass, entry, last_update, energy_usage_data, now
         )
+        usage_snapshot_before_update = _snapshot_historical_month_usage_values(
+            monthly_history_cache, now
+        )
         enrichment_modified, current_month_refresh_skipped = await _update_and_enrich_cache(
             api, monthly_history_cache, filter_status,
             last_update, energy_usage_data, last_update_date_changed, now,
+        )
+        usage_snapshot_after_update = _snapshot_historical_month_usage_values(
+            monthly_history_cache, now
+        )
+        detected_reinject_hints = _detect_statistics_reinject_hints(
+            usage_snapshot_before_update,
+            usage_snapshot_after_update,
+        )
+        pending_statistics_reinject = _merge_statistics_reinject_hints(
+            pending_statistics_reinject,
+            detected_reinject_hints,
         )
         if cache_was_modified or enrichment_modified:
             try:
@@ -1601,7 +1760,13 @@ async def _ensure_monthly_history_cache(
         else current_last_update_date
     )
     statistics_tracking = _get_or_create_statistics_tracking(hass, entry)
-    return (monthly_history_cache, effective_last_update_date, statistics_tracking)
+    statistics_reinject = _serialize_statistics_reinject(pending_statistics_reinject)
+    return (
+        monthly_history_cache,
+        effective_last_update_date,
+        statistics_tracking,
+        statistics_reinject,
+    )
 
 
 def _build_coordinator_return_dict(
@@ -1625,6 +1790,7 @@ def _build_coordinator_return_dict(
     monthly_history_cache: Dict[str, MonthCacheEntry],
     current_last_update_date: Optional[str],
     statistics_tracking: StatisticsTracking,
+    statistics_reinject: Dict[str, List[str]],
 ) -> Dict[str, Any]:
     """Build the coordinator data dictionary returned by async_update_data."""
     return {
@@ -1647,7 +1813,8 @@ def _build_coordinator_return_dict(
         "current_month_calculated": current_month_calculated,
         "monthly_history_cache": monthly_history_cache,
         "cached_last_update_date": current_last_update_date,
-        "statistics_tracking": statistics_tracking
+        "statistics_tracking": statistics_tracking,
+        "statistics_reinject": statistics_reinject,
     }
 
 
@@ -1839,7 +2006,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 calculated_history, current_month_calculated = await _compute_anchor_calculations(
                     api, energy_usage_data, filter_status
                 )
-                monthly_history_cache, current_last_update_date, statistics_tracking = (
+                (
+                    monthly_history_cache,
+                    current_last_update_date,
+                    statistics_tracking,
+                    statistics_reinject,
+                ) = (
                     await _ensure_monthly_history_cache(
                         api, hass, entry, last_update, energy_usage_data, filter_status
                     )
@@ -1864,7 +2036,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     current_month_calculated,
                     monthly_history_cache,
                     current_last_update_date,
-                    statistics_tracking
+                    statistics_tracking,
+                    statistics_reinject,
                 )
         except MijntedGrantExpiredError as err:
             _handle_grant_expired(hass, entry, err)
@@ -1925,4 +2098,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
-
