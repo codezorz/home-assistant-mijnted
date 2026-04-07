@@ -350,6 +350,10 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         if month_key in self._get_statistics_reinject_months():
             return False
         
+        now = datetime.now()
+        if start_time.month == now.month and start_time.year == now.year:
+            return False
+        
         data = self.coordinator.data if hasattr(self, 'coordinator') else None
         if not data:
             return False

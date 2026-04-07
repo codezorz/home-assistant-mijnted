@@ -824,20 +824,51 @@ async def _lock_current_month_starts_when_previous_complete(
         )
 
     prev_devices = MijnTedSensor._get_devices_from_cache_entry(prev_month_data)
-    prev_end_readings = _extract_end_values_from_devices(prev_devices)
+    cached_end_readings = _extract_end_values_from_devices(prev_devices)
+
+    prev_last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
+    try:
+        prev_anchor = await api.get_device_statuses_for_date(prev_last_day)
+        prev_end_readings = DataUtil.extract_device_readings_map(prev_anchor)
+    except Exception as err:
+        _LOGGER.warning(
+            "Failed to fetch previous month end readings for start lock: %s",
+            err,
+            extra={"error_type": type(err).__name__},
+            exc_info=True,
+        )
+        prev_end_readings = cached_end_readings
+
     if not prev_end_readings:
-        try:
-            prev_last_day = DateUtil.get_last_day_of_month(prev_month, prev_year)
-            prev_anchor = await api.get_device_statuses_for_date(prev_last_day)
-            prev_end_readings = DataUtil.extract_device_readings_map(prev_anchor)
-        except Exception as err:
-            _LOGGER.warning(
-                "Failed to fetch previous month end readings for start lock: %s",
-                err,
-                extra={"error_type": type(err).__name__},
-                exc_info=True,
+        return modified
+
+    if prev_end_readings != cached_end_readings and isinstance(prev_month_data, MonthCacheEntry):
+        prev_start_readings = _extract_start_values_from_devices(prev_devices)
+        prev_recalculated = DataUtil.calculate_per_device_usage(prev_start_readings, prev_end_readings)
+        if prev_recalculated:
+            prev_start_total = sum(prev_start_readings.values()) if prev_start_readings else None
+            prev_end_total = sum(prev_end_readings.values())
+            corrected_total = _calculate_total_usage_from_start_end(
+                prev_start_total, prev_end_total, prev_month
             )
-            return modified
+            old_total = prev_month_data.total_usage
+            monthly_history_cache[prev_month_key] = _build_updated_month_cache_entry(
+                prev_month_data,
+                total_usage=corrected_total,
+                average_usage=prev_month_data.average_usage,
+                devices=_convert_device_dicts_to_readings(prev_recalculated),
+                finalized=prev_month_data.finalized,
+                state=prev_month_data.state,
+                start_locked=prev_month_data.start_locked,
+            )
+            prev_month_data = monthly_history_cache[prev_month_key]
+            modified = True
+            _LOGGER.info(
+                "Corrected previous month %s with anchor readings (total_usage: %s -> %s).",
+                prev_month_key,
+                old_total,
+                corrected_total,
+            )
 
     current_month_cache = _normalize_cache_entry_state(monthly_history_cache.get(current_month_key))
     if isinstance(current_month_cache, MonthCacheEntry):
