@@ -5,7 +5,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.helpers.storage import Store
-from ..const import DOMAIN
+from ..const import DEFAULT_NAME, DOMAIN
 from .base import MijnTedSensor
 from .models import StatisticsTracking
 
@@ -25,13 +25,17 @@ class MijnTedResetStatisticsButton(CoordinatorEntity, ButtonEntity):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
         hass: Home Assistant instance (optional; will try to get from coordinator).
         entry_id: Config entry ID (optional; will try to find from coordinator).
+        config_name: User-configured device name (e.g. "MijnTed", "Home").
     """
+
+    _attr_has_entity_name = True
     
     def __init__(
         self, 
         coordinator: DataUpdateCoordinator[Dict[str, Any]],
         hass: Optional[HomeAssistant] = None,
-        entry_id: Optional[str] = None
+        entry_id: Optional[str] = None,
+        config_name: str = DEFAULT_NAME,
     ) -> None:
         """Initialize the reset statistics button.
         
@@ -39,12 +43,14 @@ class MijnTedResetStatisticsButton(CoordinatorEntity, ButtonEntity):
             coordinator: Data update coordinator
             hass: Home Assistant instance (optional, will try to get from coordinator)
             entry_id: Config entry ID (optional, will try to find from coordinator)
+            config_name: User-configured device name
         """
         super().__init__(coordinator)
         self._attr_unique_id = f"{DOMAIN}_reset_statistics"
-        self._attr_name = "MijnTed reset statistics"
+        self._attr_name = "Reset statistics"
         self._attr_icon = "mdi:refresh"
         self._attr_entity_category = EntityCategory.CONFIG
+        self._config_name = config_name
         self._hass = hass
         self._entry_id = entry_id
     
@@ -55,7 +61,7 @@ class MijnTedResetStatisticsButton(CoordinatorEntity, ButtonEntity):
         Returns:
             DeviceInfo object with device identifiers and details
         """
-        return MijnTedSensor._build_device_info(self.coordinator.data)
+        return MijnTedSensor._build_device_info(self.coordinator.data, self._config_name)
     
     async def async_press(self) -> None:
         """Handle the button press - reset statistics tracking and clear persisted storage.
