@@ -403,3 +403,201 @@ class TestEnsureMonthlyHistoryCacheRetryBehavior:
                 assert last_update_date_changed_arg is True, (
                     "Both polls must see last_update_date_changed=True"
                 )
+
+
+# ---------------------------------------------------------------------------
+# _lock_current_month_starts_when_previous_complete: anchor correction
+# ---------------------------------------------------------------------------
+
+
+class TestLockCurrentMonthStartsAnchorCorrection:
+    """Verify that completion always fetches the date anchor and corrects the
+    previous month's cache when anchor readings differ from cached values."""
+
+    @pytest.fixture
+    def now(self):
+        return datetime(2026, 4, 3, 12, 0, 0)
+
+    @pytest.fixture
+    def api(self):
+        api = AsyncMock()
+        api.get_device_statuses_for_date = AsyncMock(return_value=[])
+        return api
+
+    def _prev_cache_entry(self):
+        """Build a March 2026 cache entry with stale end readings (698, 116)."""
+        return MonthCacheEntry(
+            month_id="3.2026",
+            year=2026,
+            month=3,
+            start_date="2026-03-01",
+            end_date="2026-03-31",
+            total_usage=22.0,
+            average_usage=306.25,
+            devices=[
+                DeviceReading(id=1001, start=679.0, end=698.0, usage=19.0),
+                DeviceReading(id=1002, start=113.0, end=116.0, usage=3.0),
+            ],
+            finalized=False,
+            state=MONTH_STATE_OPEN,
+            start_locked=False,
+        )
+
+    def _current_cache_entry(self):
+        """Build an April 2026 cache entry with stale start values."""
+        return MonthCacheEntry(
+            month_id="4.2026",
+            year=2026,
+            month=4,
+            start_date="2026-04-01",
+            end_date="2026-04-03",
+            total_usage=5.0,
+            average_usage=None,
+            devices=[
+                DeviceReading(id=1001, start=698.0, end=703.0, usage=5.0),
+                DeviceReading(id=1002, start=116.0, end=116.0, usage=0.0),
+            ],
+            finalized=False,
+            state=MONTH_STATE_OPEN,
+            start_locked=False,
+        )
+
+    async def test_anchor_always_fetched_even_when_cache_has_readings(self, api, now):
+        """Cached end readings present -> anchor is still fetched from API."""
+        anchor_data = [
+            {"deviceNumber": "1001", "currentReadingValue": 699.0},
+            {"deviceNumber": "1002", "currentReadingValue": 116.0},
+        ]
+        api.get_device_statuses_for_date = AsyncMock(return_value=anchor_data)
+
+        cache = {
+            "2026-03": self._prev_cache_entry(),
+            "2026-04": self._current_cache_entry(),
+        }
+        filter_status = [
+            {"deviceNumber": "1001", "currentReadingValue": 707.0},
+            {"deviceNumber": "1002", "currentReadingValue": 118.0},
+        ]
+
+        result = await init_mod._lock_current_month_starts_when_previous_complete(
+            api, cache, filter_status,
+            last_update={"lastSyncDate": "2026-04-03"},
+            energy_usage_data={}, now=now,
+        )
+
+        api.get_device_statuses_for_date.assert_awaited_once()
+        assert result is True
+
+    async def test_prev_month_cache_corrected_when_anchor_differs(self, api, now):
+        """Anchor end readings differ from cached -> previous month total_usage corrected."""
+        anchor_data = [
+            {"deviceNumber": "1001", "currentReadingValue": 699.0},
+            {"deviceNumber": "1002", "currentReadingValue": 116.0},
+        ]
+        api.get_device_statuses_for_date = AsyncMock(return_value=anchor_data)
+
+        cache = {
+            "2026-03": self._prev_cache_entry(),
+            "2026-04": self._current_cache_entry(),
+        }
+        filter_status = [
+            {"deviceNumber": "1001", "currentReadingValue": 707.0},
+            {"deviceNumber": "1002", "currentReadingValue": 118.0},
+        ]
+
+        await init_mod._lock_current_month_starts_when_previous_complete(
+            api, cache, filter_status,
+            last_update={"lastSyncDate": "2026-04-03"},
+            energy_usage_data={}, now=now,
+        )
+
+        prev_entry = cache["2026-03"]
+        assert prev_entry.total_usage == 23.0, (
+            "Previous month total_usage must be corrected from 22 to 23"
+        )
+
+    async def test_current_month_start_inherits_corrected_anchor(self, api, now):
+        """Corrected prev month end readings cascade into current month start."""
+        anchor_data = [
+            {"deviceNumber": "1001", "currentReadingValue": 699.0},
+            {"deviceNumber": "1002", "currentReadingValue": 116.0},
+        ]
+        api.get_device_statuses_for_date = AsyncMock(return_value=anchor_data)
+
+        cache = {
+            "2026-03": self._prev_cache_entry(),
+            "2026-04": self._current_cache_entry(),
+        }
+        filter_status = [
+            {"deviceNumber": "1001", "currentReadingValue": 707.0},
+            {"deviceNumber": "1002", "currentReadingValue": 118.0},
+        ]
+
+        await init_mod._lock_current_month_starts_when_previous_complete(
+            api, cache, filter_status,
+            last_update={"lastSyncDate": "2026-04-03"},
+            energy_usage_data={}, now=now,
+        )
+
+        current_entry = cache["2026-04"]
+        devices_by_id = {}
+        for d in current_entry.devices:
+            devices_by_id[d.id] = d
+
+        assert devices_by_id[1001].start == 699.0, (
+            "Current month device start must use corrected anchor (699, not 698)"
+        )
+
+    async def test_no_correction_when_anchor_matches_cached(self, api, now):
+        """Anchor readings match cached -> no unnecessary cache update."""
+        anchor_data = [
+            {"deviceNumber": "1001", "currentReadingValue": 698.0},
+            {"deviceNumber": "1002", "currentReadingValue": 116.0},
+        ]
+        api.get_device_statuses_for_date = AsyncMock(return_value=anchor_data)
+
+        prev = self._prev_cache_entry()
+        cache = {
+            "2026-03": prev,
+            "2026-04": self._current_cache_entry(),
+        }
+        filter_status = [
+            {"deviceNumber": "1001", "currentReadingValue": 707.0},
+            {"deviceNumber": "1002", "currentReadingValue": 118.0},
+        ]
+
+        await init_mod._lock_current_month_starts_when_previous_complete(
+            api, cache, filter_status,
+            last_update={"lastSyncDate": "2026-04-03"},
+            energy_usage_data={}, now=now,
+        )
+
+        assert cache["2026-03"].total_usage == 22.0, (
+            "Previous month total_usage must stay unchanged when anchor matches"
+        )
+
+    async def test_falls_back_to_cached_when_anchor_fetch_fails(self, api, now):
+        """API error on anchor fetch -> falls back to cached readings."""
+        api.get_device_statuses_for_date = AsyncMock(
+            side_effect=RuntimeError("API down")
+        )
+
+        cache = {
+            "2026-03": self._prev_cache_entry(),
+            "2026-04": self._current_cache_entry(),
+        }
+        filter_status = [
+            {"deviceNumber": "1001", "currentReadingValue": 707.0},
+            {"deviceNumber": "1002", "currentReadingValue": 118.0},
+        ]
+
+        result = await init_mod._lock_current_month_starts_when_previous_complete(
+            api, cache, filter_status,
+            last_update={"lastSyncDate": "2026-04-03"},
+            energy_usage_data={}, now=now,
+        )
+
+        assert result is True, "Should still lock using cached readings as fallback"
+        assert cache["2026-03"].total_usage == 22.0, (
+            "Previous month total_usage must stay unchanged on API failure"
+        )
