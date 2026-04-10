@@ -55,7 +55,7 @@ jobs:
 
       - name: Publish test report
         if: (success() || failure()) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
-        uses: dorny/test-reporter@ab50174d2cce6a041bb0a86aa99d11858f914df9 # v1
+        uses: dorny/test-reporter@9c68bf6253df71e8dc6d80e6fb9b223481fd5a33 # v1
         with:
           name: Pytest Results
           path: pytest-results.xml
