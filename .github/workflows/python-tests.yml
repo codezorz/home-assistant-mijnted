@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -55,7 +55,7 @@ jobs:
 
       - name: Publish test report
         if: (success() || failure()) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
-        uses: dorny/test-reporter@9c978c66ab5564af606adee293b728670b2ca93c # v1
+        uses: dorny/test-reporter@a53e41438c2381e621dc719a47a57180e30c7075 # v1
         with:
           name: Pytest Results
           path: pytest-results.xml
