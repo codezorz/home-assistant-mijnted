@@ -12,9 +12,11 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
+    CONF_NAME,
     CONF_PASSWORD,
     CONF_POLLING_INTERVAL,
     CONF_USERNAME,
+    DEFAULT_NAME,
     DEFAULT_POLLING_INTERVAL,
     DOMAIN,
     MAX_POLLING_INTERVAL,
@@ -94,6 +96,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_CLIENT_ID): str,
                 vol.Required(CONF_USERNAME): str,
                 vol.Required(CONF_PASSWORD): str,
+                vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
                 vol.Optional(
                     CONF_POLLING_INTERVAL,
                     default=DEFAULT_POLLING_INTERVAL.total_seconds()
@@ -120,7 +123,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._ensure_polling_interval_default(user_input)
                 await self._validate_input(user_input)
                 return self.async_create_entry(
-                    title="MijnTed",
+                    title=user_input.get(CONF_NAME, DEFAULT_NAME),
                     data=user_input
                 )
             except InvalidAuth:
@@ -272,8 +275,10 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
         """
         if user_input is not None:
             updated_data = {**self.config_entry.data, **user_input}
+            new_title = updated_data.get(CONF_NAME, DEFAULT_NAME)
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
+                title=new_title,
                 data=updated_data,
             )
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
@@ -283,6 +288,10 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    vol.Optional(
+                        CONF_NAME,
+                        default=self.config_entry.data.get(CONF_NAME, DEFAULT_NAME),
+                    ): str,
                     vol.Optional(
                         CONF_POLLING_INTERVAL,
                         default=self.config_entry.data.get(

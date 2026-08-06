@@ -170,7 +170,7 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 **Examples**:
 - `GET /api/deviceStatuses/123456/1/2025` - Get latest device statuses
-- `GET /api/deviceStatuses/150257/1/2026?fromDate=2026-01-03` - Get device readings for a specific date
+- `GET /api/deviceStatuses/123456/1/2026?fromDate=2026-01-03` - Get device readings for a specific date
 
 **Notes**:
 - The `fromDate` parameter allows retrieving historical device readings for a specific date

@@ -185,6 +185,22 @@ class TestStatisticsReinjectDedupBypass:
 
         assert result is True
 
+    @patch("custom_components.mijnted.sensors.base.datetime")
+    async def test_current_month_always_bypasses_injection_guard(self, mock_dt):
+        """Current calendar month -> _has_already_injected_period returns False."""
+        mock_dt.now.return_value = datetime(2026, 4, 7)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        sensor = self._make_sensor()
+        sensor.coordinator.data = {
+            "statistics_tracking": StatisticsTracking(monthly_usage="4.2026"),
+        }
+
+        result = await sensor._has_already_injected_period(datetime(2026, 4, 1))
+
+        assert result is False, (
+            "Current month must always allow re-injection to keep charts up-to-date"
+        )
+
     async def test_successful_finalize_consumes_reinjected_months(self):
         """Successful import with reinjected month -> consumed hint is removed."""
         sensor = self._make_sensor()

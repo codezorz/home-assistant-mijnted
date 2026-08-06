@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 from ..const import (
     API_DATE_FORMAT,
     CALCULATION_AVERAGE_PER_DAY_DECIMAL_PLACES,
+    DEFAULT_NAME,
     DEFAULT_START_VALUE,
     DOMAIN,
     UNIT_MIJNTED,
@@ -57,60 +58,44 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     Args:
         coordinator: DataUpdateCoordinator providing MijnTed API data.
         sensor_type: Type identifier for the sensor (e.g. "last_update", "device_0").
-        name: Display name for the sensor entity.
+        name: Display name for the sensor entity (without device prefix).
+        config_name: User-configured device name (e.g. "MijnTed", "Home").
     """
+
+    _attr_has_entity_name = True
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], sensor_type: str, name: str) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], sensor_type: str, name: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the sensor.
         
         Args:
             coordinator: Data update coordinator
             sensor_type: Type identifier for the sensor
             name: Display name for the sensor
+            config_name: User-configured device name
         """
         super().__init__(coordinator)
         self.sensor_type = sensor_type
         self._name = name
+        self._config_name = config_name
         self._attr_unique_id = f"{DOMAIN}_{sensor_type.lower()}"
         self._last_known_value = None
 
     @staticmethod
-    def _build_device_name_from_address(residential_unit_detail: Dict[str, Any]) -> str:
-        """Build device name from address fields, falling back to 'MijnTed'."""
-        street = residential_unit_detail.get("street", "")
-        appartment_no = residential_unit_detail.get("appartmentNo", "")
-        zip_code = residential_unit_detail.get("zipCode", "")
-
-        address_parts = []
-        if street:
-            address_parts.append(f"{street} {appartment_no}" if appartment_no else street)
-        elif appartment_no:
-            address_parts.append(appartment_no)
-        if zip_code:
-            address_parts.append(zip_code)
-
-        return f"MijnTed - {', '.join(address_parts)}" if address_parts else "MijnTed"
-
-    @staticmethod
-    def _build_device_info(data: Optional[Dict[str, Any]]) -> DeviceInfo:
+    def _build_device_info(data: Optional[Dict[str, Any]], config_name: str = DEFAULT_NAME) -> DeviceInfo:
         """Build device information from coordinator data."""
         if not data:
             return DeviceInfo(
                 identifiers={(DOMAIN, "unknown")},
-                name="MijnTed",
+                name=config_name,
                 manufacturer="MijnTed",
                 model="Unknown",
             )
 
         residential_unit = data.get("residential_unit", "unknown")
-        residential_unit_detail = data.get("residential_unit_detail", {})
-        device_name = "MijnTed"
-        if isinstance(residential_unit_detail, dict):
-            device_name = MijnTedSensor._build_device_name_from_address(residential_unit_detail)
 
         return DeviceInfo(
             identifiers={(DOMAIN, residential_unit)},
-            name=device_name,
+            name=config_name,
             manufacturer="MijnTed",
             model=data.get("active_model", "Unknown"),
         )
@@ -122,16 +107,16 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         Returns:
             DeviceInfo object with device identifiers and details
         """
-        return self._build_device_info(self.coordinator.data)
+        return self._build_device_info(self.coordinator.data, self._config_name)
 
     @property
     def name(self) -> str:
         """Return the name of the sensor.
         
         Returns:
-            Formatted sensor name with "MijnTed" prefix
+            Capitalized sensor name (device prefix handled by has_entity_name)
         """
-        return f"MijnTed {self._name}"
+        return self._name.capitalize()
     
     @property
     def available(self) -> bool:
@@ -363,6 +348,10 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         """Return True if statistics for the given period were already injected."""
         month_key = f"{start_time.month}.{start_time.year}"
         if month_key in self._get_statistics_reinject_months():
+            return False
+        
+        now = datetime.now()
+        if start_time.month == now.month and start_time.year == now.year:
             return False
         
         data = self.coordinator.data if hasattr(self, 'coordinator') else None
