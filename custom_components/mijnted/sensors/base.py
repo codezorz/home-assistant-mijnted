@@ -1,10 +1,12 @@
 import logging
+import re
 from datetime import date, datetime, time, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple, NamedTuple
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData, StatisticMeanType
 from homeassistant.components.recorder.statistics import async_import_statistics
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.const import UnitOfVolume
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
@@ -15,6 +17,74 @@ from ..const import (
     DOMAIN,
     UNIT_MIJNTED,
 )
+
+
+def unit_slug(unit: Optional[str]) -> str:
+    """Return an id-safe slug for a unit value (e.g. 'm³' -> 'm3', 'GJ' -> 'gj')."""
+    if not unit:
+        return "default"
+    slug = unit.strip().lower().replace("³", "3").replace("²", "2")
+    slug = re.sub(r"[^a-z0-9]+", "_", slug).strip("_")
+    return slug or "default"
+
+
+def native_unit_for(unit: Optional[str]) -> str:
+    """Map a MijnTed unit value to the Home Assistant native unit string.
+
+    Water meters report m³; heating reports GJ or Eenheden ("Units").
+    """
+    if not unit:
+        return UNIT_MIJNTED
+    normalized = unit.strip().lower()
+    if normalized in ("m³", "m3"):
+        return UnitOfVolume.CUBIC_METERS
+    if normalized == "gj":
+        return "GJ"
+    return UNIT_MIJNTED
+
+
+def display_precision_for(unit: Optional[str]) -> int:
+    """Return the suggested display precision (decimal places) for a unit.
+
+    Water (m³) and heating (GJ) carry fractional readings, so they are shown
+    with 3 decimals; otherwise the count-based "Units" stay whole numbers.
+    """
+    if not unit:
+        return 0
+    normalized = unit.strip().lower()
+    if normalized in ("m³", "m3", "gj"):
+        return 3
+    return 0
+
+
+def device_class_for(unit: Optional[str]) -> Optional[SensorDeviceClass]:
+    """Return the SensorDeviceClass for a unit, or None when not applicable."""
+    if unit and unit.strip().lower() in ("m³", "m3"):
+        return SensorDeviceClass.WATER
+    return None
+
+
+def radiographic_rooms(filter_status: Any) -> set:
+    """Return the set of room codes that contain a radiographic meter."""
+    if not isinstance(filter_status, list):
+        return set()
+    return {
+        device.get("room")
+        for device in filter_status
+        if isinstance(device, dict) and device.get("radiographicMeter")
+    }
+
+
+def is_superseded_meter(device: Dict[str, Any], radio_rooms: set) -> bool:
+    """Return True for an old non-radiographic meter replaced by a radio one.
+
+    A non-radiographic meter is considered superseded when a radiographic meter
+    exists in the same room (the decommissioned mechanical meter the radio one
+    replaced). Standalone non-radiographic meters are kept.
+    """
+    if not isinstance(device, dict) or device.get("radiographicMeter"):
+        return False
+    return device.get("room") in radio_rooms
 from ..utils import DateUtil, DataUtil
 from .models import (
     CurrentData,
@@ -60,19 +130,48 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         name: Display name for the sensor entity.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], sensor_type: str, name: str) -> None:
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[Dict[str, Any]],
+        sensor_type: str,
+        name: str,
+        delivery_type: Any = None,
+        unit: Optional[str] = None,
+        label: Optional[str] = None,
+    ) -> None:
         """Initialize the sensor.
-        
+
         Args:
             coordinator: Data update coordinator
             sensor_type: Type identifier for the sensor
             name: Display name for the sensor
+            delivery_type: Delivery type id this meter belongs to (None = legacy single-type)
+            unit: Selected unit value for this meter (e.g. "m³", "GJ")
+            label: Friendly delivery-type label (e.g. "Heating", "Warm water")
         """
         super().__init__(coordinator)
         self.sensor_type = sensor_type
         self._name = name
-        self._attr_unique_id = f"{DOMAIN}_{sensor_type.lower()}"
+        # Meter identity may be passed explicitly or, by default, derived from
+        # the per-meter coordinator's data (populated before platform setup).
+        if delivery_type is None and getattr(coordinator, "data", None):
+            delivery_type = coordinator.data.get("delivery_type")
+            unit = coordinator.data.get("meter_unit")
+            label = coordinator.data.get("delivery_label")
+        self.delivery_type = delivery_type
+        self.meter_unit = unit
+        self.meter_label = label
+        self._attr_unique_id = self._namespaced_unique_id(sensor_type, delivery_type, unit)
         self._last_known_value = None
+
+    @staticmethod
+    def _namespaced_unique_id(
+        sensor_type: str, delivery_type: Any = None, unit: Optional[str] = None
+    ) -> str:
+        """Return the unique_id for a sensor, namespaced per meter when applicable."""
+        if delivery_type is None:
+            return f"{DOMAIN}_{sensor_type.lower()}"
+        return f"{DOMAIN}_{delivery_type}_{unit_slug(unit)}_{sensor_type.lower()}"
 
     @staticmethod
     def _build_device_name_from_address(residential_unit_detail: Dict[str, Any]) -> str:
@@ -92,8 +191,18 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return f"MijnTed - {', '.join(address_parts)}" if address_parts else "MijnTed"
 
     @staticmethod
-    def _build_device_info(data: Optional[Dict[str, Any]]) -> DeviceInfo:
-        """Build device information from coordinator data."""
+    def _build_device_info(
+        data: Optional[Dict[str, Any]],
+        delivery_type: Any = None,
+        unit: Optional[str] = None,
+        label: Optional[str] = None,
+    ) -> DeviceInfo:
+        """Build device information from coordinator data.
+
+        When ``delivery_type`` is provided the device is namespaced per meter so
+        each delivery type/unit appears as its own Home Assistant device
+        (issue #50); otherwise the legacy single-device identifier is used.
+        """
         if not data:
             return DeviceInfo(
                 identifiers={(DOMAIN, "unknown")},
@@ -108,31 +217,65 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         if isinstance(residential_unit_detail, dict):
             device_name = MijnTedSensor._build_device_name_from_address(residential_unit_detail)
 
+        # Fall back to meter identity carried in coordinator data (e.g. for the
+        # reset button, which builds device_info statically).
+        if delivery_type is None:
+            delivery_type = data.get("delivery_type")
+            unit = data.get("meter_unit")
+            label = data.get("delivery_label")
+
+        if delivery_type is None:
+            identifiers = {(DOMAIN, residential_unit)}
+        else:
+            identifiers = {(DOMAIN, f"{residential_unit}_{delivery_type}_{unit_slug(unit)}")}
+            suffix_parts = [part for part in (label, f"({unit})" if unit else None) if part]
+            if suffix_parts:
+                device_name = f"{device_name} {' '.join(suffix_parts)}"
+
         return DeviceInfo(
-            identifiers={(DOMAIN, residential_unit)},
+            identifiers=identifiers,
             name=device_name,
             manufacturer="MijnTed",
             model=data.get("active_model", "Unknown"),
         )
-    
+
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information.
-        
+
         Returns:
             DeviceInfo object with device identifiers and details
         """
-        return self._build_device_info(self.coordinator.data)
+        return self._build_device_info(
+            self.coordinator.data, self.delivery_type, self.meter_unit, self.meter_label
+        )
 
     @property
     def name(self) -> str:
         """Return the name of the sensor.
-        
+
         Returns:
-            Formatted sensor name with "MijnTed" prefix
+            Formatted sensor name, prefixed with "MijnTed" and the meter label
+            so entities are unambiguous across delivery types.
         """
+        label = getattr(self, "meter_label", None)
+        if label:
+            return f"MijnTed {label} {self._name}"
         return f"MijnTed {self._name}"
     
+    @property
+    def device_class(self) -> Optional[SensorDeviceClass]:
+        """Return the sensor device class.
+
+        Honors an explicitly set ``_attr_device_class`` (e.g. timestamp
+        diagnostics); otherwise derives it from the meter unit so water meters
+        report ``water`` (issue #50).
+        """
+        explicit = getattr(self, "_attr_device_class", None)
+        if explicit is not None:
+            return explicit
+        return device_class_for(getattr(self, "meter_unit", None))
+
     @property
     def available(self) -> bool:
         """Return True if sensor has fresh data from coordinator.
@@ -391,7 +534,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             name=self.name,
             source="recorder",
             statistic_id=self.entity_id,
-            unit_of_measurement=UNIT_MIJNTED,
+            unit_of_measurement=native_unit_for(getattr(self, "meter_unit", None)),
             mean_type=mean_type,
             unit_class=None
         )

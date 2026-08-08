@@ -117,6 +117,26 @@ class MijnTedDeliveryTypesSensor(MijnTedSensor):
             return None
         return ", ".join(str(dt) for dt in delivery_types)
 
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return discovered delivery-type detail.
+
+        Exposes each delivery type's id, active model code, friendly label, and
+        available units so all meters (heating, warm water, cold water) are
+        visible before per-type sensor sets are built (issue #50).
+
+        Returns:
+            Dictionary with a "delivery_types" list of per-type detail dicts.
+        """
+        data = self.coordinator.data
+        if not data:
+            return {}
+
+        detail = data.get("delivery_types_detail")
+        if isinstance(detail, list) and detail:
+            return {"delivery_types": detail}
+        return {}
+
 
 class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
     """Sensor for residential unit details.

@@ -10,8 +10,10 @@ from homeassistant.const import CONF_CLIENT_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    CONF_ENABLED_METERS,
     CONF_PASSWORD,
     CONF_POLLING_INTERVAL,
     CONF_USERNAME,
@@ -21,6 +23,7 @@ from .const import (
     MIN_POLLING_INTERVAL,
 )
 from .auth import MijntedAuth
+from .sensors.base import unit_slug
 from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
@@ -261,6 +264,29 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
         """
         self._config_entry = config_entry
 
+    def _discovered_meter_choices(self) -> Dict[str, str]:
+        """Build {meter_key: label} choices from discovered delivery types.
+
+        Reads discovery detail stashed in hass.data at setup. Returns an empty
+        dict when discovery is unavailable (so the selector is omitted).
+        """
+        choices: Dict[str, str] = {}
+        store = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        detail = store.get("discovery", []) if isinstance(store, dict) else []
+        for item in detail:
+            if not isinstance(item, dict):
+                continue
+            delivery_type = item.get("id")
+            label = item.get("label") or item.get("model") or f"Type {delivery_type}"
+            units = item.get("units") or []
+            unit_values = [u.get("value") for u in units if isinstance(u, dict) and u.get("value")]
+            if not unit_values:
+                unit_values = [None]
+            for unit in unit_values:
+                key = f"{delivery_type}_{unit_slug(unit)}"
+                choices[key] = f"{label} ({unit})" if unit else label
+        return choices
+
     async def async_step_init(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         """Manage the options.
 
@@ -270,29 +296,46 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
         Returns:
             FlowResult: The next step in the options flow.
         """
+        meter_choices = self._discovered_meter_choices()
+
         if user_input is not None:
-            updated_data = {**self.config_entry.data, **user_input}
+            updated_options = {**self.config_entry.options}
+            updated_data = {**self.config_entry.data}
+            if CONF_POLLING_INTERVAL in user_input:
+                updated_data[CONF_POLLING_INTERVAL] = user_input[CONF_POLLING_INTERVAL]
+            if CONF_ENABLED_METERS in user_input:
+                updated_options[CONF_ENABLED_METERS] = user_input[CONF_ENABLED_METERS]
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
                 data=updated_data,
+                options=updated_options,
             )
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-            return self.async_create_entry(title="", data={})
+            # Return the same options so the flow result does not blank them out
+            # (async_create_entry sets entry.options to whatever it is given).
+            return self.async_create_entry(title="", data=updated_options)
+
+        schema: Dict[Any, Any] = {
+            vol.Optional(
+                CONF_POLLING_INTERVAL,
+                default=self.config_entry.data.get(
+                    CONF_POLLING_INTERVAL,
+                    DEFAULT_POLLING_INTERVAL.total_seconds()
+                ),
+            ): vol.All(
+                vol.Coerce(int),
+                vol.Range(min=MIN_POLLING_INTERVAL, max=MAX_POLLING_INTERVAL)
+            )
+        }
+        if meter_choices:
+            current = self.config_entry.options.get(
+                CONF_ENABLED_METERS, list(meter_choices.keys())
+            )
+            schema[
+                vol.Optional(CONF_ENABLED_METERS, default=current)
+            ] = cv.multi_select(meter_choices)
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_POLLING_INTERVAL,
-                        default=self.config_entry.data.get(
-                            CONF_POLLING_INTERVAL,
-                            DEFAULT_POLLING_INTERVAL.total_seconds()
-                        ),
-                    ): vol.All(
-                        vol.Coerce(int),
-                        vol.Range(min=MIN_POLLING_INTERVAL, max=MAX_POLLING_INTERVAL)
-                    )
-                }
-            ),
+            data_schema=vol.Schema(schema),
         )

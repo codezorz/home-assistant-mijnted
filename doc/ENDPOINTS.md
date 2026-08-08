@@ -46,6 +46,18 @@ All data endpoints require authentication via Bearer token in the `Authorization
 - `Authorization: Bearer {access_token}`
 - `User-Agent: HomeAssistant/MijnTed`
 
+### Delivery-type discovery and the `unitOfMeasure` query parameter
+
+The integration supports multiple delivery types (meters) per residential unit. Discovery runs in three steps:
+
+1. `GET /api/address/deliveryTypes/{residential_unit}` lists the available delivery types (e.g. `[1, 2, 3]`).
+2. `GET /api/activeModel/{residential_unit}/{delivery_type}` returns the model code per type, which determines the friendly label (Heating / Warm water / Cold water).
+3. `GET /api/unitOfMeasures/{residential_unit}/{delivery_type}/{year}` returns the available units for that type.
+
+For each discovered `(delivery_type, unit)` combination, the per-type data endpoints below are called with the matching `delivery_type` in the path.
+
+**`?unitOfMeasure=GJ` rule**: The optional `unitOfMeasure` query parameter is appended **only for heating (type 1) when the `GJ` unit is selected**. Water types (warm/cold) default to `m³` and omit the parameter; heating with the `Eenheden` unit also omits it. This applies to the usage, last-sync, device-status, usage-insight, and usage-per-room endpoints.
+
 ### Get Delivery Types
 **Endpoint**: `GET /api/address/deliveryTypes/{residential_unit}`
 
@@ -60,6 +72,13 @@ All data endpoints require authentication via Bearer token in the `Authorization
 ```
 
 **Example**: `GET /api/address/deliveryTypes/123456`
+
+**Notes**:
+- Each delivery type maps to a separate physical meter type. Known types:
+  - **1 = Heating** (`activeModel` `F59`/WMZ family). Available units: `eenheid` (`Eenheden`) and `GJ`.
+  - **2 = Warm water** (`activeModel` `WWZ`). Unit: `m³`.
+  - **3 = Cold water** (`activeModel` `KWZ`). Unit: `m³`.
+- The integration discovers all delivery types here and, for each one, fetches the active model (see [Get Active Model](#get-active-model)) and the available units (see [Get Unit of Measures](#get-unit-of-measures)) to build one Home Assistant device and sensor set per `(delivery_type, unit)` combination.
 
 ---
 
@@ -222,6 +241,9 @@ All data endpoints require authentication via Bearer token in the `Authorization
 
 **Example**: `GET /api/activeModel/123456/1`
 
+**Notes**:
+- Used during delivery-type discovery to derive a friendly label per type. Known model families: `F59`/WMZ → Heating, `WWZ` → Warm water, `KWZ` → Cold water.
+
 ---
 
 ### Get Residential Unit Detail
@@ -320,7 +342,8 @@ All data endpoints require authentication via Bearer token in the `Authorization
 **Notes**:
 - Returns an array of unit of measure objects
 - Each object contains a `value` (internal identifier) and `displayName` (human-readable name)
-- Typically returns a single item in the array
+- Used during discovery to enumerate the units available per delivery type. Heating (type 1) typically returns both `eenheid` (`Eenheden`) and `GJ`; water types return `m³`.
+- The integration creates one device/sensor set per `(delivery_type, unit)` combination returned here (subject to the Options-flow selection).
 
 ---
 

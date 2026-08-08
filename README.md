@@ -67,7 +67,22 @@ During the integration setup in Home Assistant, you'll be prompted to enter your
 
 ## Usage
 
-Once configured, the integration will create several sensors in Home Assistant:
+Once configured, the integration will create several sensors in Home Assistant.
+
+### Multi-meter support
+
+MijnTed can expose multiple **delivery types** (meters) for a residential unit - typically heating plus warm and cold water. The integration discovers all available delivery types and creates **one Home Assistant device with a full sensor set per meter (delivery type/unit)**, rather than only the first one. For example, a home with all three meters (heating reported in both Eenheden and GJ) results in four devices:
+
+- `MijnTed Heating (Eenheden)`
+- `MijnTed Heating (GJ)`
+- `MijnTed Warm water (m³)`
+- `MijnTed Cold water (m³)`
+
+Each device exposes the same sensor suite listed below, with units matching the meter: `m³` (device class `water`) for water meters, and `GJ`/`Units` for heating. Historical statistics are injected per meter for the Home Assistant Energy dashboard.
+
+You can choose which delivery-type/unit combinations to enable through the integration's **Options flow** (Settings > Devices & Services > MijnTed > Configure). By default all discovered combinations are enabled. The MijnTed water page occasionally returns empty data until refreshed; the integration tolerates these transient empty responses and keeps the last-known readings.
+
+The sensors below are created for each enabled meter:
 
 - Detailed references:
   - `doc/SENSORS.md` - full sensor catalog, attributes, and edge cases

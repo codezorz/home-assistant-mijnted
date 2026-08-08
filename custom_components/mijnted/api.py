@@ -11,6 +11,8 @@ from .const import (
     API_DATE_FORMAT,
     AUTHORIZATION_SCHEME_BEARER,
     CONTENT_TYPE_JSON,
+    DELIVERY_TYPE_MODEL_LABELS,
+    DELIVERY_UNIT_GJ,
     HTTP_STATUS_OK,
     HTTP_STATUS_UNAUTHORIZED,
     REQUEST_TIMEOUT,
@@ -45,7 +47,7 @@ class MijntedApi:
         credentials_callback: Async callback to retrieve credentials for re-authentication (optional).
     """
 
-    def __init__(self, hass, client_id: str, refresh_token: Optional[str] = None, access_token: Optional[str] = None, residential_unit: Optional[str] = None, refresh_token_expires_at: Optional[datetime] = None, token_update_callback: Optional[Callable[[str, Optional[str], Optional[str], Optional[datetime]], Awaitable[None]]] = None, credentials_callback: Optional[Callable[[], Awaitable[tuple]]] = None):
+    def __init__(self, hass, client_id: str, refresh_token: Optional[str] = None, access_token: Optional[str] = None, residential_unit: Optional[str] = None, refresh_token_expires_at: Optional[datetime] = None, token_update_callback: Optional[Callable[[str, Optional[str], Optional[str], Optional[datetime]], Awaitable[None]]] = None, credentials_callback: Optional[Callable[[], Awaitable[tuple]]] = None, delivery_type: Optional[Any] = None, unit: Optional[str] = None):
         """Initialize Mijnted API client.
         
         Args:
@@ -68,7 +70,13 @@ class MijntedApi:
         self.client_id = client_id.strip()
         self.session: Optional[aiohttp.ClientSession] = None
         self.base_url = API_BASE_URL
-        self.delivery_type: Optional[str] = None
+        # When delivery_type is provided it is "pinned": discovery must not
+        # overwrite it with the first available type (issue #50 multi-meter).
+        self.delivery_type: Optional[Any] = delivery_type
+        self._delivery_type_pinned: bool = delivery_type is not None
+        # Selected unit for this client (e.g. "GJ", "m³", "eenheid"); drives the
+        # optional unitOfMeasure query parameter on data endpoints.
+        self.unit: Optional[str] = unit
         self.token_update_callback = token_update_callback
         self.auth: Optional[MijntedAuth] = None
         self._auth_init_params = {
@@ -254,10 +262,32 @@ class MijntedApi:
         """
         url = f"{self.base_url}/address/deliveryTypes/{self.residential_unit}"
         result = await self._make_request("GET", url)
-        first_item = ListUtil.get_first_item(result)
-        if first_item is not None:
-            self.delivery_type = first_item
+        if not self._delivery_type_pinned:
+            first_item = ListUtil.get_first_item(result)
+            if first_item is not None:
+                self.delivery_type = first_item
         return result if isinstance(result, list) else []
+
+    def _with_unit(self, url: str) -> str:
+        """Append the unitOfMeasure query parameter to a URL when applicable.
+
+        Uses the client's selected unit; only the GJ unit adds the parameter
+        (water types default to m³ and omit it). Preserves any existing query
+        string already present on the URL.
+
+        Args:
+            url: The fully-built request URL.
+
+        Returns:
+            The URL with ``unitOfMeasure=GJ`` appended when the selected unit is
+            GJ, otherwise the URL unchanged.
+        """
+        params = self.unit_query_params(self.unit)
+        if not params:
+            return url
+        separator = "&" if "?" in url else "?"
+        query = "&".join(f"{key}={value}" for key, value in params.items())
+        return f"{url}{separator}{query}"
 
     async def get_energy_usage(self, year: Optional[int] = None) -> Dict[str, Any]:
         """Get energy usage data for a specific year.
@@ -270,7 +300,7 @@ class MijntedApi:
         """
         if year is None:
             year = self._get_current_year()
-        url = f"{self.base_url}/residentialUnitUsage/{year}/{self.residential_unit}/{self.delivery_type}"
+        url = self._with_unit(f"{self.base_url}/residentialUnitUsage/{year}/{self.residential_unit}/{self.delivery_type}")
         return await self._make_request("GET", url)
 
     async def get_last_data_update(self) -> Dict[str, Any]:
@@ -279,7 +309,7 @@ class MijntedApi:
         Returns:
             Dictionary containing last sync date information
         """
-        url = f"{self.base_url}/getLastSyncDate/{self.residential_unit}/{self.delivery_type}/{self._get_current_year()}"
+        url = self._with_unit(f"{self.base_url}/getLastSyncDate/{self.residential_unit}/{self.delivery_type}/{self._get_current_year()}")
         return await self._make_request("GET", url)
 
     async def get_filter_status(self) -> List[Dict[str, Any]]:
@@ -288,7 +318,7 @@ class MijntedApi:
         Returns:
             List of device status objects, empty list if none found
         """
-        url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{self._get_current_year()}"
+        url = self._with_unit(f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{self._get_current_year()}")
         result = await self._make_request("GET", url)
         if isinstance(result, list):
             return result
@@ -307,7 +337,7 @@ class MijntedApi:
         try:
             date_str = target_date.strftime(API_DATE_FORMAT)
             year = target_date.year
-            url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{year}?fromDate={date_str}"
+            url = self._with_unit(f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{year}?fromDate={date_str}")
             result = await self._make_request("GET", url)
             if isinstance(result, list):
                 return result
@@ -334,7 +364,7 @@ class MijntedApi:
         """
         if year is None:
             year = self._get_current_year()
-        url = f"{self.base_url}/usageInsight/{year}/{self.residential_unit}/{self.delivery_type}"
+        url = self._with_unit(f"{self.base_url}/usageInsight/{year}/{self.residential_unit}/{self.delivery_type}")
         return await self._make_request("GET", url)
 
     async def get_active_model(self) -> Dict[str, Any]:
@@ -367,7 +397,7 @@ class MijntedApi:
         """
         if year is None:
             year = self._get_current_year()
-        url = f"{self.base_url}/residentialUnitUsagePerRoom/{year}/{self.residential_unit}/{self.delivery_type}"
+        url = self._with_unit(f"{self.base_url}/residentialUnitUsagePerRoom/{year}/{self.residential_unit}/{self.delivery_type}")
         return await self._make_request("GET", url)
 
     async def get_unit_of_measures(self) -> List[Dict[str, Any]]:
@@ -383,6 +413,112 @@ class MijntedApi:
             return result
         value = ApiUtil.extract_value(result, [])
         return value if isinstance(value, list) else []
+
+    @staticmethod
+    def _delivery_type_label(model: Optional[str]) -> Optional[str]:
+        """Map an activeModel code to a friendly delivery-type label.
+
+        Args:
+            model: The activeModel code returned for a delivery type (e.g. "F59").
+
+        Returns:
+            A friendly label (e.g. "Heating"), or the original model code if unknown.
+        """
+        if not isinstance(model, str) or not model:
+            return None
+        return DELIVERY_TYPE_MODEL_LABELS.get(model.upper(), model)
+
+    @staticmethod
+    def unit_query_params(unit: Optional[str]) -> Optional[Dict[str, str]]:
+        """Return the query params for a unit, appending unitOfMeasure only for GJ.
+
+        Water delivery types default to m3 and must not receive the parameter;
+        only the heating type's GJ unit requires it (see issue #50).
+
+        Args:
+            unit: The selected unit value (e.g. "GJ", "m3", "eenheid").
+
+        Returns:
+            ``{"unitOfMeasure": "GJ"}`` when the unit is GJ, otherwise None.
+        """
+        if isinstance(unit, str) and unit.upper() == DELIVERY_UNIT_GJ:
+            return {"unitOfMeasure": DELIVERY_UNIT_GJ}
+        return None
+
+    async def get_active_model_for(self, delivery_type: Any) -> Optional[str]:
+        """Get the active model code for a specific delivery type.
+
+        Args:
+            delivery_type: The delivery type identifier (e.g. 1, 2, 3).
+
+        Returns:
+            The active model code (e.g. "F59"), or None if unavailable.
+        """
+        url = f"{self.base_url}/activeModel/{self.residential_unit}/{delivery_type}"
+        result = await self._make_request("GET", url)
+        return ApiUtil.extract_value(result, None)
+
+    async def get_unit_of_measures_for(
+        self, delivery_type: Any, year: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Get available units of measure for a specific delivery type.
+
+        Args:
+            delivery_type: The delivery type identifier (e.g. 1, 2, 3).
+            year: Year to query (defaults to current year).
+
+        Returns:
+            List of unit-of-measure objects, empty list if none found.
+        """
+        if year is None:
+            year = self._get_current_year()
+        url = f"{self.base_url}/unitOfMeasures/{self.residential_unit}/{delivery_type}/{year}"
+        result = await self._make_request("GET", url)
+        if isinstance(result, list):
+            return result
+        value = ApiUtil.extract_value(result, [])
+        return value if isinstance(value, list) else []
+
+    async def discover_delivery_types(self) -> List[Dict[str, Any]]:
+        """Discover all delivery types with their model and available units.
+
+        Calls the delivery-types endpoint and, for each type, fetches the
+        active model and available units so callers can build a sensor set per
+        delivery type (issue #50). Per-type failures are tolerated: a type with
+        a transient error still appears with whatever data was retrieved.
+
+        Returns:
+            List of dicts shaped as
+            ``{"id", "model", "label", "units"}`` for each delivery type.
+        """
+        raw_types = await self.get_delivery_types()
+        discovered: List[Dict[str, Any]] = []
+        for delivery_type in raw_types:
+            try:
+                model = await self.get_active_model_for(delivery_type)
+            except MijntedApiError as err:
+                _LOGGER.warning(
+                    "Failed to fetch active model for delivery type %s: %s",
+                    delivery_type, err,
+                    extra={"delivery_type": delivery_type, "residential_unit": self.residential_unit},
+                )
+                model = None
+            try:
+                units = await self.get_unit_of_measures_for(delivery_type)
+            except MijntedApiError as err:
+                _LOGGER.warning(
+                    "Failed to fetch units for delivery type %s: %s",
+                    delivery_type, err,
+                    extra={"delivery_type": delivery_type, "residential_unit": self.residential_unit},
+                )
+                units = []
+            discovered.append({
+                "id": delivery_type,
+                "model": model,
+                "label": self._delivery_type_label(model),
+                "units": units,
+            })
+        return discovered
 
     def _headers(self) -> Dict[str, str]:
         """Returns authorization headers dict."""
