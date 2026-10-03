@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 from unittest.mock import Mock
 import zipfile
 
@@ -110,6 +111,53 @@ class TestPackaging:
             release.promote_package(beta, "v1.0.26-beta.3", "v1.0.26", tmp_path / "stable.zip")
 
 
+class TestCandidateValidation:
+    """Verify candidate tests run in a real checkout at the requested commit."""
+
+    def test_validation_preserves_git_discovery_at_exact_commit(self, monkeypatch, tmp_path):
+        """Historical candidates retain Git metadata and pass the previously failing test."""
+        repository = Path(__file__).resolve().parents[2]
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=repository, text=True).strip()
+        root = tmp_path / "detached validation source"
+        subprocess.run(["git", "clone", "--quiet", "--no-hardlinks", "--no-checkout",
+                        str(repository), str(root)], check=True)
+        subprocess.run(["git", "checkout", "--quiet", "--detach", commit], cwd=root, check=True)
+        # Build a newer detached source tip even when CI supplied a shallow checkout.
+        subprocess.run(["git", "-c", "user.name=Release test", "-c",
+                        "user.email=release-test@example.invalid", "commit", "--quiet",
+                        "--allow-empty", "-m", "Advance temporary validation source"],
+                       cwd=root, check=True)
+        source_head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+        assert source_head != commit
+        directory = tmp_path / "candidate with spaces"
+        real_run = subprocess.run
+        python_commands = []
+
+        def run_command(command, **kwargs):
+            if command[0] == sys.executable:
+                python_commands.append(command)
+                if command[2] == "pip":
+                    return subprocess.CompletedProcess(command, 0)
+                if command[2] == "pytest":
+                    # Exercise the real regression without recursively running release tests.
+                    command = [*command, "-p", "no:cacheprovider",
+                               "tests/test_agent_guidance_hook.py::TestAgentGuidanceHook::"
+                               "test_current_worktree_is_discovered_from_a_subdirectory"]
+            return real_run(command, **kwargs)
+
+        monkeypatch.chdir(root)
+        monkeypatch.setattr(release.subprocess, "run", run_command)
+        release.validate_commit(commit, directory)
+        assert (directory / ".git").is_dir()
+        assert release.run("git", "rev-parse", "HEAD", cwd=directory) == commit
+        assert release.run("git", "rev-parse", "--show-toplevel", cwd=directory / "doc") == directory.as_posix()
+        assert release.run("git", "rev-parse", "HEAD", cwd=root) == source_head
+        assert any(command[2] == "compileall" for command in python_commands)
+        assert any(command[2] == "pytest" for command in python_commands)
+
+
 class TestPublishing:
     """Exercise retries and failure boundaries without contacting GitHub."""
 
@@ -162,6 +210,7 @@ class TestPublishing:
         assert [(call.args[0], call.args[1]) for call in publish.call_args_list] == [
             ("v1.0.26-beta.2", "retry"), ("v1.0.26-beta.3", "new")]
         assert validate.call_count == 2
+        assert [call.args[0] for call in validate.call_args_list] == ["retry", "new"]
 
     def test_failed_validation_cannot_publish(self, monkeypatch, tmp_path, source_zip):
         """A failing candidate stops reconciliation before creating any release."""

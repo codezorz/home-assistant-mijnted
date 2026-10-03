@@ -10,6 +10,8 @@ Runtime code lives in `custom_components/mijnted/`; there is no separate build.
   patterns identify scope; agents without automatic loading must read them explicitly.
 - Inspect the current branch, working-tree changes, and registered worktrees.
   Preserve other work and use explicit tool working directories for task checkouts.
+- Prefer an isolated task worktree for new editing tasks. Ask whether to create
+  or reuse one before starting, unless the user already requested a worktree.
 - Shared skills live in `.agents/skills/` (plural). Before creating a worktree,
   load `git-worktrees` or read `.agents/skills/git-worktrees/SKILL.md`.
 - Follow the repository's `.editorconfig` and surrounding code style.

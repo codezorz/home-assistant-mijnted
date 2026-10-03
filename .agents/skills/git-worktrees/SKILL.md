@@ -34,18 +34,21 @@ description: Use when creating, locating, or cleaning up Git worktrees. Defines 
 
 1. Read repository instructions. Inspect `git status --short --branch`,
    `git worktree list --porcelain`, and branch refs before creating anything.
-2. Choose the requested base or the repository's default branch. Fetch if
+2. Prefer an isolated task checkout for new editing work. Ask whether to create
+   or reuse a worktree before starting, unless the user already requested one.
+   Honor a preference for the current checkout; follow the Git policy.
+3. Choose the requested base or the repository's default branch. Fetch if
    a current remote base is required; report a failed fetch before using
    a stale ref. Validate new branches with `git check-ref-format --branch`.
-3. Verify the container's parent exists, create the container if needed,
+4. Verify the container's parent exists, create the container if needed,
     and verify the destination is unused. Respect external-directory access
     and use Bash with quoted, forward-slash paths. Reject path separators and
     `..` in task slugs.
-4. From the primary repo root, create a new task branch:
+5. From the primary repo root, create a new task branch:
    `git worktree add -b <type>/<task> "../<repo-name>-worktrees/<type>-<task>" <base-ref>`.
    For an existing branch, omit `-b`. If already checked out, use its
    registered worktree instead of forcing another checkout.
-5. Verify status in the new checkout and report its path, branch, and base.
+6. Verify status in the new checkout and report its path, branch, and base.
    Run subsequent tools explicitly in that checkout and read its instructions.
    Creating a worktree does not relocate the running agent session.
 

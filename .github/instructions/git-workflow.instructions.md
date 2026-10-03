@@ -12,6 +12,10 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
 
 - The default branch and PR target are `main`. Work on a descriptive topic
   branch (`fix/*`, `feature/*`, `enhancement/*`, `docs/*`, or `tooling/*`).
+- For new editing tasks, prefer an isolated task worktree. Ask the user whether
+  to create or reuse one before starting, unless they already explicitly asked
+  for a worktree. If they prefer the current checkout, honor that choice while
+  preserving existing work and using a topic branch.
 - Continue an existing branch for the same task. Do not split an ongoing task
   into an unrelated branch.
 - For a new task, start from the requested base or the default branch. Fetch
@@ -34,11 +38,16 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   For features or breaking changes, set `next_version` in
   `.github/release-config.json` to a higher minor or major core version. An active
   beta cycle cannot move backwards; an override is consumed once released.
-- Keep implementation commits logically split by concern. Note an explicit
-  target-version decision in the PR description when applicable.
+- Keep each PR focused on its task. Note an explicit target-version decision
+  in the PR description when applicable.
 
 ## Commits and pull requests
 
+- Prefer a single commit per PR, including follow-up adjustments during review.
+  If separate commits would improve review or isolate independent concerns,
+  ask the user before using multiple commits unless they already requested them.
+  Combining already-pushed commits still requires explicit permission for any
+  history rewrite and force-push; use `--force-with-lease` when authorized.
 - Before committing, inspect status, diff, and `git log --oneline -10`.
   Stage only intended files; never stage credentials or unrelated work.
 - Write the commit message to a temporary file and use `git commit --file <file>`.
@@ -84,11 +93,11 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
 ## Releases
 
 Releases are tags on commits reachable from `main`, not release branches.
-The **Publish betas** workflow reconciles pending commits on pushes and manual
+The **Tag beta release** workflow reconciles pending commits on pushes and manual
 dispatch. It creates `vX.Y.Z-beta.N` tags, prereleases, and
 `mijnted.zip` assets. Do not publish unmerged topic-branch commits.
 
-For stable publication, run **Promote beta to stable** from `main`. Supply an
+For stable publication, run **Promote release** from `main`. Supply an
 existing beta tag or leave it empty to select the published beta at the current
 `main` tip. If that beta is not available yet, wait for or rerun the beta workflow.
 Promotion creates `vX.Y.Z` on the selected beta's exact commit and changes only

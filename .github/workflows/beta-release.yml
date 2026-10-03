@@ -1,4 +1,4 @@
-name: Publish betas
+name: Tag beta release
 
 on:
   push:
