@@ -1,5 +1,5 @@
 ---
-applyTo: "tests/**,pytest.ini,requirements_test.txt,.github/workflows/python-tests.yml"
+applyTo: "tests/**,.github/scripts/*.test.py,pytest.ini,requirements_test.txt,.github/workflows/validate-code.yml"
 description: Test design, mock boundaries, async behavior, and Home Assistant stand-ins for local tests.
 ---
 
@@ -8,6 +8,10 @@ description: Test design, mock boundaries, async behavior, and Home Assistant st
 Environment setup, check commands, CI, and HA smoke testing are owned by
 `doc/DEVELOPMENT.md`. Test discovery and async mode are configured in `pytest.ini`.
 Dependency lists belong in `requirements_test.txt` and the runtime manifest.
+
+Integration tests live in `tests/`; release-tooling tests live beside their
+script in `.github/scripts/release.test.py`. Pytest discovers both locations
+and uses importlib mode to support the dotted release-test filename.
 
 ## Test design
 

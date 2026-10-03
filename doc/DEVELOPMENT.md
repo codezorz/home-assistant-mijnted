@@ -9,8 +9,8 @@ config-flow, recorder, and lifecycle compatibility.
 1. Clone the repository and read [AGENTS.md](../AGENTS.md) for the guidance map.
 2. Use a topic branch. For isolated checkouts, follow the shared
    [worktree skill](../.agents/skills/git-worktrees/SKILL.md).
-3. Use Python 3.12 to match the current
-   [test workflow](../.github/workflows/python-tests.yml). When testing inside HA,
+3. Use the latest stable Python 3 to match the
+   [Validate code workflow](../.github/workflows/validate-code.yml). When testing inside HA,
    use the Python version required by that HA installation.
 
 ### Local environment
@@ -77,8 +77,14 @@ Missing dependencies should be resolved in the environment above. A limitation
 that specifically requires real HA is a remaining runtime-verification gap,
 not a passing test or a reason to ignore an assertion failure.
 
-CI currently runs Python 3.12 syntax checks and pytest on PRs to `main`, pushes
+CI currently runs syntax checks and pytest on the latest available stable
+Python 3 (`3.x` with `check-latest: true`) on PRs to `main`, pushes
 to `main`, and manual dispatch, publishing a JUnit report when permitted.
+
+The workflow and its job are named **Validate code**. Every PR targeting `main`
+runs this job without path filters. After the check has appeared on a PR,
+select **Validate code** in the branch rules' required status checks to require
+syntax checking and the complete integration/release-tooling test suite.
 
 ## Home Assistant smoke test
 
@@ -121,3 +127,88 @@ to `main`, and manual dispatch, publishing a JUnit report when permitted.
 
 Follow the [Git/GitHub policy](../.github/instructions/git-workflow.instructions.md)
 for version decisions, commits, PRs, labels, owners, and releases.
+
+### Automatic betas
+
+**Publish betas** runs on pushes to `main` and manual dispatch.
+It processes every commit newly reachable from `main` after `start_commit` in
+[release-config.json](../.github/release-config.json), oldest dependencies first.
+The bootstrap anchor excludes historical commits; leave it unchanged after
+enabling publication. Multiple commits in one push each receive a beta, including
+branch commits introduced by a merge. Squash merges avoid publishing unfinished
+intermediate branch commits.
+
+Each candidate is exported from Git into a temporary directory. The workflow
+installs that commit's test/runtime requirements, checks syntax, and runs its
+test suite before packaging its tracked integration files. A failed candidate
+stops the batch without publishing it. Inspect the workflow log before retrying;
+fixing only a later commit does not make the failed historical commit pass.
+
+Versions are allocated from tags and published stable releases, not from the
+repository manifest. With latest stable `v1.0.25`, the first cycle is
+`v1.0.26-beta.1`, `v1.0.26-beta.2`, and so on. Every successful candidate gets a
+GitHub prerelease with a flat `mijnted.zip` asset, containing the matching
+manifest version without the tag's `v` prefix. The tracked manifest remains
+`0.0.0-dev.0`; no versioning commits are pushed to `main`.
+
+For a minor or major cycle, change `next_version` from `null` to a core version
+such as `"1.1.0"` or `"2.0.0"` through a normal PR. A target cannot move an
+active higher cycle backwards. Once that target is released, it is consumed
+automatically and the next patch becomes the default; resetting it to `null`
+is optional housekeeping.
+
+### Promoting to stable
+
+1. Open GitHub **Actions → Promote beta to stable → Run workflow**.
+2. Select branch **main**.
+3. Enter the beta tag, such as `v1.0.26-beta.3`, or leave it empty to use the
+   published beta for the current `main` commit.
+4. Run the workflow. If an empty input reports no beta for `main`, wait for
+   **Publish betas** to finish or rerun it, then retry promotion.
+
+Promotion downloads the selected beta's existing integration ZIP and changes
+only its manifest version to `1.0.26`. It tags the same source commit as
+`v1.0.26`, publishes a full release marked latest, and carries over beta release
+notes with the source tag and commit recorded. Existing beta releases stay
+available. Selecting an older beta is supported even when `main` has advanced.
+Existing stable tags cannot be moved, and stable versions cannot go backwards.
+
+After promotion, new commits normally start `v1.0.27-beta.1`. An already-active
+higher minor/major cycle continues instead. Promotion does not create a new
+commit or immediately publish a beta for the unchanged `main` tip.
+
+### Permissions, retries, and validation
+
+The workflows need Actions enabled and permission for `GITHUB_TOKEN` to write
+repository contents (tags and releases). Tag rules must allow these release
+tags. A GitHub App, personal token, and bypass permission for `main` are not
+required. Both workflows must be dispatched from `main`.
+
+Test and release workflows select the latest available stable Python 3 using
+`python-version: "3.x"` and `check-latest: true`. The interpreter can therefore
+advance to a new minor version without a workflow edit.
+
+Both publishers use the same concurrency group without cancelling running
+publication. GitHub may replace a pending run with a newer one; reconciliation
+on the next push or manual beta dispatch recovers missing commits.
+Each run works with a fetched main snapshot. A commit arriving during promotion
+is handled by the next beta run.
+
+Packages are attached to draft releases before publication. Rerunning a failed
+workflow repairs unfinished drafts, preserving the assigned tag/version.
+Published betas are skipped, and repeating the same completed promotion is a
+no-op. Tags are never force-updated. If a workflow times out on a large batch,
+rerun **Publish betas**; already-published commits are not tested again.
+
+Validate release tooling locally without publishing:
+
+```sh
+python -m pytest .github/scripts/release.test.py -q
+git diff --check
+```
+
+Do not run `python .github/scripts/release.py beta` or `promote` locally just to test:
+these commands publish real tags/releases using the authenticated `gh` CLI.
+Use workflow logs and a real HACS installation to verify the first published
+ZIP can be installed and reports its stamped version. Older releases have no
+ZIP asset; their existing tags/assets are not rewritten by these workflows.

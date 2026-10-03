@@ -35,5 +35,5 @@ change. Verify claims against code; distinguish existing behavior from proposals
   than maintaining a second API catalog or statistics specification.
 - Use working relative Markdown links for navigation. Verify local targets,
   example field names, class names, and attributes before finishing.
-- Follow the Git/version policy for bumps; documentation changes alone do
-  not require an integration version bump.
+- Follow the Git/version policy. Keep the source manifest's development version;
+  release workflows allocate beta versions even for documentation-only commits.

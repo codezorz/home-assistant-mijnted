@@ -12,27 +12,30 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
 
 - The default branch and PR target are `main`. Work on a descriptive topic
   branch (`fix/*`, `feature/*`, `enhancement/*`, `docs/*`, or `tooling/*`).
-- Continue an existing branch for the same task, especially when it already
-  contains an unreleased version bump. Do not create a second bump or split
-  an ongoing task into an unrelated branch.
+- Continue an existing branch for the same task. Do not split an ongoing task
+  into an unrelated branch.
 - For a new task, start from the requested base or the default branch. Fetch
   when an up-to-date remote base is needed; do not assume local `main` is current.
 - Follow `.agents/skills/git-worktrees/SKILL.md` for checkout placement/naming.
   Never overwrite another checkout's uncommitted work or force a branch into
   multiple worktrees.
 
-## Version bumps
+## Versioning
 
-- Only runtime or user-facing integration changes in `custom_components/mijnted/**`
-  require considering a bump to `manifest.json`. Docs, agent configuration,
-  workflows, and tooling-only changes do not.
-- Compare the manifest version with the latest published GitHub release using
-  `gh release view`. If the manifest equals that version, make a bump commit
-  first: patch for fixes, minor for features, major for breaking changes.
-- If the manifest is already higher, keep that unreleased version. If it is
-  lower or the release cannot be determined, investigate before choosing a version.
-- Keep implementation commits logically split by concern. Note the version
-  decision in the PR description.
+- Keep the source manifest at `0.0.0-dev.0`; do not commit release-version bumps.
+  Tags and published GitHub releases determine versions. Workflows stamp the
+  exact tag version, without `v`, into the release ZIP's manifest.
+- Every newly reachable commit on `main` after the configured bootstrap commit
+  receives a numbered beta after its syntax check and tests pass. This includes
+  documentation and tooling changes, plus intermediate commits in multi-commit
+  pushes and merged branches. Prefer squash merges if intermediate commits
+  are not independently releasable.
+- By default, betas target the patch after the latest published stable release.
+  For features or breaking changes, set `next_version` in
+  `.github/release-config.json` to a higher minor or major core version. An active
+  beta cycle cannot move backwards; an override is consumed once released.
+- Keep implementation commits logically split by concern. Note an explicit
+  target-version decision in the PR description when applicable.
 
 ## Commits and pull requests
 
@@ -62,9 +65,36 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
 - For an issue closed without a fix, apply the appropriate existing closure
   label (`duplicate`, `invalid`, or `wontfix`) and explain the reason in a comment.
 
+## Post-merge local cleanup
+
+- When the agent observes or performs a PR merge, verify its merged state with
+  `gh` and ask whether to remove the task worktree and local topic branch.
+  Offer both explicitly; wait for confirmation before removing either.
+- Follow `.agents/skills/git-worktrees/SKILL.md`: inspect registered worktrees,
+  dirty/untracked files, and remaining unmerged work. Ask how to preserve any
+  work found before proceeding. Keep the primary checkout and `main`.
+- From another checkout, remove the confirmed task checkout with
+  `git worktree remove <path>`, then delete the confirmed local branch with
+  `git branch -d <branch>`. Do not force removal or branch deletion. If Git
+  refuses deletion after a squash/rebase merge, investigate the remaining work
+  and ask before using a force-delete operation.
+- Verify and report the remaining worktree/branch state. Remote branch deletion
+  requires a separate request; local cleanup does not imply it.
+
 ## Releases
 
-Releases are tags on `main` after the PR is merged, not release branches.
-When release publication is requested, tag the merged commit (for example
-`v<manifest-version>`) and publish its GitHub release. Do not release an
-unmerged topic-branch commit.
+Releases are tags on commits reachable from `main`, not release branches.
+The **Publish betas** workflow reconciles pending commits on pushes and manual
+dispatch. It creates `vX.Y.Z-beta.N` tags, prereleases, and
+`mijnted.zip` assets. Do not publish unmerged topic-branch commits.
+
+For stable publication, run **Promote beta to stable** from `main`. Supply an
+existing beta tag or leave it empty to select the published beta at the current
+`main` tip. If that beta is not available yet, wait for or rerun the beta workflow.
+Promotion creates `vX.Y.Z` on the selected beta's exact commit and changes only
+the manifest version in its package. It does not rebuild application code.
+The next beta defaults to `vX.Y.(Z+1)-beta.1`, unless a higher cycle is active.
+
+Both publishers share a concurrency lock, recover unfinished draft releases,
+and use `GITHUB_TOKEN` with `contents: write`; no branch bypass or manifest push
+is needed. See `doc/DEVELOPMENT.md` for operation and recovery details.

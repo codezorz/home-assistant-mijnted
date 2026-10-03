@@ -1,4 +1,4 @@
-name: Python Tests
+name: Validate code
 
 on:
   pull_request:
@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   test:
+    name: Validate code
     runs-on: ubuntu-latest
 
     steps:
@@ -24,7 +25,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: "3.x"
+          check-latest: true
           cache: pip
           cache-dependency-path: |
             requirements_test.txt
@@ -48,10 +50,10 @@ jobs:
           PY
 
       - name: Syntax check
-        run: python -m compileall custom_components/mijnted
+        run: python -m compileall custom_components/mijnted .github/scripts
 
       - name: Run test suite
-        run: pytest -q --junitxml=pytest-results.xml
+        run: python -m pytest -q --junitxml=pytest-results.xml
 
       - name: Publish test report
         if: (success() || failure()) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)

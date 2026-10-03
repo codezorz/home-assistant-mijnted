@@ -1,0 +1,37 @@
+name: Promote beta to stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      beta_tag:
+        description: "Beta tag to promote; leave empty to release current main"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mijnted-release-publishing
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+          check-latest: true
+      - name: Promote the selected beta package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BETA_TAG: ${{ inputs.beta_tag }}
+        run: python .github/scripts/release.py promote "$BETA_TAG"

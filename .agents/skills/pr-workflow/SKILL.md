@@ -1,6 +1,6 @@
 ---
 name: pr-workflow
-description: Use when preparing branches, commits, and pull requests in this repo, including version bump decisions and repository git workflow rules.
+description: Use when preparing branches, commits, and pull requests in this repo, including version decisions and post-merge cleanup.
 ---
 
 # PR workflow
@@ -15,3 +15,6 @@ policy; this skill does not authorize publishing without a user request.
 4. When publishing is requested, follow the policy's commit-message/PR-body
    file conventions, review ownership, and labeling rules.
 5. Report validation, version decisions, and the PR URL when created.
+6. After confirming through GitHub that the PR has merged, ask whether to remove
+   its task worktree and local topic branch. Follow the policy's post-merge
+   cleanup rules and `.agents/skills/git-worktrees/SKILL.md` after confirmation.

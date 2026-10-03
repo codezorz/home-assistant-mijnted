@@ -17,11 +17,18 @@ references live in [`doc/`](doc/):
 
 ## Installation
 
-1. Copy the `custom_components/mijnted` folder to your Home Assistant's `custom_components` directory.
-2. Restart Home Assistant.
-3. Go to Settings > Devices & services > Integrations.
-4. Click the "+ ADD INTEGRATION" button and search for "MijnTed".
-5. Follow the configuration steps.
+1. Download **`mijnted.zip`** from the desired [GitHub release](https://github.com/codezorz/home-assistant-mijnted/releases).
+2. Extract its contents into your Home Assistant's `custom_components/mijnted` directory. The ZIP contains `manifest.json` and the integration files directly at its root.
+3. Restart Home Assistant.
+4. Go to Settings > Devices & services > Integrations.
+5. Click the "+ ADD INTEGRATION" button and search for "MijnTed".
+6. Follow the configuration steps.
+
+Use the attached integration ZIP, rather than GitHub's automatic **Source code**
+archives: the release ZIP contains the exact installed version. Repository
+checkouts intentionally report `0.0.0-dev.0`. Older releases without a
+`mijnted.zip` asset can still be installed manually by copying their tagged
+`custom_components/mijnted` directory.
 
 ## Installation via HACS
 
@@ -37,6 +44,11 @@ references live in [`doc/`](doc/):
 8. Go to Settings > Devices & services > Integrations.
 9. Click the "+ ADD INTEGRATION" button and search for "MijnTed".
 10. Follow the configuration steps.
+
+HACS installs the versioned `mijnted.zip` release asset. Stable releases are the
+normal choice; enable prerelease versions in HACS to test numbered betas such as
+`v1.0.26-beta.1`. Direct downloads of `main` are hidden in HACS. Historical
+releases without the ZIP asset are available through manual installation.
 
 ## Configuration
 
