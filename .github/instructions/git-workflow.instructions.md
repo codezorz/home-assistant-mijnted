@@ -105,5 +105,10 @@ the manifest version in its package. It does not rebuild application code.
 The next beta defaults to `vX.Y.(Z+1)-beta.1`, unless a higher cycle is active.
 
 Both publishers share a concurrency lock, recover unfinished draft releases,
-and use `GITHUB_TOKEN` with `contents: write`; no branch bypass or manifest push
-is needed. See `doc/DEVELOPMENT.md` for operation and recovery details.
+and use a short-lived GitHub App installation token with Contents and Workflows
+write access, scoped to this repository. Both Git checkout/tag pushes and `gh`
+release operations must use that token. `GITHUB_TOKEN` cannot obtain Workflows
+write access needed for historical workflow-changing commits. Configure
+`RELEASE_APP_ID` as a repository variable and `RELEASE_APP_PRIVATE_KEY` as a
+repository secret. No branch bypass or manifest push is needed. See
+`doc/DEVELOPMENT.md` for setup, operation, and recovery details.

@@ -9,7 +9,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: mijnted-release-publishing
@@ -21,17 +21,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Check release App configuration
+        env:
+          RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID }}
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$RELEASE_APP_ID" || -z "$RELEASE_APP_PRIVATE_KEY" ]]; then
+            echo "::error::Configure RELEASE_APP_ID as a repository variable and RELEASE_APP_PRIVATE_KEY as a repository secret."
+            exit 1
+          fi
+      - name: Create release App token
+        id: release-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-workflows: write
       - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ steps.release-app.outputs.token }}
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
           check-latest: true
       - name: Promote the selected beta package
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.release-app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           BETA_TAG: ${{ inputs.beta_tag }}
         run: python .github/scripts/release.py promote "$BETA_TAG"
