@@ -3,7 +3,8 @@
 Validates that corrected historical month values produce reinjection hints and
 that statistics dedupe allows one-time reinjection for those hinted periods.
 """
-from datetime import datetime
+from datetime import date, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.recorder.models import StatisticMeanType
@@ -18,6 +19,7 @@ from custom_components.mijnted.sensors.models import (
 from custom_components.mijnted.sensors.usage import (
     MijnTedAverageMonthlyUsageSensor,
     MijnTedLastYearAverageMonthlyUsageSensor,
+    MijnTedMonthlyUsageSensor,
 )
 from custom_components.mijnted.utils import DateUtil
 
@@ -185,6 +187,22 @@ class TestStatisticsReinjectDedupBypass:
 
         assert result is True
 
+    @patch("custom_components.mijnted.sensors.base.datetime")
+    async def test_current_month_always_bypasses_injection_guard(self, mock_dt):
+        """Current calendar month -> _has_already_injected_period returns False."""
+        mock_dt.now.return_value = datetime(2026, 4, 7)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        sensor = self._make_sensor()
+        sensor.coordinator.data = {
+            "statistics_tracking": StatisticsTracking(monthly_usage="4.2026"),
+        }
+
+        result = await sensor._has_already_injected_period(datetime(2026, 4, 1))
+
+        assert result is False, (
+            "Current month must always allow re-injection to keep charts up-to-date"
+        )
+
     async def test_successful_finalize_consumes_reinjected_months(self):
         """Successful import with reinjected month -> consumed hint is removed."""
         sensor = self._make_sensor()
@@ -329,3 +347,65 @@ class TestAverageStatisticsMeanType:
             "last_year_average_usage",
             StatisticMeanType.NONE,
         )
+
+
+class TestMonthlyUsagePartialResponse:
+    """Verify live values and recorder imports retain unobserved device usage."""
+
+    async def test_partial_response_and_recovery_use_matching_totals(self):
+        """Partial then complete response -> cache, live state, and recorder agree."""
+        now = datetime(2026, 4, 3, 12)
+        previous = _make_cache_entry(3, 2026, total_usage=22.0, average_usage=10.0)
+        current = _make_cache_entry(4, 2026, total_usage=13.0, average_usage=None)
+        current.devices = [
+            DeviceReading(id=1001, start=698.0, end=707.0),
+            DeviceReading(id=1002, start=116.0, end=120.0),
+        ]
+        current.start_locked = True
+        cache = {"2026-03": previous, "2026-04": current}
+        partial_status = [{"deviceNumber": "1001", "currentReadingValue": 710.0}]
+        await init_mod._update_current_month_cache(
+            AsyncMock(), cache, partial_status, {"lastSyncDate": "2026-04-03"}, {}, now
+        )
+        assert cache["2026-04"].total_usage == 16.0
+
+        coordinator = SimpleNamespace(data={
+            "filter_status": partial_status,
+            "last_update": {"lastSyncDate": "2026-04-03"},
+            "monthly_history_cache": cache,
+            "statistics_tracking": StatisticsTracking(monthly_usage="4.2026"),
+        })
+        sensor = MijnTedMonthlyUsageSensor(coordinator, "test_entry")
+        sensor.entity_id = "sensor.home_monthly_usage"
+        sensor.hass = MagicMock()
+        sensor.hass.config.components = {"recorder"}
+
+        with (
+            patch("custom_components.mijnted.sensors.base.date") as mock_date,
+            patch("custom_components.mijnted.sensors.base.datetime", wraps=datetime) as mock_datetime,
+            patch("custom_components.mijnted.sensors.base.StatisticData", side_effect=lambda **kwargs: kwargs),
+            patch("custom_components.mijnted.sensors.base.async_import_statistics", return_value=None) as import_statistics,
+        ):
+            mock_date.today.return_value = date(2026, 4, 3)
+            mock_date.side_effect = date
+            mock_datetime.now.return_value = now
+
+            assert sensor.state == 16.0
+            current_data = sensor._build_current_data()
+            assert current_data.total_usage_start == 814.0
+            assert current_data.total_usage_end == 830.0
+            await sensor._async_inject_statistics()
+            statistics = import_statistics.call_args.args[2]
+            assert [stat["state"] for stat in statistics] == [16.0]
+
+            coordinator.data["filter_status"] = [
+                {"deviceNumber": "1001", "currentReadingValue": 710.0},
+                {"deviceNumber": "1002", "currentReadingValue": 122.0},
+            ]
+            assert sensor.state == 18.0
+            await sensor._async_inject_statistics()
+            statistics = import_statistics.call_args.args[2]
+            assert [stat["state"] for stat in statistics] == [18.0]
+
+            coordinator.data["filter_status"] = []
+            assert sensor.state == 18.0

@@ -36,6 +36,7 @@ class _ConfigEntry:
 # Provide concrete values that const.py relies on at module scope
 _ha.const.Platform.SENSOR = "sensor"
 _ha.const.Platform.BUTTON = "button"
+_ha.const.CONF_CLIENT_ID = "client_id"
 _ha.config_entries.ConfigFlow = _ConfigFlow
 _ha.config_entries.OptionsFlow = _OptionsFlow
 _ha.config_entries.ConfigEntry = _ConfigEntry
@@ -47,6 +48,7 @@ _SUBMODULES = {
     "homeassistant.core": _ha.core,
     "homeassistant.helpers": _ha.helpers,
     "homeassistant.helpers.entity": _ha.helpers.entity,
+    "homeassistant.helpers.entity_registry": _ha.helpers.entity_registry,
     "homeassistant.helpers.storage": _ha.helpers.storage,
     "homeassistant.helpers.update_coordinator": _ha.helpers.update_coordinator,
     "homeassistant.components": _ha.components,
@@ -69,7 +71,9 @@ sys.modules["pkce"] = _pkce
 # HA entity classes must be real classes so multiple-inheritance in sensor
 # definitions doesn't cause a metaclass conflict between MagicMock instances.
 class _CoordinatorEntity:
-    pass
+    def __init__(self, coordinator):
+        """Store the coordinator like Home Assistant's base entity."""
+        self.coordinator = coordinator
 
 
 class _SensorEntity:

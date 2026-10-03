@@ -4,7 +4,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.components.recorder.models import StatisticData, StatisticMeanType
 from .base import MijnTedSensor
 from ..utils import DataUtil
-from ..const import UNIT_MIJNTED, DEFAULT_START_VALUE
+from ..const import DEFAULT_NAME, UNIT_MIJNTED, DEFAULT_START_VALUE
 from .models import CurrentData
 
 
@@ -17,13 +17,15 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the monthly usage sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "monthly_usage", "monthly usage")
+        super().__init__(coordinator, "monthly_usage", "monthly usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
 
@@ -122,13 +124,15 @@ class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the last year monthly usage sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_year_monthly_usage", "last year monthly usage")
+        super().__init__(coordinator, "last_year_monthly_usage", "last year monthly usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
 
@@ -192,13 +196,15 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the average monthly usage sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "average_monthly_usage", "average monthly usage")
+        super().__init__(coordinator, "average_monthly_usage", "average monthly usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-line"
         self._attr_suggested_display_precision = 0
 
@@ -273,13 +279,15 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the last year average monthly usage sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_year_average_monthly_usage", "last year average monthly usage")
+        super().__init__(coordinator, "last_year_average_monthly_usage", "last year average monthly usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-line-variant"
         self._attr_suggested_display_precision = 0
 
@@ -343,13 +351,15 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the total usage sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "total_usage", "total usage")
+        super().__init__(coordinator, "total_usage", "total usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_suggested_display_precision = 0

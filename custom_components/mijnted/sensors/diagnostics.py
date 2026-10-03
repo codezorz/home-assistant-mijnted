@@ -5,7 +5,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
 from .models import StatisticsTracking
 from ..utils import TimestampUtil, ListUtil, DataUtil, DateUtil
-from ..const import CALCULATION_YEAR_MONTH_SORT_MULTIPLIER
+from ..const import CALCULATION_YEAR_MONTH_SORT_MULTIPLIER, DEFAULT_NAME
 
 
 class MijnTedLastUpdateSensor(MijnTedSensor):
@@ -17,13 +17,15 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the last update sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_update", "last update")
+        super().__init__(coordinator, "last_update", "last update", entry_id, config_name=config_name)
         self._attr_icon = "mdi:clock-outline"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -59,13 +61,15 @@ class MijnTedActiveModelSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the active model sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "active_model", "active model")
+        super().__init__(coordinator, "active_model", "active model", entry_id, config_name=config_name)
         self._attr_icon = "mdi:tag"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -91,13 +95,15 @@ class MijnTedDeliveryTypesSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the delivery types sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "delivery_types", "delivery type")
+        super().__init__(coordinator, "delivery_types", "delivery type", entry_id, config_name=config_name)
         self._attr_icon = "mdi:package-variant"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -127,13 +133,15 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the residential unit detail sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "residential_unit_detail", "residential unit")
+        super().__init__(coordinator, "residential_unit_detail", "residential unit", entry_id, config_name=config_name)
         self._attr_icon = "mdi:home"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -171,13 +179,15 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the unit of measures sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "unit_of_measures", "unit of measures")
+        super().__init__(coordinator, "unit_of_measures", "unit of measures", entry_id, config_name=config_name)
         self._attr_icon = "mdi:ruler"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -227,13 +237,15 @@ class MijnTedLastSuccessfulSyncSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the last successful sync sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_successful_sync", "last successful sync")
+        super().__init__(coordinator, "last_successful_sync", "last successful sync", entry_id, config_name=config_name)
         self._attr_icon = "mdi:clock-check"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -258,13 +270,15 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         coordinator: DataUpdateCoordinator providing MijnTed API data.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]]) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str, config_name: str = DEFAULT_NAME) -> None:
         """Initialize the latest available insight sensor.
         
         Args:
             coordinator: Data update coordinator
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
-        super().__init__(coordinator, "latest_available_insight", "latest available insight")
+        super().__init__(coordinator, "latest_available_insight", "latest available insight", entry_id, config_name=config_name)
         self._attr_icon = "mdi:calendar-month"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_native_unit_of_measurement = None
@@ -434,4 +448,3 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
             attributes["usage_unit"] = usage_unit
         
         return attributes
-

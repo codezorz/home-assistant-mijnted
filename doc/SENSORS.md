@@ -22,6 +22,11 @@ This document describes all MijnTed sensors, what they represent, and how they b
   - Unavailable when a refresh fails with `UpdateFailed`.
 - Some sensors keep an in-memory `_last_known_value` and return that during partial outages.
 - `_last_known_value` is not persisted across Home Assistant restarts.
+- Entity names use the configured device name as their prefix through Home
+  Assistant's `has_entity_name` behavior.
+- Unique IDs use `mijnted_<configEntryId>_<entityKey>` so multiple config
+  entries remain independent. Existing registry entities are migrated without
+  changing their entity IDs.
 
 ## Sensor Catalog
 
@@ -30,8 +35,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Monthly usage
 
 - Class: `MijnTedMonthlyUsageSensor`
-- Unique ID: `mijnted_monthly_usage`
-- Name: `MijnTed monthly usage`
+- Unique ID: `mijnted_<configEntryId>_monthly_usage`
+- Name: `<configured device name> Monthly usage`
 - Unit: `Units`
 - State class: `TOTAL`
 - Purpose: current calendar month usage.
@@ -49,8 +54,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Last year monthly usage
 
 - Class: `MijnTedLastYearMonthlyUsageSensor`
-- Unique ID: `mijnted_last_year_monthly_usage`
-- Name: `MijnTed last year monthly usage`
+- Unique ID: `mijnted_<configEntryId>_last_year_monthly_usage`
+- Name: `<configured device name> Last year monthly usage`
 - Unit: `Units`
 - State class: `TOTAL`
 - Purpose: usage for the same month in the previous year.
@@ -63,8 +68,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Average monthly usage
 
 - Class: `MijnTedAverageMonthlyUsageSensor`
-- Unique ID: `mijnted_average_monthly_usage`
-- Name: `MijnTed average monthly usage`
+- Unique ID: `mijnted_<configEntryId>_average_monthly_usage`
+- Name: `<configured device name> Average monthly usage`
 - Unit: `Units`
 - State class: `TOTAL`
 - Purpose: latest available historical monthly average.
@@ -76,8 +81,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Last year average monthly usage
 
 - Class: `MijnTedLastYearAverageMonthlyUsageSensor`
-- Unique ID: `mijnted_last_year_average_monthly_usage`
-- Name: `MijnTed last year average monthly usage`
+- Unique ID: `mijnted_<configEntryId>_last_year_average_monthly_usage`
+- Name: `<configured device name> Last year average monthly usage`
 - Unit: `Units`
 - State class: `TOTAL`
 - Purpose: average usage for the same month in the previous year.
@@ -90,8 +95,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Total usage
 
 - Class: `MijnTedTotalUsageSensor`
-- Unique ID: `mijnted_total_usage`
-- Name: `MijnTed total usage`
+- Unique ID: `mijnted_<configEntryId>_total_usage`
+- Name: `<configured device name> Total usage`
 - Unit: `Units`
 - State class: `TOTAL_INCREASING`
 - Purpose: current cumulative reading (sum of `currentReadingValue` across devices).
@@ -120,8 +125,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Last update
 
 - Class: `MijnTedLastUpdateSensor`
-- Unique ID: `mijnted_last_update`
-- Name: `MijnTed last update`
+- Unique ID: `mijnted_<configEntryId>_last_update`
+- Name: `<configured device name> Last update`
 - Device class: `timestamp`
 - Category: `diagnostic`
 - Purpose: date for which device readings are currently available (often 1-2 days behind calendar date), converted to ISO timestamp at midnight UTC.
@@ -131,8 +136,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Last successful sync
 
 - Class: `MijnTedLastSuccessfulSyncSensor`
-- Unique ID: `mijnted_last_successful_sync`
-- Name: `MijnTed last successful sync`
+- Unique ID: `mijnted_<configEntryId>_last_successful_sync`
+- Name: `<configured device name> Last successful sync`
 - Device class: `timestamp`
 - Category: `diagnostic`
 - Purpose: calendar timestamp of the most recent successful synchronization with the API (integration refresh success moment).
@@ -142,8 +147,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Active model
 
 - Class: `MijnTedActiveModelSensor`
-- Unique ID: `mijnted_active_model`
-- Name: `MijnTed active model`
+- Unique ID: `mijnted_<configEntryId>_active_model`
+- Name: `<configured device name> Active model`
 - Category: `diagnostic`
 - Purpose: active model identifier.
 - Missing data behavior: returns `None`.
@@ -151,8 +156,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Delivery type
 
 - Class: `MijnTedDeliveryTypesSensor`
-- Unique ID: `mijnted_delivery_types`
-- Name: `MijnTed delivery type`
+- Unique ID: `mijnted_<configEntryId>_delivery_types`
+- Name: `<configured device name> Delivery type`
 - Category: `diagnostic`
 - Purpose: comma-separated delivery types.
 - Missing/empty behavior: returns `None`.
@@ -160,8 +165,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Residential unit
 
 - Class: `MijnTedResidentialUnitDetailSensor`
-- Unique ID: `mijnted_residential_unit_detail`
-- Name: `MijnTed residential unit`
+- Unique ID: `mijnted_<configEntryId>_residential_unit_detail`
+- Name: `<configured device name> Residential unit`
 - Category: `diagnostic`
 - Purpose: residential unit identifier plus full detail attributes.
 - State: `residential_unit`
@@ -170,8 +175,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Unit of measures
 
 - Class: `MijnTedUnitOfMeasuresSensor`
-- Unique ID: `mijnted_unit_of_measures`
-- Name: `MijnTed unit of measures`
+- Unique ID: `mijnted_<configEntryId>_unit_of_measures`
+- Name: `<configured device name> Unit of measures`
 - Category: `diagnostic`
 - Purpose: display name of the first unit entry returned by API.
 - Value source: first element of `unit_of_measures` list, field `displayName`.
@@ -182,8 +187,8 @@ This document describes all MijnTed sensors, what they represent, and how they b
 ### Latest available insight
 
 - Class: `MijnTedLatestAvailableInsightSensor`
-- Unique ID: `mijnted_latest_available_insight`
-- Name: `MijnTed latest available insight`
+- Unique ID: `mijnted_<configEntryId>_latest_available_insight`
+- Name: `<configured device name> Latest available insight`
 - Category: `diagnostic`
 - Purpose: latest month with usable insight data.
 - State format: `MonthName YYYY` (for example `January 2026`).
@@ -206,11 +211,11 @@ be absent or refer to a different month than the fallback state.
 
 - Class: `MijnTedDeviceSensor`
 - Unique ID pattern:
-  - With room code: `mijnted_device_<sanitized_room>_<deviceNumber>`
-  - Without room code: `mijnted_device_<deviceNumber>`
+  - `mijnted_<configEntryId>_device_<deviceNumber>`
+  - Room metadata is excluded so renaming a room cannot change entity identity.
 - Name pattern:
-  - With room: `MijnTed device <translated room>`
-  - Without room: `MijnTed device <deviceNumber>`
+  - With room: `<configured device name> Device <translated room>`
+  - Without room: `<configured device name> Device <deviceNumber>`
 - Unit:
   - `"Einheiten"` and `"Eenheden"` are normalized to `Units`
   - Other unit strings are passed through as-is
@@ -235,6 +240,8 @@ Device sensor creation behavior:
 | Connection error with valid token and cached coordinator data | Coordinator returns cached data; sensors keep previous values and stay available. |
 | Partial API failure inside `asyncio.gather` | Failed endpoints are replaced with empty defaults (`{}` or `[]`). Sensors react per type (fallback to cache, `None`, or unchanged). |
 | `filter_status` becomes empty due timeout/maintenance | `monthly_usage`, `total_usage`, and device sensors return last known values if available; dynamic device entities are not removed. |
+| Non-empty `filter_status` temporarily omits devices | Current-month usage retains their cached readings; live usage and recorder imports sum the same merged start/end device set. |
+| Newly observed device without a known month-start reading | Its first observed reading becomes the usage baseline outside January; January uses the annual zero baseline. |
 | `unit_of_measures` endpoint fails/returns empty | `unit_of_measures` sensor keeps last known state. |
 | `delivery_types` empty | `delivery type` sensor returns `None`. |
 | API last sync date cannot be parsed | Sensors that require parsed date from `_build_current_data` cannot recompute current period and use fallback behavior. |
@@ -275,6 +282,7 @@ rows. Use statistics-capable graphs to view the imported periods.
   - Recorder integration is loaded
 - Duplicate protection:
   - `statistics_tracking` stores the last injected month key per sensor type
+  - The current calendar month is re-imported after updates so its statistic does not freeze at the first value
   - When a historical month value is corrected later (for example previous month final-day data arrives after month switch), a one-time reinjection hint allows that corrected month to be imported even if it is older than `last_injected`
 - `total_usage` injection:
   - Uses monthly `total_usage_end` states and updates `sum` cumulatively
@@ -287,7 +295,7 @@ rows. Use statistics-capable graphs to view the imported periods.
 
 ## Related Button
 
-- Button: `MijnTed reset statistics` (`mijnted_reset_statistics`)
+- Button: `<configured device name> Reset statistics` (`mijnted_<configEntryId>_reset_statistics`)
 - Purpose: clear monthly cache and statistics tracking so recorder history can be re-injected from scratch on next refresh.
 
 Entity IDs shown in examples are defaults; use the actual entity ID from your

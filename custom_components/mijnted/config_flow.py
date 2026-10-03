@@ -12,9 +12,11 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
+    CONF_NAME,
     CONF_PASSWORD,
     CONF_POLLING_INTERVAL,
     CONF_USERNAME,
+    DEFAULT_NAME,
     DEFAULT_POLLING_INTERVAL,
     DOMAIN,
     MAX_POLLING_INTERVAL,
@@ -45,7 +47,7 @@ class InvalidAuth(HomeAssistantError):
 class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a MijnTed config flow."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -87,16 +89,30 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             user_input[CONF_POLLING_INTERVAL] = int(DEFAULT_POLLING_INTERVAL.total_seconds())
 
     @staticmethod
-    def _get_data_schema() -> vol.Schema:
+    def _get_data_schema(defaults: Optional[Dict[str, Any]] = None) -> vol.Schema:
         """Return the data schema for the config form."""
+        defaults = defaults or {}
+
+        def required_field(key: str) -> vol.Marker:
+            """Build a required field with an existing value when available."""
+            if key != CONF_PASSWORD and key in defaults:
+                return vol.Required(key, default=defaults[key])
+            return vol.Required(key)
+
         return vol.Schema(
             {
-                vol.Required(CONF_CLIENT_ID): str,
-                vol.Required(CONF_USERNAME): str,
-                vol.Required(CONF_PASSWORD): str,
+                required_field(CONF_CLIENT_ID): str,
+                required_field(CONF_USERNAME): str,
+                required_field(CONF_PASSWORD): str,
+                vol.Optional(
+                    CONF_NAME, default=defaults.get(CONF_NAME, DEFAULT_NAME)
+                ): str,
                 vol.Optional(
                     CONF_POLLING_INTERVAL,
-                    default=DEFAULT_POLLING_INTERVAL.total_seconds()
+                    default=defaults.get(
+                        CONF_POLLING_INTERVAL,
+                        DEFAULT_POLLING_INTERVAL.total_seconds(),
+                    ),
                 ): vol.All(
                     vol.Coerce(int),
                     vol.Range(min=MIN_POLLING_INTERVAL, max=MAX_POLLING_INTERVAL)
@@ -120,7 +136,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._ensure_polling_interval_default(user_input)
                 await self._validate_input(user_input)
                 return self.async_create_entry(
-                    title="MijnTed",
+                    title=user_input.get(CONF_NAME, DEFAULT_NAME),
                     data=user_input
                 )
             except InvalidAuth:
@@ -160,17 +176,21 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             FlowResult: The next step in the reauth flow.
         """
         errors: Dict[str, str] = {}
+        existing_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
 
         if user_input is not None:
             try:
                 self._ensure_polling_interval_default(user_input)
                 await self._validate_input(user_input)
-                existing_entry = self.hass.config_entries.async_get_entry(
-                    self.context["entry_id"]
-                )
                 if existing_entry:
+                    updated_data = {**existing_entry.data, **user_input}
+                    new_title = updated_data.get(CONF_NAME, DEFAULT_NAME)
                     self.hass.config_entries.async_update_entry(
-                        existing_entry, data=user_input
+                        existing_entry,
+                        title=new_title,
+                        data=updated_data,
                     )
                     await self.hass.config_entries.async_reload(existing_entry.entry_id)
                     return self.async_abort(reason="reauth_successful")
@@ -184,7 +204,9 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=self._get_data_schema(),
+            data_schema=self._get_data_schema(
+                dict(existing_entry.data) if existing_entry else None
+            ),
             errors=errors,
         )
 
@@ -272,8 +294,10 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
         """
         if user_input is not None:
             updated_data = {**self.config_entry.data, **user_input}
+            new_title = updated_data.get(CONF_NAME, DEFAULT_NAME)
             self.hass.config_entries.async_update_entry(
                 self.config_entry,
+                title=new_title,
                 data=updated_data,
             )
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
@@ -283,6 +307,10 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    vol.Optional(
+                        CONF_NAME,
+                        default=self.config_entry.data.get(CONF_NAME, DEFAULT_NAME),
+                    ): str,
                     vol.Optional(
                         CONF_POLLING_INTERVAL,
                         default=self.config_entry.data.get(

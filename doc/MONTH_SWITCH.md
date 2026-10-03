@@ -49,6 +49,8 @@ Each month in cache has an explicit lifecycle state:
 Boundary rule for the next month:
 
 - When previous month reaches `COMPLETE_READINGS`, current month `start` readings are recalculated from previous-month `end` readings and marked as locked (`start_locked = true`).
+- The integration prefers the previous month's last-day API anchor. Empty or incompatible anchor responses use the cached device set as a temporary baseline but leave it unlocked so a later complete anchor can correct it.
+- An anchor that contains all cached devices can repair an incomplete historical cache. Missing month-start readings are restored from the preceding month's cache or last-day anchor; correction remains unlocked for retry if a required start is unavailable.
 - After `start_locked = true`, current month baseline is stable and no longer shifted by later finalization updates.
 
 ## Month Switch Timeline
