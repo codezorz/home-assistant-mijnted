@@ -14,6 +14,9 @@ GitHub issue forms are available by default:
 3. Reproduce the problem at least once with debug logging enabled.
 4. Remove secrets from logs and screenshots (client ID, tokens, email, passwords).
 
+Use [SECURITY.md](../SECURITY.md) for private vulnerability reports instead of
+public issues. Enable logging as described in [README.md](../README.md#troubleshooting).
+
 ## Choose the right issue type
 
 - Bug: Something that worked before or should work but does not.
@@ -32,6 +35,12 @@ GitHub issue forms are available by default:
    - Integration version (`custom_components/mijnted/manifest.json`)
    - Python version (if available)
 7. Screenshots (if UI-related)
+
+For stale readings or month-boundary issues, also include the **Last update**
+and **Last successful sync** values, the affected month IDs/statuses from Total
+usage attributes, and whether the issue survives a reload/restart. A successful
+sync timestamp does not guarantee that every endpoint succeeded. See
+[sensor behavior](SENSORS.md) and [month transitions](MONTH_SWITCH.md).
 
 ## Bug report template
 

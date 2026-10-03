@@ -1,28 +1,40 @@
 ---
-applyTo: "custom_components/mijnted/sensors/**"
+applyTo: "custom_components/mijnted/sensor.py,custom_components/mijnted/button.py,custom_components/mijnted/sensors/**"
+description: Entity creation, sensor source/fallback contracts, statistics, units, and registration.
 ---
 
-# Sensors: adding one and choosing type
+# Sensors and buttons
 
-**Adding a sensor:**
+## Adding an entity
 
-1. Implement a class that inherits from `MijnTedSensor` in `sensors/base.py`. Constructor: `coordinator`, `sensor_type`, `name`. Set `_attr_unique_id` (e.g. `f"{DOMAIN}_{sensor_type.lower()}"`).
-2. Put the class in the right module: `usage.py` (usage metrics), `diagnostics.py` (metadata/info), or `device.py` (per-device/room).
-3. Export it from `sensors/__init__.py` and add it to the list of entities built in `__init__.py` / `sensor.py` (where the platform creates entities from the coordinator).
+1. Implement usage metrics in `sensors/usage.py`, diagnostics in
+   `sensors/diagnostics.py`, or per-device readings in `sensors/device.py`.
+   Sensors inherit `MijnTedSensor`, which already sets the standard unique ID
+   from `sensor_type`; do not duplicate that setup unnecessarily.
+2. Export the class from `sensors/__init__.py` and register it in `sensor.py`.
+   Buttons belong in `sensors/button.py` and are registered in `button.py`.
+   The integration's `__init__.py` forwards platforms, not entity lists.
+3. Entities read `coordinator.data`; do not add direct API calls to sensors.
+   Dynamic devices are created at platform setup, not on every refresh.
+4. Follow `conventions.instructions.md` for entity identity compatibility and
+   `documentation.instructions.md` for required documentation updates.
 
-**Choosing the type (which file):**
+## Values, availability, and statistics
 
-- **Usage** (`usage.py`): Values derived from usage data (monthly, total, average, last year). Often use recorder/statistics (`async_import_statistics`, `StatisticMetaData`, `StatisticData`) and state classes like `STATE_CLASS_TOTAL` or `STATE_CLASS_TOTAL_INCREASING`. Historical injection logic lives in `sensors/base.py`.
-- **Diagnostics** (`diagnostics.py`): Informational (last update, active model, delivery types, residential unit, etc.). No statistics injection.
-- **Device** (`device.py`): Per-device or per-room sensors, created dynamically from API data.
-
-**When the API is unavailable (timeout/maintenance):**
-
-The coordinator replaces failed fetches with empty defaults (e.g. `filter_status` → `[]`, `unit_of_measures` → `[]`), so the update "succeeds" with partial data. Sensors that depend on that data should return their **last known value** instead of 0 or None, so history and dashboards are not disrupted. Use the base `_last_known_value` and `_update_last_known_value()`: when the source list/dict is empty and `_last_known_value` is set, return it and do not overwrite it with a computed fallback (e.g. 0). When you do have valid data, update the cache and return the value. See **Monthly usage** (empty `filter_status` → return `_last_known_value`) and **Unit of measures** (empty list → return cached display name) in `usage.py` and `diagnostics.py`.
-
-**Other:**
-
-- Device info: Use `MijnTedSensor._build_device_info(coordinator.data)` so all entities attach to the same MijnTed device.
-- Units: Use `const.UNIT_MIJNTED` (or other constants from `const.py`). Usage sensors typically show zero decimal places.
-- Do not change or remove `unique_id` without a migration or release note; automations and dashboards depend on entity identity.
-- **Docs**: When adding or changing sensors, update **README.md** (Usage section) so the sensor list and descriptions stay accurate.
+- `doc/SENSORS.md` owns the per-sensor source and missing-data contract. A
+  failed coordinator refresh makes sensors unavailable; a successful partial
+  refresh can leave individual values stale or unknown.
+- Preserve `_last_known_value` only for sensors designed to cache it. Do not
+  turn empty/error responses into a new zero that overwrites a known value.
+  A valid zero and missing data are different cases. The average-monthly,
+  timestamp, and other diagnostics do not all have last-known fallbacks.
+- `_last_known_value` is in-memory only. Persisted monthly history is a
+  separate coordinator cache; do not treat one as a substitute for the other.
+- Choose units and `SensorStateClass` based on the quantity. Use `UNIT_MIJNTED`
+  for usage units and zero suggested display precision where appropriate;
+  display precision does not round underlying values.
+- Recorder injection helpers live in `sensors/base.py`. Preserve deduplication
+  and late-correction reinjection behavior; average statistics are state-only.
+- Reuse `_build_device_info` for sensor/button device association.
+- Follow `doc/MONTH_SWITCH.md` for calendar-month identity, zero-day API lag,
+  previous-month completion, and current-month baseline locking.

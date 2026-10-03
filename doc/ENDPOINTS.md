@@ -7,6 +7,55 @@ This document provides an overview of all API endpoints used by the Home Assista
 - **API Base URL**: `https://ted-prod-function-app.azurewebsites.net/api`
 - **Authentication URL**: `https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token`
 
+Data endpoint paths below include `/api` and are relative to the host. When
+combining a path with `API_BASE_URL` (which already ends in `/api`), do not
+add `/api` twice. Response examples illustrate shapes, not fixed account values.
+
+## Authentication Lifecycle
+
+Setup and Home Assistant reauthentication use the Azure B2C authorization-code
+flow with PKCE, implemented by `OAuthUtil` and called by `MijntedAuth` through
+HA's executor. This is a simulated browser login, not a password-grant request.
+
+| Step | Endpoint / request |
+|---|---|
+| Initialize login | `GET` to `AUTH_AUTHORIZE_URL` with client ID, redirect URI, scope, nonce, response mode, and S256 PKCE challenge; extract CSRF/transaction values from HTML |
+| Submit credentials | `POST` to `AUTH_LOGIN_URL` (`SelfAsserted`) with email/password and CSRF/transaction context |
+| Confirm login | `GET` to `AUTH_CONFIRM_URL` (`api/CombinedSigninAndSignup/confirmed`) to obtain the authorization code |
+| Exchange code | `POST` to the token URL with `grant_type=authorization_code`, client ID, scope, code, redirect URI, and PKCE verifier |
+
+All auth endpoint constants are defined in `custom_components/mijnted/const.py`;
+the redirect URI is `https://mijnted.nl/`.
+
+The config entry retains client ID, username/password, access/refresh tokens,
+refresh-token expiration, and residential-unit ID. The coordinator supplies
+credentials for automatic reauthentication and persists rotated tokens through
+its callback. Access-token refresh is attempted each polling cycle. When refresh
+expiry is unknown or within the configured proactive threshold, or Azure B2C
+returns `invalid_grant`, the auth layer attempts credential-based rotation.
+If that rotation fails with an expired-grant error, the integration starts a
+Home Assistant reauthentication flow.
+
+## Client Method Mapping
+
+| `MijntedApi` method | Data endpoint |
+|---|---|
+| `authenticate()` | Auth-layer refresh, then delivery types |
+| `get_delivery_types()` | `address/deliveryTypes` (selects the first returned type for other requests) |
+| `get_energy_usage(year=None)` | `residentialUnitUsage` |
+| `get_last_data_update()` | `getLastSyncDate` |
+| `get_filter_status()` | Latest `deviceStatuses` |
+| `get_device_statuses_for_date(target_date)` | `deviceStatuses` with `fromDate` and target-date year |
+| `get_usage_insight(year=None)` | `usageInsight` |
+| `get_active_model()` | `activeModel` |
+| `get_residential_unit_detail()` | `residentialUnitDetailItem` |
+| `get_usage_per_room(year=None)` | `residentialUnitUsagePerRoom` |
+| `get_unit_of_measures()` | `unitOfMeasures` |
+
+Optional-year methods default to the current calendar year. Latest-status,
+last-sync, and unit-of-measure requests also use that year. Historical device
+requests catch errors, log a warning, and return an empty list.
+
 ## Authentication Endpoints
 
 ### Token Refresh
@@ -327,9 +376,15 @@ All data endpoints require authentication via Bearer token in the `Authorization
 ## Error Handling
 
 All endpoints may return:
-- **401 Unauthorized**: Token expired or invalid - the integration automatically refreshes the token and retries
+- **401 Unauthorized**: The API refreshes the token and retries the data request once. A second 401 raises an authentication error; other failed retry statuses raise an API error.
 - **200 OK**: Success - response format varies (JSON or plain text)
 - **Other status codes**: Error response with error message
+
+Async data requests use `REQUEST_TIMEOUT`. Auth refresh retries client/network
+errors using `RetryUtil` backoff; that is separate from the one data-request
+retry after a 401. Most concurrently fetched endpoint errors become empty
+defaults in the coordinator, so a partial refresh can still return successfully.
+See [sensor availability/fallbacks](SENSORS.md#edge-cases-and-expected-behavior).
 
 ## Response Formats
 
@@ -337,5 +392,7 @@ The API returns data in two formats:
 1. **JSON** (`Content-Type: application/json`): Most endpoints return JSON
 2. **Plain Text** (`Content-Type: text/plain; charset=utf-8`): Some endpoints like `getLastSyncDate` return plain text
 
-The integration handles both formats automatically.
-
+The client first parses JSON according to content type. For other content types
+it attempts JSON decoding of the response text (including quoted strings);
+unparseable text becomes `{"value": "..."}`. Coordinator normalization extracts
+text values where required. Do not assume every plain-text response is a dict.

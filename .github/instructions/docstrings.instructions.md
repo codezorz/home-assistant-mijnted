@@ -1,65 +1,26 @@
 ---
 applyTo: "custom_components/mijnted/**"
+description: Useful comments and concise production docstrings for public APIs, private helpers, and data models.
 ---
 
 # Comments and docstrings
 
-## Comments
-
-Prefer clear names and small functions over comments. When you do comment, explain *why* (invariants, API quirks, workarounds), not *what* the next line does.
-
-## Docstrings
-
-Every method and class must have a docstring. The style differs by visibility:
-
-### Public methods
-
-Multi-line docstring with `Args:`, `Returns:`, and `Raises:` sections where applicable:
-
-```python
-def fetch_usage_data(self, month: int, year: int) -> UsageResult:
-    """Fetch usage data for the given month from the API.
-
-    Args:
-        month: Calendar month (1-12).
-        year: Four-digit year.
-
-    Returns:
-        UsageResult with device readings and totals.
-
-    Raises:
-        MijntedApiError: If the API call fails.
-    """
-```
-
-### Private methods
-
-Single-line docstring only — the name itself should convey the purpose:
+- Prefer clear names and small functions. Comments explain why: invariants,
+  API quirks, or workarounds, rather than narrating the next line.
+- Add docstrings to classes, functions, and methods you introduce or change.
+  Do not expand an unrelated change solely to retrofit every existing docstring.
+- Public APIs: start with a short purpose statement; add `Args:`, `Returns:`,
+  and `Raises:` where the contract needs explanation. Omit inapplicable sections.
+- Private helpers: usually one concise line; allow more detail when needed
+  to explain complex invariants or an important return/error contract.
+- Classes: describe responsibility. Document meaningful constructor parameters
+  with `Args:` or model fields with `Attributes:`, without copying field lists
+  that add no explanation.
+- Keep examples consistent with actual model formats: `MonthCacheEntry.month_id`
+  uses `M.YYYY`, while the containing monthly-cache dictionary uses `YYYY-MM` keys.
+- Test documentation conventions live in `testing.instructions.md`.
 
 ```python
-def _build_device_map(self, devices):
-    """Map device IDs to their latest readings."""
+def _calculate_usage_from_start_end(start, end, month_id):
+    """Calculate usage, treating January as the annual counter reset."""
 ```
-
-### Classes
-
-Multi-line docstring describing purpose, with an `Args:` section for constructor parameters or an `Attributes:` section for dataclass/NamedTuple fields:
-
-```python
-class MonthCacheEntry:
-    """Cached usage data for a single calendar month.
-
-    Attributes:
-        month_id: Key in "YYYY-MM" format.
-        year: Four-digit year.
-        month: Calendar month (1-12).
-        devices: List of device readings for the month.
-        finalized: True when the month is complete and locked.
-    """
-```
-
-### What NOT to do
-
-- Do not omit docstrings entirely — every method must have at least a one-liner.
-- Do not write multi-line docstrings for private methods; keep them to a single line.
-- Do not repeat the function name in prose ("This function does ...").

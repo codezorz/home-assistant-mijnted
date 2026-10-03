@@ -1,62 +1,48 @@
 # Agent instructions
 
-This file is the first place to look for how to work in this repo.
+Start here when working in this repository. This is a Python custom integration
+for Home Assistant that exposes MijnTed cloud energy usage as sensors and buttons.
+Runtime code lives in `custom_components/mijnted/`; there is no separate build.
 
-## Basic instructions
+## Before editing
 
-- **Purpose**: You are helping develop the **Home Assistant MijnTed** custom integration (Python). It talks to the MijnTed cloud API and exposes energy usage and device data as sensors and buttons in Home Assistant.
-- **Where the code lives**: Integration code is under `custom_components/mijnted/`. Entry point: `__init__.py`. No separate build step; it runs inside Home Assistant.
-- **Quick validation**: Use `python -m compileall custom_components/mijnted` to run a fast syntax check. If sandboxed execution cannot write `__pycache__`, rerun it outside the sandbox.
-- **Preferred local test environment**: Activate `~/.venv-home-assistant` before `pytest` or Python checks; system Python may miss required packages (`aiohttp`, `pytest-asyncio`, etc.). Linux/macOS: `source ~/.venv-home-assistant/bin/activate`. Windows PowerShell: `& "$HOME\.venv-home-assistant\Scripts\Activate.ps1"`. Windows cmd: `%USERPROFILE%\.venv-home-assistant\Scripts\activate.bat`.
-- **Validation scope outside HA**: This repo is not always executed in a full Home Assistant runtime during local checks. Treat HA-environment/runtime-specific failures as non-blocking for local validation, but treat Python syntax/parse errors as blocking.
-- **Git commands**: Always run `git` commands outside the sandbox — the sandbox lacks permissions for git operations.
-- **File deletion policy**: Always run file-removal commands (for example `Remove-Item`, `del`, `git rm`) outside the sandbox with escalation.
-- **Before making changes**: Read the relevant instructions in `.github/instructions/` (see below). Follow existing code style and conventions.
+- Read the applicable files in `.github/instructions/`. Their YAML `applyTo`
+  patterns identify scope; agents without automatic loading must read them explicitly.
+- Inspect the current branch, working-tree changes, and registered worktrees.
+  Preserve other work and use explicit tool working directories for task checkouts.
+- Shared skills live in `.agents/skills/` (plural). Before creating a worktree,
+  load `git-worktrees` or read `.agents/skills/git-worktrees/SKILL.md`.
+- Follow the repository's `.editorconfig` and surrounding code style.
 
-## Where to find instructions
+## Guidance map
 
-- **Detailed instructions**: `.github/instructions/` - the real, specific guidance lives here. Files are task- and area-specific (repo overview, layout, conventions, coding guidelines, docstrings, orchestration, sensors, API/auth, documentation, testing, etc.). Each has YAML frontmatter and `applyTo`; read the ones that match the files you are editing. `AGENTS.md` stays short; the instructions there are extensive.
-- **Documentation map (direct)**:
-  - `README.md` - user-facing install, configuration, usage, troubleshooting
-  - `doc/SENSORS.md` - sensor catalog, purpose, attributes, edge cases
-  - `doc/MONTH_SWITCH.md` - month-transition timeline and expected behavior
-  - `doc/ENDPOINTS.md` - API endpoint and auth reference
-- **Documentation map (indirect)**:
-  - `.github/instructions/documentation.instructions.md` - when and how to keep docs in sync
-  - `.github/instructions/sensors.instructions.md` - sensor behavior expectations
-  - `.github/instructions/api-auth.instructions.md` - API/auth documentation expectations
-  - `.github/instructions/coding-guidelines.instructions.md` - code structure principles (SRP, naming, DRY, refactors)
-  - `.github/instructions/docstrings.instructions.md` - comments and docstring conventions for production code
+| Task | Authoritative guidance |
+|---|---|
+| Branches, versions, commits, PRs, labels, releases | `.github/instructions/git-workflow.instructions.md` |
+| Environment, validation commands, Home Assistant smoke testing | `doc/DEVELOPMENT.md` |
+| Test design and Home Assistant mocks | `.github/instructions/testing.instructions.md` |
+| Required documentation updates and ownership | `.github/instructions/documentation.instructions.md` |
+| Shared skill metadata and Claude discovery | `.github/instructions/agent-tooling.instructions.md` |
+| Code layout | `.github/instructions/layout.instructions.md` |
+| Architecture and monthly cache | `.github/instructions/orchestration.instructions.md` |
+| Python conventions and design | `.github/instructions/conventions.instructions.md`, `.github/instructions/coding-guidelines.instructions.md` |
+| Comments and docstrings | `.github/instructions/docstrings.instructions.md` |
+| API/auth changes | `.github/instructions/api-auth.instructions.md` |
+| Sensor/button changes | `.github/instructions/sensors.instructions.md` |
 
-## Preparing a change
+User-facing documentation starts at `README.md`; detailed behavior is in
+`doc/SENSORS.md`, `doc/MONTH_SWITCH.md`, and `doc/ENDPOINTS.md`.
+Use `doc/ISSUE_REPORTING.md` for issue reports and `SECURITY.md` for vulnerabilities.
 
-Work happens on a **topic branch** (feature, enhancement, fix, etc.). No dedicated "release branch"; releases are created by **tagging on main** after the PR is merged.
+## Execution boundaries
 
-- **Branch**: If you are already on a topic branch that has a version bump commit, continue working on it — do not create a new branch. Otherwise, create a branch from the default branch (e.g. `fix/xyz`, `feature/abc`).
-- **Version bump policy**:
-  - Only bump `custom_components/mijnted/manifest.json` for integration runtime/user-facing changes in `custom_components/mijnted/**` (not for repo-maintenance changes like `.github/**`, docs, or tooling-only updates).
-  - Bump only when needed: compare `manifest.json` version with the latest GitHub release version.
-  - If `manifest.json` equals the latest release version, add a version bump commit first (semantic versioning: patch for fixes, minor for new features, major for breaking changes).
-  - If `manifest.json` is already higher than the latest release version, do not bump again; your PR can be part of that upcoming unreleased version.
-- **Next commits**: Implement the fix or feature in **logically split commits** (one concern per commit, descriptive messages).
-- **Push** the branch and **open a PR** targeting the default branch (`main`). Summarize changes and the version bump in the PR description. Request review from `CODEOWNERS` if applicable.
-- **Commit messages**: Always write the commit message to a temporary file and use `git commit --file <file>` (then delete the file). Never pass the message inline with `-m` — PowerShell does not support heredoc and mangles parentheses, backticks, and special characters.
-- **PR body**: Always write the PR body to a temporary file and use `gh pr create --body-file <file>` (then delete the file). Never pass the body inline with `-m` or `--body` — PowerShell mangles backticks and special characters.
-- **PR label policy**:
-  - Always apply appropriate labels when creating or updating a PR.
-  - Keep labels on merged PRs only; remove labels from closed, unmerged PRs when closing or during cleanup.
-  - Use only existing repo labels from the GitHub Labels list (for example: `bug`, `enhancement`, `documentation`, `github-actions`, `dependencies`, `question`).
-- **Issue label policy**:
-  - Always ensure issues are labeled appropriately during triage and before closure.
-  - If fixed by a PR/commit, keep the issue type label (`bug`, `enhancement`, or `question`) and add a closing comment that references the fixing PR/commit.
-  - If not fixed, apply the closure reason label (`duplicate`, `invalid`, or `wontfix`) and add a closing comment with the explicit closure reason.
-
-**Releases**: On GitHub, releases are **tags on main**. After the PR is merged to main, create a tag (e.g. `v1.0.22`) on the merged commit and mark it as a release (manually or by the agent). No release branch; tagging happens only after merge.
-
-## Default branch and PR target
-
-- **Default branch**: `main`. All PRs (features, fixes, enhancements) target this branch.
-
-## CODEOWNERS
-
-- See `CODEOWNERS` at the repo root for who to assign or notify for reviews.
+- Use Bash for shell commands and examples, including on Windows (Git Bash or
+  WSL). Use forward-slash paths and quote path variables. If the tool's host
+  shell differs, invoke Bash explicitly and keep the tool's working directory
+  set to the active checkout. Follow the Bash setup in `doc/DEVELOPMENT.md`.
+- Run Git commands outside sandboxed execution where the tool supports it.
+- Run file-removal commands outside the sandbox with escalation where supported.
+- Do not commit, push, create PRs, merge, or release unless the user requests it.
+- For integration changes, the quick syntax check is
+  `python -m compileall custom_components/mijnted`; see `doc/DEVELOPMENT.md`
+  for the preferred environment and checks appropriate to the change.

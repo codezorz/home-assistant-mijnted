@@ -168,3 +168,7 @@ cython_debug/
 scripts/*
 !scripts/activate_env.ps1
 !scripts/activate_env.sh
+
+# Personal Claude Code preferences (shared hooks stay tracked)
+CLAUDE.local.md
+.claude/settings.local.json
