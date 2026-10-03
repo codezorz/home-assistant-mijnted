@@ -4,9 +4,14 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      verify_only:
+        description: "Verify release App authentication without publishing"
+        type: boolean
+        default: false
 
 permissions:
-  contents: write
+  contents: read
 
 # Both publishers share this lock. Reconciliation recovers superseded pending runs.
 concurrency:
@@ -15,20 +20,48 @@ concurrency:
 
 jobs:
   publish:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.verify_only)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      - name: Check release App configuration
+        env:
+          RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID }}
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$RELEASE_APP_ID" || -z "$RELEASE_APP_PRIVATE_KEY" ]]; then
+            echo "::error::Configure RELEASE_APP_ID as a repository variable and RELEASE_APP_PRIVATE_KEY as a repository secret."
+            exit 1
+          fi
+      - name: Create release App token
+        id: release-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-workflows: write
       - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ steps.release-app.outputs.token }}
+      - name: Verify release App access
+        env:
+          GH_TOKEN: ${{ steps.release-app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$GH_REPO" --silent
+          git ls-remote --exit-code origin refs/heads/main
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
           check-latest: true
       - name: Validate and publish all pending commits
+        if: github.ref == 'refs/heads/main' && !inputs.verify_only
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.release-app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: python .github/scripts/release.py beta

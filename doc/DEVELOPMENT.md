@@ -184,10 +184,45 @@ commit or immediately publish a beta for the unchanged `main` tip.
 
 ### Permissions, retries, and validation
 
-The workflows need Actions enabled and permission for `GITHUB_TOKEN` to write
-repository contents (tags and releases). Tag rules must allow these release
-tags. A GitHub App, personal token, and bypass permission for `main` are not
-required. Both workflows must be dispatched from `main`.
+Both publishers use a GitHub App installation token to create tags and manage
+releases. Historical commits can differ from current `main` in workflow files;
+GitHub then requires Workflows write permission for tag/release operations.
+The built-in `GITHUB_TOKEN` cannot receive that permission, even with
+`contents: write`. See GitHub's
+[release API permission requirements](https://docs.github.com/en/rest/releases/releases#create-a-release).
+
+Configure a release App, such as **MijnTed Release Orchestrator**:
+
+1. Register a GitHub App with repository **Contents: Read and write** and
+   **Workflows: Read and write**. Metadata read access is automatic. Webhooks
+   and user OAuth authorization are unnecessary for installation-token use.
+2. Install the App on this account and grant access to this repository.
+3. Generate a private key in the App settings.
+4. In repository **Settings → Secrets and variables → Actions**, add:
+
+   | Kind | Name | Value |
+   |---|---|---|
+   | Repository variable | `RELEASE_APP_ID` | Numeric App ID |
+   | Repository secret | `RELEASE_APP_PRIVATE_KEY` | Complete downloaded PEM private key, including its headers |
+
+The workflows check these settings before validation, generate a short-lived
+token scoped to the current repository, and request Contents and Workflows write
+access explicitly. Checkout credentials and `GH_TOKEN` both use this App token,
+so Git tag pushes and GitHub release operations have the same permissions. The
+token action revokes it at job completion; the built-in workflow token only has
+Contents read access. No bypass permission for `main` is needed. Tag rules must
+allow these release tags. Normal publication requires dispatch from `main`.
+
+To verify App setup without publishing, manually run **Tag beta release** with
+`verify_only` enabled. This mode may run from a topic branch before its workflow
+changes are merged; it requests the actual Contents/Workflows write permissions
+and checks GitHub API and Git repository access, but skips publication. Normal
+beta publication and stable promotion still run only from `main`.
+
+If token creation fails, check the App ID/private key pair, repository
+installation, and App permissions. After changing App permissions, approve
+the installation's updated permissions in GitHub before retrying. A GitHub CLI
+login's `workflow` scope does not change the workflow's built-in token.
 
 Test and release workflows select the latest available stable Python 3 using
 `python-version: "3.x"` and `check-latest: true`. The interpreter can therefore
