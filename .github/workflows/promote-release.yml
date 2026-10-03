@@ -1,4 +1,4 @@
-name: Promote beta to stable
+name: Promote release
 
 on:
   workflow_dispatch:

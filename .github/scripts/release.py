@@ -98,10 +98,12 @@ def source_archive(commit: str) -> bytes:
     return subprocess.check_output(["git", "archive", "--format=zip", commit])
 
 
-def validate_commit(source: bytes, directory: Path) -> None:
+def validate_commit(commit: str, directory: Path) -> None:
     """Run syntax checks and the existing suite against each candidate commit."""
-    with zipfile.ZipFile(io.BytesIO(source)) as archive:
-        archive.extractall(directory)
+    # Repository-discovery tests need Git metadata, which an archive export omits.
+    run("git", "clone", "--quiet", "--no-hardlinks", "--no-checkout",
+        str(Path.cwd()), str(directory))
+    run("git", "checkout", "--quiet", "--detach", commit, cwd=directory)
     subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements_test.txt"],
                    cwd=directory, check=True)
     manifest = json.loads((directory / INTEGRATION / "manifest.json").read_text(encoding="utf-8"))
@@ -196,8 +198,7 @@ def publish_betas() -> None:
             directory = Path(temporary)
             source = source_archive(commit)
             checkout = directory / "source"
-            checkout.mkdir()
-            validate_commit(source, checkout)
+            validate_commit(commit, checkout)
             asset = directory / ASSET_NAME
             package_source(source, tag, asset)
             reserve_tag(tag, commit, tags)

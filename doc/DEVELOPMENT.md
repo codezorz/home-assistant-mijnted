@@ -7,7 +7,9 @@ config-flow, recorder, and lifecycle compatibility.
 ## Getting started
 
 1. Clone the repository and read [AGENTS.md](../AGENTS.md) for the guidance map.
-2. Use a topic branch. For isolated checkouts, follow the shared
+2. Prefer an isolated task worktree on a topic branch. Agents ask whether to
+   create or reuse one before editing unless the user already requested it.
+   Follow the shared
    [worktree skill](../.agents/skills/git-worktrees/SKILL.md).
 3. Use the latest stable Python 3 to match the
    [Validate code workflow](../.github/workflows/validate-code.yml). When testing inside HA,
@@ -131,7 +133,7 @@ for version decisions, commits, PRs, labels, owners, and releases.
 
 ### Automatic betas
 
-**Publish betas** runs on pushes to `main` and manual dispatch.
+**Tag beta release** runs on pushes to `main` and manual dispatch.
 It processes every commit newly reachable from `main` after `start_commit` in
 [release-config.json](../.github/release-config.json), oldest dependencies first.
 The bootstrap anchor excludes historical commits; leave it unchanged after
@@ -139,9 +141,11 @@ enabling publication. Multiple commits in one push each receive a beta, includin
 branch commits introduced by a merge. Squash merges avoid publishing unfinished
 intermediate branch commits.
 
-Each candidate is exported from Git into a temporary directory. The workflow
-installs that commit's test/runtime requirements, checks syntax, and runs its
-test suite before packaging its tracked integration files. A failed candidate
+Each candidate is validated in a temporary local Git clone with its exact commit
+checked out in detached-HEAD mode. This preserves Git metadata for tests that
+discover the repository root. The workflow installs that commit's test/runtime
+requirements, checks syntax, and runs its test suite before packaging tracked
+integration files from a separate Git archive. A failed candidate
 stops the batch without publishing it. Inspect the workflow log before retrying;
 fixing only a later commit does not make the failed historical commit pass.
 
@@ -160,12 +164,12 @@ is optional housekeeping.
 
 ### Promoting to stable
 
-1. Open GitHub **Actions → Promote beta to stable → Run workflow**.
+1. Open GitHub **Actions → Promote release → Run workflow**.
 2. Select branch **main**.
 3. Enter the beta tag, such as `v1.0.26-beta.3`, or leave it empty to use the
    published beta for the current `main` commit.
 4. Run the workflow. If an empty input reports no beta for `main`, wait for
-   **Publish betas** to finish or rerun it, then retry promotion.
+   **Tag beta release** to finish or rerun it, then retry promotion.
 
 Promotion downloads the selected beta's existing integration ZIP and changes
 only its manifest version to `1.0.26`. It tags the same source commit as
@@ -199,7 +203,7 @@ Packages are attached to draft releases before publication. Rerunning a failed
 workflow repairs unfinished drafts, preserving the assigned tag/version.
 Published betas are skipped, and repeating the same completed promotion is a
 no-op. Tags are never force-updated. If a workflow times out on a large batch,
-rerun **Publish betas**; already-published commits are not tested again.
+rerun **Tag beta release**; already-published commits are not tested again.
 
 Validate release tooling locally without publishing:
 
