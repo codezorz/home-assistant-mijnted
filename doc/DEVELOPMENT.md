@@ -78,8 +78,9 @@ that specifically requires real HA is a remaining runtime-verification gap,
 not a passing test or a reason to ignore an assertion failure.
 
 CI currently runs syntax checks and pytest on the latest available stable
-Python 3 (`3.x` with `check-latest: true`) on PRs to `main`, pushes
-to `main`, and manual dispatch, publishing a JUnit report when permitted.
+Python 3 (`3.x` with `check-latest: true`) on PRs to `main` and manual dispatch,
+publishing a JUnit report when permitted. Commits entering `main` are validated
+by the beta publication workflow.
 
 The workflow and its job are named **Validate code**. Every PR targeting `main`
 runs this job without path filters. After the check has appeared on a PR,
