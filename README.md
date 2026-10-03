@@ -58,6 +58,11 @@ To set up the MijnTed integration, you'll need:
 2. Your MijnTed username (email address)
 3. Your MijnTed password
 
+You can also choose a device name, such as `Home` or `Office`. Home Assistant
+uses this name as the prefix for the integration's entity names. The name and
+polling interval can be changed later from the integration's configuration
+options.
+
 ### Obtaining Your Client ID
 
 The **Client ID** can be extracted from a browser network request:

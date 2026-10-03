@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
-from ..const import DOMAIN, UNIT_MIJNTED
+from ..const import DEFAULT_NAME, DOMAIN, UNIT_MIJNTED
 from ..utils import TranslationUtil
 
 
@@ -15,17 +15,27 @@ class MijnTedDeviceSensor(MijnTedSensor):
         device_number: Zero-based index or identifier of the device in the filter_status list.
     """
     
-    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], device_number: str) -> None:
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[Dict[str, Any]],
+        device_number: str,
+        entry_id: str,
+        config_name: str = DEFAULT_NAME,
+    ) -> None:
         """Initialize the device sensor.
         
         Args:
             coordinator: Data update coordinator
             device_number: Device number identifier
+            entry_id: Config entry ID used to scope entity identity
+            config_name: User-configured device name
         """
         super().__init__(
             coordinator,
             f"device_{device_number}",
-            f"device {device_number}"
+            f"device {device_number}",
+            entry_id,
+            config_name=config_name,
         )
         self.device_number = device_number
         self._attr_icon = "mdi:radiator"
@@ -50,29 +60,24 @@ class MijnTedDeviceSensor(MijnTedSensor):
         """Return the unique ID of the sensor.
         
         Returns:
-            Unique identifier string based on room and device number
+            Unique identifier string based on config entry and device number
         """
-        device_data = self._device_data
-        if device_data and device_data.get("room"):
-            room = device_data.get("room", "").lower().replace(" ", "_")
-            room = "".join(c if c.isalnum() or c == "_" else "_" for c in room)
-            return f"{DOMAIN}_device_{room}_{self.device_number}"
-        return f"{DOMAIN}_device_{self.device_number}"
+        return self._build_unique_id(self._entry_id, f"device_{self.device_number}")
 
     @property
     def name(self) -> str:
         """Return the name of the sensor.
         
         Returns:
-            Formatted sensor name with room name if available, otherwise device number
+            Sensor name with room name if available, otherwise device number
         """
         device_data = self._device_data
         if device_data and device_data.get("room"):
             room_code = device_data['room']
             hass = getattr(self.coordinator, 'hass', None)
             room_name = TranslationUtil.translate_room_code(room_code, hass)
-            return f"MijnTed device {room_name}"
-        return f"MijnTed device {self.device_number}"
+            return f"Device {room_name}"
+        return f"Device {self.device_number}"
 
     @property
     def state(self) -> Any:
@@ -123,4 +128,3 @@ class MijnTedDeviceSensor(MijnTedSensor):
             })
         
         return attributes
-

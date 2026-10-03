@@ -57,6 +57,8 @@ TIMESTAMP_FORMAT_ISO_Z = "%Y-%m-%dT%H:%M:%SZ"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_POLLING_INTERVAL = "polling_interval"
+CONF_NAME = "name"
+DEFAULT_NAME = "MijnTed"
 
 # Azure B2C authentication constants
 AUTH_TENANT_NAME = "mytedprod"

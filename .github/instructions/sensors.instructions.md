@@ -10,7 +10,8 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
 1. Implement usage metrics in `sensors/usage.py`, diagnostics in
    `sensors/diagnostics.py`, or per-device readings in `sensors/device.py`.
    Sensors inherit `MijnTedSensor`, which already sets the standard unique ID
-   from `sensor_type`; do not duplicate that setup unnecessarily.
+   from the config-entry ID and `sensor_type`; do not duplicate that setup
+   unnecessarily.
 2. Export the class from `sensors/__init__.py` and register it in `sensor.py`.
    Buttons belong in `sensors/button.py` and are registered in `button.py`.
    The integration's `__init__.py` forwards platforms, not entity lists.
@@ -35,6 +36,8 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
   display precision does not round underlying values.
 - Recorder injection helpers live in `sensors/base.py`. Preserve deduplication
   and late-correction reinjection behavior; average statistics are state-only.
+  Apply the `doc/SENSORS.md` missing-data contract consistently to live values
+  and recorder imports.
 - Reuse `_build_device_info` for sensor/button device association.
 - Follow `doc/MONTH_SWITCH.md` for calendar-month identity, zero-day API lag,
   previous-month completion, and current-month baseline locking.
