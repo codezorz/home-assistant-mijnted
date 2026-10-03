@@ -1,5 +1,8 @@
 {
   "name": "MijnTed",
   "country": "NL",
-  "render_readme": true
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "mijnted.zip",
+  "hide_default_branch": true
 }
