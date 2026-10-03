@@ -89,18 +89,19 @@ class TestPackaging:
         with zipfile.ZipFile(io.BytesIO(source_zip)) as archive:
             assert json.loads(archive.read(release.INTEGRATION + "manifest.json"))["version"] == "0.0.0-dev.0"
 
-    def test_promotion_changes_only_manifest_version(self, source_zip, tmp_path):
+    @pytest.mark.parametrize("stable_tag", ["v1.0.26", "v1.1.0", "v2.0.0"])
+    def test_promotion_changes_only_manifest_version(self, source_zip, tmp_path, stable_tag):
         """Stable assets preserve every tested beta file and manifest field."""
         beta, stable = tmp_path / "beta.zip", tmp_path / "stable.zip"
         release.package_source(source_zip, "v1.0.26-beta.3", beta)
-        release.promote_package(beta, "v1.0.26-beta.3", "v1.0.26", stable)
+        release.promote_package(beta, "v1.0.26-beta.3", stable_tag, stable)
         with zipfile.ZipFile(beta) as before, zipfile.ZipFile(stable) as after:
             assert before.namelist() == after.namelist()
             for name in before.namelist():
                 if name != "manifest.json":
                     assert before.read(name) == after.read(name)
             manifest = json.loads(before.read("manifest.json"))
-            manifest["version"] = "1.0.26"
+            manifest["version"] = stable_tag[1:]
             assert json.loads(after.read("manifest.json")) == manifest
 
     def test_promotion_rejects_mismatched_asset(self, source_zip, tmp_path):
@@ -109,6 +110,14 @@ class TestPackaging:
         release.package_source(source_zip, "v1.0.26-beta.2", beta)
         with pytest.raises(ValueError, match="does not match"):
             release.promote_package(beta, "v1.0.26-beta.3", "v1.0.26", tmp_path / "stable.zip")
+
+    @pytest.mark.parametrize("target", ["v1.0.25", "v1.1.0-beta.1"])
+    def test_promotion_rejects_downgrade_or_beta_destination(self, source_zip, tmp_path, target):
+        """Stable promotion cannot lower the base version or remain a prerelease."""
+        beta = tmp_path / "beta.zip"
+        release.package_source(source_zip, "v1.0.26-beta.3", beta)
+        with pytest.raises(ValueError, match="lower|stable destination"):
+            release.promote_package(beta, "v1.0.26-beta.3", target, tmp_path / "stable.zip")
 
 
 class TestCandidateValidation:
@@ -249,13 +258,32 @@ class TestPublishing:
                    "v1.0.26-beta.2": release_record(draft=True, prerelease=True)}
         assert release.beta_for_main(tags, records) == "v1.0.26-beta.1"
 
-    def test_empty_input_promotes_existing_main_beta(self, monkeypatch, tmp_path, source_zip):
-        """The default promotion uses main's published beta without publishing new betas."""
-        monkeypatch.setattr(release, "get_tags", lambda: {"v1.0.26-beta.3": "main-tip"})
+    @pytest.mark.parametrize("draft_reserved", [False, True])
+    @pytest.mark.parametrize("version_bump,stable_tag,next_beta", [
+        ("patch", "v1.0.26", "v1.0.27-beta.1"),
+        ("minor", "v1.1.0", "v1.1.1-beta.1"),
+        ("major", "v2.0.0", "v2.0.1-beta.1"),
+    ])
+    def test_empty_input_promotes_existing_main_beta(self, monkeypatch, tmp_path, source_zip,
+                                                    version_bump, stable_tag, next_beta, draft_reserved):
+        """Fresh and resumed promotions stamp the chosen version and drive the next beta cycle."""
+        tags = {"v1.0.26-beta.3": "main-tip"}
+        monkeypatch.setattr(release, "get_tags", lambda: tags)
         records = {"v1.0.25": release_record(),
                    "v1.0.26-beta.3": release_record(prerelease=True)}
+        if draft_reserved:
+            tags[stable_tag] = "main-tip"
+            records[stable_tag] = release_record(draft=True)
         monkeypatch.setattr(release, "get_releases", lambda: records)
-        reconcile, require_main, publish = Mock(), Mock(), Mock()
+        stamped = {}
+
+        def capture_package(tag, commit, asset, releases, notes):
+            with zipfile.ZipFile(asset) as archive:
+                stamped["version"] = json.loads(archive.read("manifest.json"))["version"]
+                assert archive.read("sensor.py") == b"VALUE = 42\n"
+
+        reconcile, require_main = Mock(), Mock()
+        publish = Mock(side_effect=capture_package)
         monkeypatch.setattr(release, "publish_betas", reconcile)
         monkeypatch.setattr(release, "require_on_main", require_main)
         monkeypatch.setattr(release, "publish", publish)
@@ -270,10 +298,14 @@ class TestPublishing:
             return ""
 
         monkeypatch.setattr(release, "run", command)
-        release.promote("")
+        release.promote("", version_bump)
         reconcile.assert_not_called()
         require_main.assert_called_once_with("main-tip")
-        assert publish.call_args.args[:2] == ("v1.0.26", "main-tip")
+        assert publish.call_args.args[:2] == (stable_tag, "main-tip")
+        assert stamped["version"] == stable_tag[1:]
+        tags[stable_tag] = "main-tip"
+        records[stable_tag] = release_record()
+        assert release.next_beta(tags, release.latest_stable(records)) == next_beta
 
     def test_default_reports_missing_main_beta(self, monkeypatch):
         """A failed or unfinished beta workflow cannot silently release another commit."""
@@ -293,6 +325,60 @@ class TestPublishing:
         monkeypatch.setattr(release, "publish_betas", reconcile)
         release.promote("v1.0.26-beta.1")
         reconcile.assert_not_called()
+
+    @pytest.mark.parametrize("version_bump,stable_tag", [
+        ("patch", "v1.0.26"), ("minor", "v1.1.0"), ("major", "v2.0.0"),
+    ])
+    def test_completed_promotion_does_not_bump_again(self, monkeypatch, version_bump, stable_tag):
+        """Repeating a completed promotion cannot release the same code a second time."""
+        monkeypatch.setattr(release, "get_tags", lambda: {
+            "v1.0.26-beta.1": "tested", stable_tag: "tested"})
+        monkeypatch.setattr(release, "get_releases", lambda: {
+            stable_tag: release_record(), "v1.0.26-beta.1": release_record(prerelease=True)})
+        monkeypatch.setattr(release, "require_on_main", Mock())
+        publish, reserve = Mock(), Mock()
+        monkeypatch.setattr(release, "publish", publish)
+        monkeypatch.setattr(release, "reserve_tag", reserve)
+        command = Mock()
+        monkeypatch.setattr(release, "run", command)
+        release.promote("v1.0.26-beta.1", version_bump)
+        publish.assert_not_called()
+        reserve.assert_not_called()
+        command.assert_not_called()
+
+    @pytest.mark.parametrize("beta_tag,stable_tag,version_bump,message", [
+        ("v1.0.26-beta.1", "v1.1.0", "patch", "newer version cycle"),
+        ("v1.1.0-beta.1", "v1.0.25", "patch", "lower"),
+        ("v1.0.26-beta.1", "v1.0.25", "invalid", "Invalid version bump"),
+    ])
+    def test_invalid_promotion_cannot_reserve_a_tag(self, monkeypatch, beta_tag, stable_tag,
+                                                  version_bump, message):
+        """Old beta cycles, downgrades, and unknown bump choices fail before publishing."""
+        monkeypatch.setattr(release, "get_tags", lambda: {beta_tag: "tested", stable_tag: "other"})
+        monkeypatch.setattr(release, "get_releases", lambda: {
+            stable_tag: release_record(), beta_tag: release_record(prerelease=True)})
+        monkeypatch.setattr(release, "require_on_main", Mock())
+        reserve, publish = Mock(), Mock()
+        monkeypatch.setattr(release, "reserve_tag", reserve)
+        monkeypatch.setattr(release, "publish", publish)
+        with pytest.raises(ValueError, match=message):
+            release.promote(beta_tag, version_bump)
+        reserve.assert_not_called()
+        publish.assert_not_called()
+
+    def test_retry_cannot_change_an_unfinished_promotion_target(self, monkeypatch):
+        """An unfinished major release cannot allocate a second minor tag on retry."""
+        monkeypatch.setattr(release, "get_tags", lambda: {
+            "v1.0.26-beta.1": "tested", "v2.0.0": "tested"})
+        monkeypatch.setattr(release, "get_releases", lambda: {
+            "v1.0.25": release_record(), "v2.0.0": release_record(draft=True),
+            "v1.0.26-beta.1": release_record(prerelease=True)})
+        monkeypatch.setattr(release, "require_on_main", Mock())
+        reserve = Mock()
+        monkeypatch.setattr(release, "reserve_tag", reserve)
+        with pytest.raises(ValueError, match="unfinished promotion"):
+            release.promote("v1.0.26-beta.1", "minor")
+        reserve.assert_not_called()
 
     def test_tag_reservation_is_immutable_and_retryable(self, monkeypatch):
         """An upload failure leaves the commit's tag reserved without force-pushing."""

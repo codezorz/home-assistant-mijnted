@@ -168,19 +168,37 @@ is optional housekeeping.
 2. Select branch **main**.
 3. Enter the beta tag, such as `v1.0.26-beta.3`, or leave it empty to use the
    published beta for the current `main` commit.
-4. Run the workflow. If an empty input reports no beta for `main`, wait for
+4. Choose **version_bump**: **patch** (default), **minor**, or **major**.
+5. Run the workflow. If an empty input reports no beta for `main`, wait for
    **Tag beta release** to finish or rerun it, then retry promotion.
 
+The selected bump is calculated from the latest published stable version,
+not by incrementing the beta's version. For stable `v1.0.25` and beta
+`v1.0.26-beta.3`:
+
+| Selection | Stable release | Next default beta cycle |
+|---|---|---|
+| `patch` | `v1.0.26` | `v1.0.27-beta.1` |
+| `minor` | `v1.1.0` | `v1.1.1-beta.1` |
+| `major` | `v2.0.0` | `v2.0.1-beta.1` |
+
+Minor and major bumps reset the lower version components to zero. A beta from
+an already-released version cycle cannot be promoted again to a new release.
+For an explicitly configured higher beta cycle, choose a bump that reaches at
+least that beta's core version; promotion never lowers its version.
+
 Promotion downloads the selected beta's existing integration ZIP and changes
-only its manifest version to `1.0.26`. It tags the same source commit as
-`v1.0.26`, publishes a full release marked latest, and carries over beta release
-notes with the source tag and commit recorded. Existing beta releases stay
-available. Selecting an older beta is supported even when `main` has advanced.
+only its manifest version to the calculated stable version. It tags the same
+source commit, publishes a full release marked latest, and carries over beta
+release notes with the source tag, commit, and selected bump recorded. Existing
+beta releases stay available. Selecting an older beta is supported even when
+`main` has advanced.
 Existing stable tags cannot be moved, and stable versions cannot go backwards.
 
-After promotion, new commits normally start `v1.0.27-beta.1`. An already-active
-higher minor/major cycle continues instead. Promotion does not create a new
-commit or immediately publish a beta for the unchanged `main` tip.
+After promotion, new commits normally start the next patch's beta cycle shown
+above. An already-active higher minor/major cycle continues instead.
+Promotion does not create a new commit or immediately publish a beta for the
+unchanged `main` tip.
 
 ### Permissions, retries, and validation
 
@@ -237,7 +255,10 @@ is handled by the next beta run.
 Packages are attached to draft releases before publication. Rerunning a failed
 workflow repairs unfinished drafts, preserving the assigned tag/version.
 Published betas are skipped, and repeating the same completed promotion is a
-no-op. Tags are never force-updated. If a workflow times out on a large batch,
+no-op even though the latest stable version has advanced. An unfinished
+promotion keeps its original target; retry with the original bump selection
+rather than creating a second release for the same beta. Tags are never
+force-updated. If a workflow times out on a large batch,
 rerun **Tag beta release**; already-published commits are not tested again.
 
 Validate release tooling locally without publishing:

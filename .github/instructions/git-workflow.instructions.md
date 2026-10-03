@@ -35,7 +35,9 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   pushes and merged branches. Prefer squash merges if intermediate commits
   are not independently releasable.
 - By default, betas target the patch after the latest published stable release.
-  For features or breaking changes, set `next_version` in
+  Stable promotion exposes a `version_bump` choice: patch (default), minor,
+  or major, calculated from the latest published stable version. To set a
+  higher beta cycle before promotion, optionally set `next_version` in
   `.github/release-config.json` to a higher minor or major core version. An active
   beta cycle cannot move backwards; an override is consumed once released.
 - Keep each PR focused on its task. Note an explicit target-version decision
@@ -100,8 +102,12 @@ dispatch. It creates `vX.Y.Z-beta.N` tags, prereleases, and
 For stable publication, run **Promote release** from `main`. Supply an
 existing beta tag or leave it empty to select the published beta at the current
 `main` tip. If that beta is not available yet, wait for or rerun the beta workflow.
-Promotion creates `vX.Y.Z` on the selected beta's exact commit and changes only
-the manifest version in its package. It does not rebuild application code.
+Choose `version_bump`: patch (default), minor, or major. Promotion calculates
+`vX.Y.Z` from the latest stable release, tags the selected beta's exact commit,
+and changes only the manifest version in its package. It does not rebuild
+application code. It cannot lower the beta's core version or release an older
+beta cycle again. Completed promotions are no-ops on retry; unfinished ones
+must retain their original target and bump selection.
 The next beta defaults to `vX.Y.(Z+1)-beta.1`, unless a higher cycle is active.
 
 Both publishers share a concurrency lock, recover unfinished draft releases,
