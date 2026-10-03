@@ -20,10 +20,22 @@ async def async_setup_entry(
         entry: Configuration entry
         async_add_entities: Callback to add entities
     """
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    
-    buttons: List[ButtonEntity] = [
-        MijnTedResetStatisticsButton(coordinator, hass=hass, entry_id=entry.entry_id)
-    ]
-    
+    store = hass.data[DOMAIN][entry.entry_id]
+    coordinators = store["coordinators"]
+    meters = store["meters"]
+
+    buttons: List[ButtonEntity] = []
+    for meter in meters:
+        coordinator = coordinators.get(meter.key)
+        if coordinator is None:
+            continue
+        buttons.append(
+            MijnTedResetStatisticsButton(
+                coordinator,
+                hass=hass,
+                entry_id=entry.entry_id,
+                cache_id=meter.cache_id(entry.entry_id),
+            )
+        )
+
     async_add_entities(buttons, True)

@@ -23,6 +23,29 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - Some sensors keep an in-memory `_last_known_value` and return that during partial outages.
 - `_last_known_value` is not persisted across Home Assistant restarts.
 
+## Multi-Meter Devices (Per Delivery Type / Unit)
+
+The MijnTed API exposes multiple **delivery types** (meters) per residential unit, discovered via `GET /api/address/deliveryTypes/{unit}` (see [ENDPOINTS.md](./ENDPOINTS.md)):
+
+- **Type 1 = Heating** (`activeModel` `F59`/WMZ), available units `Eenheden` and `GJ`
+- **Type 2 = Warm water** (`activeModel` `WWZ`), unit `m³`
+- **Type 3 = Cold water** (`activeModel` `KWZ`), unit `m³`
+
+The integration creates **one Home Assistant device plus a full sensor set per `(delivery_type, unit)` combination**. Each device carries the same sensor suite described below (monthly/total/average usage, last-year variants, per-device meter readings, diagnostics, and HA Energy dashboard statistics injection); only the meter and unit differ. For example, a home with all three meters and heating reported in both units yields four devices:
+
+- `MijnTed Heating (Eenheden)`
+- `MijnTed Heating (GJ)`
+- `MijnTed Warm water (m³)`
+- `MijnTed Cold water (m³)`
+
+Notes:
+
+- **Units** follow the meter: water sensors use `m³` with device class `water`; heating uses `GJ` or normalized `Units` (from `Eenheden`/`Einheiten`). The unit descriptions below were written for the original single (heating) meter and apply per meter, with the unit substituted accordingly.
+- **Unit selection**: which `(delivery_type, unit)` combinations are enabled is configurable via the integration's **Options flow** (default: all discovered combinations).
+- **`?unitOfMeasure=GJ`**: appended only for heating when the `GJ` unit is selected; water types default to `m³` and omit it.
+- **Transient empty water data**: the MijnTed water page intermittently returns "no meters"/empty data until refreshed. The integration tolerates transient empty responses and keeps last-known data per meter.
+- The sensor unique IDs and device sensors below are scoped per device, so identical sensor types coexist across meters without collision.
+
 ## Sensor Catalog
 
 ## Usage Sensors

@@ -86,7 +86,11 @@ class TestEnsureMonthlyHistoryCacheStatisticsReinject:
         hass = MagicMock()
         hass.data = {
             init_mod.DOMAIN: {
-                entry.entry_id: existing_coordinator,
+                entry.entry_id: {
+                    "coordinators": {"": existing_coordinator},
+                    "meters": [],
+                    "discovery": [],
+                },
             }
         }
         cache = {"2026-02": _make_cache_entry(2, 2026, total_usage=245.0, average_usage=10.0)}

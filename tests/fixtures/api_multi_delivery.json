@@ -1,0 +1,528 @@
+{
+  "/api/address/deliveryTypes/100000": [
+    1,
+    2,
+    3
+  ],
+  "/api/activeModel/100000/1": "F59",
+  "/api/activeModel/100000/2": "WWZ",
+  "/api/activeModel/100000/3": "KWZ",
+  "/api/deviceStatuses/100000/1/2026?fromDate=2026-06-20": [
+    {
+      "measurementDeviceId": 900000,
+      "room": "W",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 0.0,
+      "unitOfMeasure": "Einheiten",
+      "deactivationDate": "02-02-2026 00:00:00",
+      "radiographicMeter": true
+    },
+    {
+      "measurementDeviceId": 900000,
+      "room": "KA",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 0.0,
+      "unitOfMeasure": "Einheiten",
+      "deactivationDate": "02-02-2026 00:00:00",
+      "radiographicMeter": true
+    },
+    {
+      "measurementDeviceId": 900000,
+      "room": "KEU",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 0.0,
+      "unitOfMeasure": "Einheiten",
+      "deactivationDate": "02-02-2026 00:00:00",
+      "radiographicMeter": true
+    },
+    {
+      "measurementDeviceId": 900000,
+      "room": "KEU",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 0.0,
+      "unitOfMeasure": "Einheiten",
+      "deactivationDate": "02-02-2026 00:00:00",
+      "radiographicMeter": true
+    }
+  ],
+  "/api/unitOfMeasures/100000/1/2026": [
+    {
+      "value": "eenheid",
+      "displayName": "Eenheden"
+    },
+    {
+      "value": "GJ",
+      "displayName": "GJ"
+    }
+  ],
+  "/api/deviceStatuses/100000/1/2026?unitOfMeasure=GJ&fromDate=2026-06-20": [
+    {
+      "measurementDeviceId": 900000,
+      "room": "ALG",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 0.627,
+      "unitOfMeasure": "GJ",
+      "deactivationDate": "",
+      "radiographicMeter": true
+    },
+    {
+      "measurementDeviceId": 900000,
+      "room": "ALG",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 1.887,
+      "unitOfMeasure": "GJ",
+      "deactivationDate": "",
+      "radiographicMeter": true
+    }
+  ],
+  "/api/getLastSyncDate/100000/2/2026": "19/06/2026",
+  "/api/deviceStatuses/100000/2/2026?unitOfMeasure=GJ&fromDate=2026-06-20": [],
+  "/api/residentialUnitUsage/2026/100000/2?unitOfMeasure=GJ": {
+    "monthlyEnergyUsages": [
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "12.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "11.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "10.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "9.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "8.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "7.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "6.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "5.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "4.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "3.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "2.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "1.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      }
+    ],
+    "averageEnergyUseForBillingUnit": 0
+  },
+  "/api/unitOfMeasures/100000/2/2026": [
+    {
+      "value": "m³",
+      "displayName": "m³"
+    }
+  ],
+  "/api/deviceStatuses/100000/3/2026?unitOfMeasure=GJ&fromDate=2026-06-20": [],
+  "/api/residentialUnitUsage/2026/100000/3?unitOfMeasure=GJ": {
+    "monthlyEnergyUsages": [
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "12.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "11.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "10.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "9.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "8.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "7.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "6.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "5.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "4.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "3.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "2.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "1.2026",
+        "unitOfMeasurement": "Eenheden",
+        "averageEnergyUseForBillingUnit": null
+      }
+    ],
+    "averageEnergyUseForBillingUnit": 0
+  },
+  "/api/unitOfMeasures/100000/3/2026": [
+    {
+      "value": "m³",
+      "displayName": "m³"
+    }
+  ],
+  "/api/deviceStatuses/100000/3/2026?fromDate=2026-06-20": [
+    {
+      "measurementDeviceId": 900000,
+      "room": "ALG",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 0.0,
+      "unitOfMeasure": "m³",
+      "deactivationDate": "",
+      "radiographicMeter": false
+    },
+    {
+      "measurementDeviceId": 900000,
+      "room": "ALG",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 8.051,
+      "unitOfMeasure": "m³",
+      "deactivationDate": "",
+      "radiographicMeter": true
+    }
+  ],
+  "/api/residentialUnitUsage/2026/100000/3": {
+    "monthlyEnergyUsages": [
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "1.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "2.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 5.5,
+        "monthYear": "3.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": 1.82
+      },
+      {
+        "totalEnergyUsage": 1.21,
+        "monthYear": "4.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": 1.67
+      },
+      {
+        "totalEnergyUsage": 0.91,
+        "monthYear": "5.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": 1.92
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "6.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "7.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "8.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "9.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "10.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "11.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "12.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      }
+    ],
+    "averageEnergyUseForBillingUnit": 0
+  },
+  "/api/deviceStatuses/100000/2/2026?fromDate=2026-06-20": [
+    {
+      "measurementDeviceId": 900000,
+      "room": "ALG",
+      "deviceId": 900000,
+      "deviceNumber": "",
+      "currentReadingValue": 0.0,
+      "unitOfMeasure": "m³",
+      "deactivationDate": "",
+      "radiographicMeter": false
+    },
+    {
+      "measurementDeviceId": 900000,
+      "room": "ALG",
+      "deviceId": 900000,
+      "deviceNumber": "000000",
+      "currentReadingValue": 30.918,
+      "unitOfMeasure": "m³",
+      "deactivationDate": "",
+      "radiographicMeter": true
+    }
+  ],
+  "/api/residentialUnitUsage/2026/100000/2": {
+    "monthlyEnergyUsages": [
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "1.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "2.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 18.03,
+        "monthYear": "3.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": 1.76
+      },
+      {
+        "totalEnergyUsage": 5.56,
+        "monthYear": "4.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": 0.97
+      },
+      {
+        "totalEnergyUsage": 4.62,
+        "monthYear": "5.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": 0.94
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "6.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "7.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "8.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "9.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "10.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "11.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "12.2026",
+        "unitOfMeasurement": "m³",
+        "averageEnergyUseForBillingUnit": null
+      }
+    ],
+    "averageEnergyUseForBillingUnit": 0
+  },
+  "/api/residentialUnitUsage/2026/100000/1?unitOfMeasure=GJ": {
+    "monthlyEnergyUsages": [
+      {
+        "totalEnergyUsage": 1.55,
+        "monthYear": "1.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": 2.7
+      },
+      {
+        "totalEnergyUsage": 0.67,
+        "monthYear": "2.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": 1.3
+      },
+      {
+        "totalEnergyUsage": 0.25,
+        "monthYear": "3.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": 0.64
+      },
+      {
+        "totalEnergyUsage": 0.04,
+        "monthYear": "4.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": 0.27
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "5.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": 0.09
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "6.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "7.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "8.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "9.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "10.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "11.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": null
+      },
+      {
+        "totalEnergyUsage": 0.0,
+        "monthYear": "12.2026",
+        "unitOfMeasurement": "GJ",
+        "averageEnergyUseForBillingUnit": null
+      }
+    ],
+    "averageEnergyUseForBillingUnit": 0
+  }
+}

@@ -1,7 +1,8 @@
 import asyncio
 import logging
+import re
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -11,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import MijntedApi
 from .const import (
     CACHE_HISTORY_MONTHS,
+    CONF_ENABLED_METERS,
     CONF_PASSWORD,
     CONF_POLLING_INTERVAL,
     CONF_USERNAME,
@@ -27,7 +29,7 @@ from .exceptions import (
     MijntedGrantExpiredError,
 )
 from .utils import ApiUtil, DataUtil, DateUtil, TimestampUtil
-from .sensors.base import MijnTedSensor
+from .sensors.base import MijnTedSensor, unit_slug
 from .sensors.models import (
     DeviceReading,
     MONTH_STATE_COMPLETE_READINGS,
@@ -41,9 +43,84 @@ from .sensors.models import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def _load_persisted_cache(hass: HomeAssistant, entry_id: str) -> Optional[Dict[str, MonthCacheEntry]]:
+class MeterContext(NamedTuple):
+    """A single (delivery_type, unit) meter to expose as its own device + sensors.
+
+    Attributes:
+        delivery_type: The MijnTed delivery type id (e.g. 1, 2, 3).
+        unit: The selected unit value (e.g. "GJ", "m³", "eenheid"), or None.
+        label: Friendly delivery-type label (e.g. "Heating", "Warm water").
+    """
+
+    delivery_type: Any
+    unit: Optional[str]
+    label: str
+
+    @property
+    def unit_slug(self) -> str:
+        """Id-safe slug of the unit, used in keys/unique_ids/storage."""
+        return unit_slug(self.unit)
+
+    @property
+    def key(self) -> str:
+        """Stable key identifying this meter within a config entry."""
+        return f"{self.delivery_type}_{self.unit_slug}"
+
+    def cache_id(self, entry_id: str) -> str:
+        """Per-meter persistent-storage id (namespaced under the entry)."""
+        return f"{entry_id}_{self.key}"
+
+
+def _entry_store(hass: HomeAssistant, entry_id: str) -> Optional[Dict[str, Any]]:
+    """Return the per-entry data dict in hass.data, or None if absent."""
+    store = hass.data.get(DOMAIN, {}).get(entry_id)
+    return store if isinstance(store, dict) else None
+
+
+def _get_meter_coordinator(
+    hass: HomeAssistant, entry: ConfigEntry, meter_key: str
+) -> Optional[DataUpdateCoordinator]:
+    """Resolve the existing coordinator for a meter, or None if not set up yet."""
+    store = _entry_store(hass, entry.entry_id)
+    if not store:
+        return None
+    return store.get("coordinators", {}).get(meter_key)
+
+
+def _meters_from_detail(
+    delivery_types_detail: List[Dict[str, Any]],
+    enabled_keys: Optional[set] = None,
+) -> List["MeterContext"]:
+    """Build MeterContext list from discovery detail, one per (type, unit).
+
+    Args:
+        delivery_types_detail: Output of api.discover_delivery_types().
+        enabled_keys: Optional set of meter keys to include; None means all.
+
+    Returns:
+        List of MeterContext, one per available (delivery_type, unit) pair. A
+        delivery type that reports no units still yields a single default meter.
+    """
+    meters: List[MeterContext] = []
+    for entry in delivery_types_detail:
+        if not isinstance(entry, dict):
+            continue
+        delivery_type = entry.get("id")
+        label = entry.get("label") or entry.get("model") or f"Type {delivery_type}"
+        units = entry.get("units") or []
+        unit_values = [u.get("value") for u in units if isinstance(u, dict) and u.get("value")]
+        if not unit_values:
+            unit_values = [None]
+        for unit in unit_values:
+            meter = MeterContext(delivery_type=delivery_type, unit=unit, label=label)
+            if enabled_keys is None or meter.key in enabled_keys:
+                meters.append(meter)
+    return meters
+
+
+async def _load_persisted_cache(hass: HomeAssistant, cache_id: str) -> Optional[Dict[str, MonthCacheEntry]]:
     """Load monthly history cache from persistent storage."""
-    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}")
+    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{cache_id}")
     try:
         data = await store.async_load()
         if data and isinstance(data, dict):
@@ -73,8 +150,8 @@ async def _load_persisted_cache(hass: HomeAssistant, entry_id: str) -> Optional[
 
 
 async def _save_persisted_cache(
-    hass: HomeAssistant, 
-    entry_id: str, 
+    hass: HomeAssistant,
+    cache_id: str,
     monthly_history_cache: Dict[str, MonthCacheEntry]
 ) -> None:
     """Save monthly history cache to persistent storage."""
@@ -98,7 +175,7 @@ async def _save_persisted_cache(
         _LOGGER.debug("No complete months to persist")
         return
     
-    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}")
+    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{cache_id}")
     try:
         await store.async_save({"monthly_history_cache": complete_cache})
         _LOGGER.debug("Saved %d complete months to persistent storage", len(complete_cache))
@@ -106,12 +183,12 @@ async def _save_persisted_cache(
         _LOGGER.warning("Failed to save persisted cache: %s", err)
 
 
-async def _clear_persisted_cache(hass: HomeAssistant, entry_id: str) -> None:
+async def _clear_persisted_cache(hass: HomeAssistant, cache_id: str) -> None:
     """Clear monthly history cache from persistent storage."""
-    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}")
+    store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{cache_id}")
     try:
         await store.async_save({"monthly_history_cache": {}})
-        _LOGGER.info("Cleared persisted cache for entry %s", entry_id)
+        _LOGGER.info("Cleared persisted cache for %s", cache_id)
     except Exception as err:
         _LOGGER.warning("Failed to clear persisted cache: %s", err)
 
@@ -1290,7 +1367,11 @@ async def _fetch_and_normalize_api_data(api: MijntedApi) -> Dict[str, Any]:
     unit_of_measures_data = _handle_gather_result(
         "unit_of_measures", unit_of_measures_data, [], residential_unit
     )
-    delivery_types = await api.get_delivery_types()
+    # Discover all delivery types with their model and units (issue #50).
+    # discover_delivery_types() also calls get_delivery_types() internally, which
+    # sets api.delivery_type for the single-type endpoints fetched above.
+    delivery_types_detail = await api.discover_delivery_types()
+    delivery_types = [entry["id"] for entry in delivery_types_detail]
     return {
         "energy_usage_data": energy_usage_data,
         "last_update_data": last_update_data,
@@ -1302,6 +1383,7 @@ async def _fetch_and_normalize_api_data(api: MijntedApi) -> Dict[str, Any]:
         "usage_per_room_data": usage_per_room_data,
         "unit_of_measures_data": unit_of_measures_data,
         "delivery_types": delivery_types,
+        "delivery_types_detail": delivery_types_detail,
     }
 
 
@@ -1390,15 +1472,16 @@ async def _compute_anchor_calculations(
 
 def _load_cache_from_coordinator(
     hass: HomeAssistant,
-    entry: ConfigEntry
+    entry: ConfigEntry,
+    meter_key: str,
 ) -> Tuple[Dict[str, MonthCacheEntry], Optional[str]]:
     """Load monthly history cache and cached_last_update_date from existing coordinator data."""
     monthly_history_cache: Dict[str, MonthCacheEntry] = {}
     cached_last_update_date: Optional[str] = None
 
-    if entry.entry_id in hass.data.get(DOMAIN, {}):
-        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
-        if existing_coordinator and existing_coordinator.data:
+    existing_coordinator = _get_meter_coordinator(hass, entry, meter_key)
+    if existing_coordinator and existing_coordinator.data:
+        if True:  # noqa: SIM102 - keep nested block indentation stable
             cache_data = existing_coordinator.data.get("monthly_history_cache", {})
             cached_last_update_date = existing_coordinator.data.get("cached_last_update_date")
             if cache_data:
@@ -1575,28 +1658,28 @@ def _serialize_statistics_reinject(hints: Dict[str, set[str]]) -> Dict[str, List
 def _get_existing_statistics_reinject(
     hass: HomeAssistant,
     entry: ConfigEntry,
+    meter_key: str,
 ) -> Dict[str, set[str]]:
     """Read pending statistics reinject hints from existing coordinator data."""
-    if entry.entry_id in hass.data.get(DOMAIN, {}):
-        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
-        if existing_coordinator and existing_coordinator.data:
-            return _normalize_statistics_reinject(
-                existing_coordinator.data.get("statistics_reinject")
-            )
+    existing_coordinator = _get_meter_coordinator(hass, entry, meter_key)
+    if existing_coordinator and existing_coordinator.data:
+        return _normalize_statistics_reinject(
+            existing_coordinator.data.get("statistics_reinject")
+        )
     return {}
 
 
 def _get_or_create_statistics_tracking(
     hass: HomeAssistant,
-    entry: ConfigEntry
+    entry: ConfigEntry,
+    meter_key: str,
 ) -> StatisticsTracking:
     """Get existing StatisticsTracking from coordinator or create a new one."""
-    if entry.entry_id in hass.data.get(DOMAIN, {}):
-        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
-        if existing_coordinator and existing_coordinator.data:
-            existing_tracking = existing_coordinator.data.get("statistics_tracking")
-            if isinstance(existing_tracking, StatisticsTracking):
-                return existing_tracking
+    existing_coordinator = _get_meter_coordinator(hass, entry, meter_key)
+    if existing_coordinator and existing_coordinator.data:
+        existing_tracking = existing_coordinator.data.get("statistics_tracking")
+        if isinstance(existing_tracking, StatisticsTracking):
+            return existing_tracking
     return StatisticsTracking(
         monthly_usage=None,
         last_year_monthly_usage=None,
@@ -1613,12 +1696,14 @@ async def _load_or_build_cache(
     last_update: Any,
     energy_usage_data: Dict[str, Any],
     now: datetime,
+    meter_key: str,
+    cache_id: str,
 ) -> Tuple[Dict[str, MonthCacheEntry], bool]:
     """Load cache from coordinator/storage, or build initial. Returns (cache, was_modified)."""
-    monthly_history_cache, _ = _load_cache_from_coordinator(hass, entry)
+    monthly_history_cache, _ = _load_cache_from_coordinator(hass, entry, meter_key)
 
     if not monthly_history_cache:
-        persisted_cache = await _load_persisted_cache(hass, entry.entry_id)
+        persisted_cache = await _load_persisted_cache(hass, cache_id)
         if persisted_cache:
             monthly_history_cache = persisted_cache
             _LOGGER.info("Restored monthly history cache from storage (%d complete months)", len(monthly_history_cache))
@@ -1712,18 +1797,22 @@ async def _ensure_monthly_history_cache(
     last_update: Any,
     energy_usage_data: Dict[str, Any],
     filter_status: List[Dict[str, Any]],
+    meter_key: str = "",
+    cache_id: Optional[str] = None,
 ) -> Tuple[Dict[str, MonthCacheEntry], Optional[str], StatisticsTracking, Dict[str, List[str]]]:
     """Load/build/update/enrich/persist monthly history cache."""
+    if cache_id is None:
+        cache_id = entry.entry_id
     now = datetime.now()
     current_last_update_date = _extract_last_update_date(last_update)
-    _, cached_last_update_date = _load_cache_from_coordinator(hass, entry)
+    _, cached_last_update_date = _load_cache_from_coordinator(hass, entry, meter_key)
     last_update_date_changed = current_last_update_date != cached_last_update_date
 
     current_month_refresh_skipped = False
-    pending_statistics_reinject = _get_existing_statistics_reinject(hass, entry)
+    pending_statistics_reinject = _get_existing_statistics_reinject(hass, entry, meter_key)
     try:
         monthly_history_cache, cache_was_modified = await _load_or_build_cache(
-            api, hass, entry, last_update, energy_usage_data, now
+            api, hass, entry, last_update, energy_usage_data, now, meter_key, cache_id
         )
         usage_snapshot_before_update = _snapshot_historical_month_usage_values(
             monthly_history_cache, now
@@ -1745,7 +1834,7 @@ async def _ensure_monthly_history_cache(
         )
         if cache_was_modified or enrichment_modified:
             try:
-                await _save_persisted_cache(hass, entry.entry_id, monthly_history_cache)
+                await _save_persisted_cache(hass, cache_id, monthly_history_cache)
             except Exception as err:
                 _LOGGER.warning("Failed to persist cache: %s", err)
     except Exception as err:
@@ -1759,7 +1848,7 @@ async def _ensure_monthly_history_cache(
         cached_last_update_date if current_month_refresh_skipped
         else current_last_update_date
     )
-    statistics_tracking = _get_or_create_statistics_tracking(hass, entry)
+    statistics_tracking = _get_or_create_statistics_tracking(hass, entry, meter_key)
     statistics_reinject = _serialize_statistics_reinject(pending_statistics_reinject)
     return (
         monthly_history_cache,
@@ -1779,6 +1868,7 @@ def _build_coordinator_return_dict(
     usage_insight_last_year_data: Dict[str, Any],
     active_model: Any,
     delivery_types: List[Any],
+    delivery_types_detail: List[Dict[str, Any]],
     residential_unit_detail_data: Dict[str, Any],
     usage_this_year: Dict[str, Any],
     usage_last_year: Dict[str, Any],
@@ -1791,6 +1881,7 @@ def _build_coordinator_return_dict(
     current_last_update_date: Optional[str],
     statistics_tracking: StatisticsTracking,
     statistics_reinject: Dict[str, List[str]],
+    meter: Optional["MeterContext"] = None,
 ) -> Dict[str, Any]:
     """Build the coordinator data dictionary returned by async_update_data."""
     return {
@@ -1802,6 +1893,10 @@ def _build_coordinator_return_dict(
         "usage_insight_last_year": usage_insight_last_year_data,
         "active_model": active_model,
         "delivery_types": delivery_types,
+        "delivery_types_detail": delivery_types_detail,
+        "delivery_type": meter.delivery_type if meter else None,
+        "meter_unit": meter.unit if meter else None,
+        "delivery_label": meter.label if meter else None,
         "residential_unit": api.residential_unit,
         "residential_unit_detail": residential_unit_detail_data,
         "usage_this_year": usage_this_year,
@@ -1860,14 +1955,14 @@ def _handle_connection_error(
     hass: HomeAssistant,
     entry: ConfigEntry,
     api: MijntedApi,
-    err: MijntedConnectionError
+    err: MijntedConnectionError,
+    meter_key: str,
 ) -> Dict[str, Any]:
     """Handle connection error: return cached data if available, otherwise raise UpdateFailed."""
     cached_data = None
-    if entry.entry_id in hass.data.get(DOMAIN, {}):
-        coordinator = hass.data[DOMAIN][entry.entry_id]
-        if coordinator.data:
-            cached_data = coordinator.data
+    coordinator = _get_meter_coordinator(hass, entry, meter_key)
+    if coordinator and coordinator.data:
+        cached_data = coordinator.data
 
     token_expired = api.auth.is_access_token_expired() if api.auth else True
 
@@ -1927,13 +2022,91 @@ def _handle_grant_expired(hass: HomeAssistant, entry: ConfigEntry, err: MijntedG
     ) from err
 
 
+async def _migrate_legacy_unique_ids(
+    hass: HomeAssistant, entry: ConfigEntry, meters: List[MeterContext]
+) -> None:
+    """Rename legacy single-type unique_ids to the namespaced multi-meter scheme.
+
+    The pre-#50 entities used ``mijnted_<sensor_type>`` and belonged to the first
+    delivery type with its default unit. To preserve recorder history and
+    long-term statistics under the uniform rename, migrate those to
+    ``mijnted_<delivery_type>_<unit_slug>_<sensor_type>`` of the primary meter.
+    Entities already namespaced (``mijnted_<digit>_...``) are skipped, making this
+    idempotent across restarts.
+    """
+    target = next((m for m in meters if m.delivery_type is not None), None)
+    if target is None:
+        return
+    try:
+        from homeassistant.helpers import entity_registry as er
+    except Exception:  # pragma: no cover - HA always provides this at runtime
+        return
+    registry = er.async_get(hass)
+    prefix = f"{DOMAIN}_{target.delivery_type}_{target.unit_slug}_"
+    try:
+        registry_entries = er.async_entries_for_config_entry(registry, entry.entry_id)
+    except Exception as err:  # pragma: no cover - defensive
+        _LOGGER.debug("Could not enumerate entities for unique_id migration: %s", err)
+        return
+    for reg_entry in registry_entries:
+        unique_id = getattr(reg_entry, "unique_id", "") or ""
+        if not unique_id.startswith(f"{DOMAIN}_"):
+            continue
+        rest = unique_id[len(DOMAIN) + 1:]
+        if re.match(r"^\d+_", rest):
+            continue  # already namespaced by delivery type
+        new_unique_id = f"{prefix}{rest}"
+        try:
+            registry.async_update_entity(reg_entry.entity_id, new_unique_id=new_unique_id)
+            _LOGGER.info("Migrated unique_id %s -> %s", unique_id, new_unique_id)
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to migrate unique_id %s -> %s: %s", unique_id, new_unique_id, err
+            )
+
+
+def _migrate_legacy_device(
+    hass: HomeAssistant, entry: ConfigEntry, meters: List[MeterContext]
+) -> None:
+    """Rename or remove the legacy single device left over from the uniform rename.
+
+    Pre-#50 all entities lived on device ``(DOMAIN, residential_unit)``. After
+    namespacing, that device is empty. If the primary meter's namespaced device
+    doesn't exist yet, rename the legacy device onto it (preserving device-level
+    settings); if it already exists (install already upgraded), remove the empty
+    legacy device so it no longer shows up.
+    """
+    target = next((m for m in meters if m.delivery_type is not None), None)
+    residential_unit = entry.data.get("residential_unit")
+    if target is None or not residential_unit:
+        return
+    try:
+        from homeassistant.helpers import device_registry as dr
+    except Exception:  # pragma: no cover - HA always provides this at runtime
+        return
+    registry = dr.async_get(hass)
+    legacy = registry.async_get_device(identifiers={(DOMAIN, residential_unit)})
+    if legacy is None:
+        return
+    new_identifier = (DOMAIN, f"{residential_unit}_{target.delivery_type}_{target.unit_slug}")
+    try:
+        if registry.async_get_device(identifiers={new_identifier}) is not None:
+            registry.async_remove_device(legacy.id)
+            _LOGGER.info("Removed empty legacy MijnTed device %s", legacy.id)
+        else:
+            registry.async_update_device(legacy.id, new_identifiers={new_identifier})
+            _LOGGER.info("Migrated legacy MijnTed device to %s", new_identifier)
+    except Exception as err:
+        _LOGGER.warning("Failed to migrate/remove legacy device: %s", err)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry.
-    
+
     Args:
         hass: Home Assistant instance
         entry: Configuration entry
-        
+
     Returns:
         True if setup was successful, False otherwise
     """
@@ -1971,8 +2144,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise MijntedAuthenticationError("Username and password not found in config entry")
         return (username, password)
     
-    async def async_update_data() -> Dict[str, Any]:
-        """Fetch data from the API and structure it for sensors."""
+    async def async_update_data(meter: MeterContext) -> Dict[str, Any]:
+        """Fetch data from the API for one meter and structure it for sensors."""
         refresh_token_expires_at = _parse_refresh_token_expires_at(entry)
         api = MijntedApi(
             hass=hass,
@@ -1982,8 +2155,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             residential_unit=entry.data.get("residential_unit"),
             refresh_token_expires_at=refresh_token_expires_at,
             token_update_callback=token_update_callback,
-            credentials_callback=credentials_callback
+            credentials_callback=credentials_callback,
+            delivery_type=meter.delivery_type,
+            unit=meter.unit,
         )
+        cache_id = meter.cache_id(entry.entry_id)
         try:
             async with api:
                 await api.authenticate()
@@ -2013,7 +2189,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     statistics_reinject,
                 ) = (
                     await _ensure_monthly_history_cache(
-                        api, hass, entry, last_update, energy_usage_data, filter_status
+                        api, hass, entry, last_update, energy_usage_data, filter_status,
+                        meter.key, cache_id,
                     )
                 )
                 return _build_coordinator_return_dict(
@@ -2026,6 +2203,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     data["usage_insight_last_year_data"],
                     active_model,
                     data["delivery_types"],
+                    data["delivery_types_detail"],
                     data["residential_unit_detail_data"],
                     usage_this_year,
                     usage_last_year,
@@ -2038,6 +2216,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     current_last_update_date,
                     statistics_tracking,
                     statistics_reinject,
+                    meter,
                 )
         except MijntedGrantExpiredError as err:
             _handle_grant_expired(hass, entry, err)
@@ -2049,7 +2228,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             raise UpdateFailed(f"Authentication failed: {err}") from err
         except MijntedConnectionError as err:
-            return _handle_connection_error(hass, entry, api, err)
+            return _handle_connection_error(hass, entry, api, err, meter.key)
         except MijntedApiError as err:
             _LOGGER.error(
                 "API error: %s",
@@ -2067,34 +2246,103 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     polling_interval_seconds = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL.total_seconds())
     update_interval = timedelta(seconds=int(polling_interval_seconds))
-    
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name=DOMAIN,
-        update_method=async_update_data,
-        update_interval=update_interval,
-    )
 
-    await coordinator.async_config_entry_first_refresh()
+    meters = await _discover_meters(hass, entry, token_update_callback, credentials_callback)
+    await _migrate_legacy_unique_ids(hass, entry, meters)
+    _migrate_legacy_device(hass, entry, meters)
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    def _make_update_method(meter: MeterContext):
+        async def _update() -> Dict[str, Any]:
+            return await async_update_data(meter)
+        return _update
+
+    discovery_detail: List[Dict[str, Any]] = []
+    for index, meter in enumerate(meters):
+        coordinator = DataUpdateCoordinator(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_{meter.key}",
+            update_method=_make_update_method(meter),
+            update_interval=update_interval,
+        )
+        # Register before first refresh so per-meter helpers can resolve cached data.
+        hass.data.setdefault(DOMAIN, {}).setdefault(
+            entry.entry_id, {"coordinators": {}, "discovery": [], "meters": []}
+        )
+        hass.data[DOMAIN][entry.entry_id]["coordinators"][meter.key] = coordinator
+        hass.data[DOMAIN][entry.entry_id]["meters"].append(meter)
+        # The primary meter gates entry setup (so a fully-down account retries);
+        # additional meters refresh non-fatally so one flaky meter (e.g. the
+        # intermittently-empty water page) can't block the others.
+        if index == 0:
+            await coordinator.async_config_entry_first_refresh()
+        else:
+            await coordinator.async_refresh()
+        if coordinator.data and coordinator.data.get("delivery_types_detail"):
+            discovery_detail = coordinator.data["delivery_types_detail"]
+
+    if entry.entry_id in hass.data.get(DOMAIN, {}):
+        hass.data[DOMAIN][entry.entry_id]["discovery"] = discovery_detail
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
 
     return True
 
+
+async def _discover_meters(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    token_update_callback,
+    credentials_callback,
+) -> List[MeterContext]:
+    """Bootstrap-authenticate, discover delivery types, and resolve enabled meters.
+
+    Falls back to a single default meter (legacy single-type behavior) when
+    discovery is empty or fails, so setup never produces zero entities.
+    """
+    refresh_token_expires_at = _parse_refresh_token_expires_at(entry)
+    api = MijntedApi(
+        hass=hass,
+        client_id=entry.data["client_id"],
+        refresh_token=entry.data["refresh_token"],
+        access_token=entry.data.get("access_token"),
+        residential_unit=entry.data.get("residential_unit"),
+        refresh_token_expires_at=refresh_token_expires_at,
+        token_update_callback=token_update_callback,
+        credentials_callback=credentials_callback,
+    )
+    detail: List[Dict[str, Any]] = []
+    try:
+        async with api:
+            await api.authenticate()
+            _sync_tokens_to_config(hass, entry, api)
+            detail = await api.discover_delivery_types()
+    except Exception as err:
+        _LOGGER.warning(
+            "Delivery-type discovery failed during setup; falling back to single meter: %s",
+            err,
+            extra={"entry_id": entry.entry_id, "error_type": type(err).__name__},
+        )
+
+    enabled = entry.options.get(CONF_ENABLED_METERS)
+    enabled_keys = set(enabled) if enabled else None
+    meters = _meters_from_detail(detail, enabled_keys)
+    if not meters:
+        meters = [MeterContext(delivery_type=None, unit=None, label="MijnTed")]
+    return meters
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload MijnTed config entry.
-    
+
     Args:
         hass: Home Assistant instance
         entry: Configuration entry to unload
-        
+
     Returns:
         True if unload was successful, False otherwise
     """
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "button"])
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
