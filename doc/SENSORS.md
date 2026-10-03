@@ -137,6 +137,7 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - Category: `diagnostic`
 - Purpose: calendar timestamp of the most recent successful synchronization with the API (integration refresh success moment).
 - Note: this is sync time, not the "readings available until" date.
+- A partial refresh can still advance this timestamp: failures inside the concurrent endpoint fetch are replaced with empty defaults. It is not an all-endpoints-success indicator. Returning cached coordinator data after a connection error retains the earlier timestamp.
 
 ### Active model
 
@@ -197,6 +198,10 @@ This document describes all MijnTed sensors, what they represent, and how they b
   - `has_average`
   - `usage_unit`
 
+The state can fall back to previous-year/cache sources, but these insight
+attributes are derived from current-year `energy_usage_data`. They can therefore
+be absent or refer to a different month than the fallback state.
+
 ## Dynamic Device Sensors
 
 - Class: `MijnTedDeviceSensor`
@@ -255,6 +260,8 @@ Summary:
 ## Statistics Injection Behavior
 
 Usage sensors inject historical statistics into Home Assistant recorder when possible.
+These are long-term statistics imports, not reconstructed ordinary state-history
+rows. Use statistics-capable graphs to view the imported periods.
 
 - Injecting sensors:
   - `monthly_usage`
@@ -275,9 +282,13 @@ Usage sensors inject historical statistics into Home Assistant recorder when pos
   - Imports one monthly state value per period (state-only statistics, no mean/sum aggregation)
   - In Statistics UI, use the state view for these two entities
 - Reset path:
-  - The reset button clears persisted cache and `statistics_tracking`, then triggers refresh
+  - The reset button clears persisted monthly cache and in-memory `statistics_tracking`, then triggers refresh
+  - It does not delete existing recorder history/statistics or clear each sensor's in-memory last-known state
 
 ## Related Button
 
 - Button: `MijnTed reset statistics` (`mijnted_reset_statistics`)
 - Purpose: clear monthly cache and statistics tracking so recorder history can be re-injected from scratch on next refresh.
+
+Entity IDs shown in examples are defaults; use the actual entity ID from your
+Home Assistant entity registry if it has been renamed.

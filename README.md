@@ -2,11 +2,24 @@
 
 This custom component integrates MijnTed devices with Home Assistant, allowing you to monitor your energy usage and other related data within your smart home setup.
 
+## Documentation
+
+This README covers installation, configuration, and everyday usage. Detailed
+references live in [`doc/`](doc/):
+
+| Guide | What it covers |
+|---|---|
+| [Sensors and buttons](doc/SENSORS.md) | Values, attributes, missing-data behavior, statistics, and the reset button |
+| [Month transitions](doc/MONTH_SWITCH.md) | API lag, month lifecycle, baseline locking, and late corrections |
+| [API and authentication](doc/ENDPOINTS.md) | Endpoints, client methods, response formats, and token rotation |
+| [Reporting issues](doc/ISSUE_REPORTING.md) | Diagnostic information and a bug-report template |
+| [Development](doc/DEVELOPMENT.md) | Environment setup, tests, Home Assistant verification, and agent tooling |
+
 ## Installation
 
 1. Copy the `custom_components/mijnted` folder to your Home Assistant's `custom_components` directory.
 2. Restart Home Assistant.
-3. Go to Configuration > Integrations.
+3. Go to Settings > Devices & services > Integrations.
 4. Click the "+ ADD INTEGRATION" button and search for "MijnTed".
 5. Follow the configuration steps.
 
@@ -21,7 +34,7 @@ This custom component integrates MijnTed devices with Home Assistant, allowing y
 5. Click "Add".
 6. Search for "MijnTed" in HACS and install it.
 7. Restart Home Assistant.
-8. Go to Configuration > Integrations.
+8. Go to Settings > Devices & services > Integrations.
 9. Click the "+ ADD INTEGRATION" button and search for "MijnTed".
 10. Follow the configuration steps.
 
@@ -62,80 +75,62 @@ Form Data:
 - Default: 3600 seconds (1 hour)
 - Range: 3600-86400 seconds (1 hour to 24 hours)
 - You can configure this during setup or leave it at the default
+- To change it later, open the integration's options/configure dialog in Settings > Devices & services. Saving the interval reloads the integration.
 
-During the integration setup in Home Assistant, you'll be prompted to enter your client ID, username, and password. The integration will automatically handle authentication using OAuth 2.0 and store the refresh token for future use.
+During setup, enter your client ID, username, and password. The integration handles OAuth 2.0 and retains credentials and tokens in the Home Assistant config entry for automatic reauthentication. See the [authentication reference](doc/ENDPOINTS.md#authentication-lifecycle) for details.
 
 ## Usage
 
 Once configured, the integration will create several sensors in Home Assistant:
 
-- Detailed references:
-  - `doc/SENSORS.md` - full sensor catalog, attributes, and edge cases
-  - `doc/MONTH_SWITCH.md` - detailed month-switch behavior and timeline
-  - `doc/ENDPOINTS.md` - API endpoints, request/response details, and auth-related notes
+Detailed references: [sensor catalog](doc/SENSORS.md), [month-switch timeline](doc/MONTH_SWITCH.md), and [API/authentication](doc/ENDPOINTS.md).
 
-- **Monthly usage** - Current month's energy usage (calculated from total_usage_end - total_usage_start). The current month is the calendar month (sync date), not the API last update date; `last_update_date` in attributes is the date through which meter values are available (may be in the previous month when the API is behind). Includes attributes: `start_date`, `end_date`, `days`, `month_id`, and `last_update_date`.
+- **Monthly usage** - Current calendar month's energy usage, calculated from start/end readings with annual-reset handling in January. Attributes include `start_date`, `end_date`, `days`, and `month_id`. Use the **Last update** sensor to see the date through which API readings are available.
 - **Last year monthly usage** - Last year's monthly usage for the corresponding month (prefers API-provided value from previous year's data)
 - **Average monthly usage** - Average usage extracted from historical monthly usage data
 - **Last year average monthly usage** - Last year's average monthly usage for the corresponding month (prefers API-provided value from previous year's data)
 - **Total usage** - Sum of all device readings (cumulative filter status, accumulating counter). Attributes expose aligned month payloads for `current` and `history`, including month `status` (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`). Automatically injects historical data for proper history graphs.
 - **Last update** - Date for which device readings are currently available from the API (often 1-2 days behind)
-- **Last successful sync** - Calendar timestamp of the most recent successful API refresh by this integration
+- **Last successful sync** - Timestamp of the most recent returned refresh payload; some individual endpoints can have failed during that refresh
 - **Active model** - The active model identifier (e.g., "F71")
 - **Delivery type** - Available delivery types for your residential unit
 - **Residential unit** - Detailed information about your residential unit
 - **Unit of measures** - Unit of measurement information
 - **Latest available insight** - Month with the last available insight data including average. Displays the month name only (e.g. "January 2026"). Attributes include month_id, usage_unit, has_average.
 - **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)
-- **Reset statistics** - Button to reset statistics tracking and trigger re-injection of historical data
+- **Reset statistics** - Button to reset statistics tracking and trigger re-injection of historical data. See [reset behavior](doc/SENSORS.md#related-button) for what it clears.
 
-All usage sensors display values with zero decimal places for a cleaner interface.
+Usage sensors request zero decimal places for display; underlying values retain their precision.
 
 ### History and Statistics
 
-The integration automatically injects historical data into Home Assistant's recorder for proper history graphs:
-- **Total Usage Sensor**: Injects historical `total_usage_end` values (accumulated counter) for each month, enabling standard history graphs to display consumption trends over time
-- **Monthly Usage Sensor**: Injects monthly consumption statistics
-- **Late month corrections**: If a previous month is corrected after month switch (for example final-day readings arrive later), the corrected historical month is re-injected once so recorder history is updated
-- **Last Year Monthly Usage Sensor**: Injects historical data for the previous year's corresponding month
-- **Average Monthly Usage Sensors**: Inject historical average values for trend analysis. These statistics are imported as monthly state values; use state view in Statistics for `average_monthly_usage` and `last_year_average_monthly_usage`
+With recorder enabled, usage sensors import historical long-term statistics.
+This does not backfill ordinary sensor state history. Total usage uses
+`TOTAL_INCREASING`; other usage sensors use `TOTAL`. Average statistics are
+state-only: use the Statistics state view for the two average entities.
 
-All usage sensors use appropriate state classes (`TOTAL` or `TOTAL_INCREASING`) to ensure correct behavior in Home Assistant's statistics and history system, enabling proper historical data tracking and graph visualization:
-- **Monthly Usage**: `TOTAL` - for tracking monthly consumption
-- **Last Year Monthly Usage**: `TOTAL` - for historical comparison
-- **Average Monthly Usage**: `TOTAL` - for tracking average usage trends over time
-- **Last Year Average Monthly Usage**: `TOTAL` - for historical average comparison
-- **Total Usage**: `TOTAL_INCREASING` - for cumulative meter readings
+Late month corrections can trigger reinjection. The reset button rebuilds the
+integration cache and injection tracking; it does not delete recorder data.
+See [statistics behavior](doc/SENSORS.md#statistics-injection-behavior) for the
+full contract and [month-switch behavior](doc/MONTH_SWITCH.md) for boundary cases.
 
 You can use these sensors in your automations, scripts, and dashboards to monitor and analyze your energy consumption. The sensors include additional attributes with detailed information that can be accessed in templates and automations.
 
 ## API
 
-The integration uses a custom `MijntedApi` class to interact with the MijnTed API. Key methods include:
-
-- `authenticate()`: Authenticates with the MijnTed API using refresh token and retrieves/refreshes access token
-- `get_energy_usage()`: Fetches the current year's energy usage data
-- `get_last_data_update()`: Retrieves the timestamp of the last data update
-- `get_filter_status()`: Gets filter status and device readings
-- `get_device_statuses_for_date(target_date)`: Gets device statuses for a specific date
-- `get_usage_insight(year)`: Retrieves usage insights for a specific year (defaults to current year)
-- `get_active_model()`: Gets the active model information
-- `get_delivery_types()`: Retrieves available delivery types for the residential unit
-- `get_residential_unit_detail()`: Gets detailed residential unit information
-- `get_usage_per_room(year)`: Gets usage data per room for a specific year (defaults to current year)
-- `get_unit_of_measures()`: Gets unit of measurement information
-
-**Note:** Token refresh is handled automatically by the internal `MijntedAuth` class when access tokens expire. The API automatically retries requests with a refreshed token if authentication fails.
+`MijntedApi` handles data endpoints and `MijntedAuth` manages tokens and
+credential-based rotation. The [endpoint reference](doc/ENDPOINTS.md) owns the
+method mapping, request/response examples, and retry details.
 
 ## Troubleshooting
 
 If you encounter issues:
 
-1. Check that your MijnTed client ID and refresh token are correct.
+1. Check that your MijnTed client ID and login credentials are correct and that you can log in on the MijnTed website.
 2. Ensure your internet connection is stable.
 3. Verify that the MijnTed API is accessible.
-4. If authentication fails, your refresh token may have expired. You'll need to obtain a new refresh token.
-5. Check the polling interval setting - if set too low, it may cause rate limiting issues.
+4. Refresh-token rotation is automatic. If it fails and Home Assistant requests reauthentication, complete that flow with your client ID, username, and password; you do not need to paste a refresh token manually.
+5. If readings look stale, compare **Last update** with **Last successful sync**. MijnTed readings often lag the calendar date; a recent sync can also contain partial endpoint failures. Check logs and the [sensor edge cases](doc/SENSORS.md#edge-cases-and-expected-behavior).
 
 For more detailed error messages, enable debug logging for the MijnTed component in your Home Assistant configuration by adding the following to your `configuration.yaml`:
 
@@ -150,21 +145,14 @@ logger:
 
 When opening a GitHub issue, include reproducible steps, expected vs actual behavior, logs, and environment details.
 
-- See `doc/ISSUE_REPORTING.md` for a full checklist and copy/paste bug report template.
+- See [issue reporting](doc/ISSUE_REPORTING.md) for a full checklist and copy/paste bug report template.
 - Use the default GitHub issue forms (`Bug report`, `Feature request`, `Question`) to start with the right structure.
+- For security vulnerabilities, follow the [private reporting policy](SECURITY.md) instead of opening a public issue.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-To set up a development environment:
-
-1. Clone the repository
-2. The integration can be tested directly in Home Assistant by copying the `custom_components/mijnted` folder to your Home Assistant's `custom_components` directory
-3. Restart Home Assistant to load the custom component
-
-The integration uses the following dependencies:
-- `aiohttp` - For async HTTP requests
-- `PyJWT` - For JWT token decoding
-- `pkce` - For PKCE code generation in OAuth flow
-- `requests` - For synchronous HTTP requests during authentication
+Start with the [development guide](doc/DEVELOPMENT.md) for local setup, tests,
+CI, Home Assistant verification, and agent tooling. [AGENTS.md](AGENTS.md)
+maps implementation instructions; [CLAUDE.md](CLAUDE.md) is the Claude entry point.

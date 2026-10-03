@@ -22,7 +22,7 @@ This document defines expected behavior when calendar month boundaries and API d
 
 - `Total usage`:
   - cumulative, total-increasing in `Units`.
-  - resets each year on January 1 logic.
+  - follows API meter readings; annual resets are handled in usage/statistics calculations. A calendar change alone does not synthesize a reset of the live total while the API is behind.
   - attributes:
     - `current`: current calendar month data.
     - `history`: historical months (current month excluded).
@@ -131,3 +131,4 @@ Expected behavior:
 ## Manual Recovery
 
 - In rare edge cases where month-boundary cache values look stale or incorrect, use button `button.mijnted_reset_statistics` to rebuild cache/statistics from fresh data.
+- This resets integration cache/injection tracking, not recorder data. See the [reset behavior](SENSORS.md#related-button). Entity IDs are examples; use your registry's actual ID.
