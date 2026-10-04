@@ -7,15 +7,6 @@ on:
         description: "Beta tag to promote; leave empty to release current main"
         required: false
         type: string
-      version_bump:
-        description: "Stable version bump from the latest published stable release"
-        required: true
-        type: choice
-        default: patch
-        options:
-          - patch
-          - minor
-          - major
 
 permissions:
   contents: read
@@ -63,5 +54,4 @@ jobs:
           GH_TOKEN: ${{ steps.release-app.outputs.token }}
           GH_REPO: ${{ github.repository }}
           BETA_TAG: ${{ inputs.beta_tag }}
-          VERSION_BUMP: ${{ inputs.version_bump }}
-        run: python .github/scripts/release.py promote "$BETA_TAG" --version-bump "$VERSION_BUMP"
+        run: python .github/scripts/release.py promote "$BETA_TAG"

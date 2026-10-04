@@ -34,12 +34,30 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   documentation and tooling changes, plus intermediate commits in multi-commit
   pushes and merged branches. Prefer squash merges if intermediate commits
   are not independently releasable.
-- By default, betas target the patch after the latest published stable release.
-  Stable promotion exposes a `version_bump` choice: patch (default), minor,
-  or major, calculated from the latest published stable version. To set a
-  higher beta cycle before promotion, optionally set `next_version` in
-  `.github/release-config.json` to a higher minor or major core version. An active
-  beta cycle cannot move backwards; an override is consumed once released.
+- PR release labels determine beta targets: `release:patch`, `release:minor`,
+  or `release:major`. Use at most one; unlabelled PRs and direct pushes default
+  to patch. The beta publisher reconstructs labels at the main merge event,
+  ignoring later label edits. Open PRs do not influence versions.
+- Accumulate the highest requested bump since the latest published stable,
+  rather than incrementing the current beta core for each PR. Repeated minor
+  requests continue the same minor cycle. An already-reserved higher beta cycle
+  cannot move backwards, including legacy cycles. Promotion publishes that
+  beta's exact core version; it has no bump selection. Do not add version
+  overrides to `.github/release-config.json`.
+- Operational-only changes that do not change integration behavior (CI,
+  release automation, agent tooling, or documentation) use normal betas with
+  no release label or bump question. Integration impact is the boundary,
+  rather than the size of the diff or changes to developer workflows.
+- Routine nonbreaking integration bug fixes also use normal betas without a
+  release label or bump question.
+- For new integration features, ask for patch, minor, major, or normal betas
+  with no label before creating/updating the PR, unless the user already chose.
+  Recommend minor for backward-compatible features. Ask about major for
+  breaking integration behavior, even a bug fix.
+- Apply at most one user-selected release label and record the decision in
+  the PR description. No label already supplies default patch intent; do not
+  suggest an explicit patch label merely to continue betas. Generic type labels
+  such as `enhancement` and `bug` do not determine release versions.
 - Keep each PR focused on its task. Note an explicit target-version decision
   in the PR description when applicable.
 
@@ -69,6 +87,9 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
 
 - Query the repository's existing labels; do not invent labels. Apply suitable
   labels when creating/updating PRs and when triaging/closing issues.
+- The release-label scheme above is part of repository automation. If its
+  labels are missing, create those defined labels when setting up that scheme.
+  Verify that at most one release label is present before merging.
 - Keep labels on merged PRs. Remove labels when closing an unmerged PR or
   cleaning up previously closed, unmerged PRs.
 - For a fixed issue, keep the type label (`bug`, `enhancement`, or `question`)
@@ -102,16 +123,18 @@ dispatch. It creates `vX.Y.Z-beta.N` tags, prereleases, and
 For stable publication, run **Promote release** from `main`. Supply an
 existing beta tag or leave it empty to select the published beta at the current
 `main` tip. If that beta is not available yet, wait for or rerun the beta workflow.
-Choose `version_bump`: patch (default), minor, or major. Promotion calculates
-`vX.Y.Z` from the latest stable release, tags the selected beta's exact commit,
-and changes only the manifest version in its package. It does not rebuild
-application code. It cannot lower the beta's core version or release an older
-beta cycle again. Completed promotions are no-ops on retry; unfinished ones
-must retain their original target and bump selection.
+Promotion removes the beta suffix to produce `vX.Y.Z`, tags the selected beta's
+exact commit, and changes only the manifest version in its package. It does not
+rebuild application code. The source commit must be newer than and descend from the
+latest stable commit, and its core version must exceed the latest stable.
+Completed promotions are no-ops on retry; unfinished ones
+must retain their original beta core version.
 Stable release notes are generated between the previous published stable tag
 and the promoted commit, with a stable-to-stable changelog link. Keep beta
-provenance and bump details in the Actions log rather than the public notes.
-The next beta defaults to `vX.Y.(Z+1)-beta.1`, unless a higher cycle is active.
+provenance in the Actions log rather than the public notes.
+The next beta defaults to `vX.Y.(Z+1)-beta.1`, continuing the counter if tags
+already exist for that cycle. New merged PR labels may raise that target;
+an already-active higher cycle remains active.
 
 Both publishers share a concurrency lock, recover unfinished draft releases,
 and use a short-lived GitHub App installation token with Contents and Workflows
@@ -119,5 +142,7 @@ write access, scoped to this repository. Both Git checkout/tag pushes and `gh`
 release operations must use that token. `GITHUB_TOKEN` cannot obtain Workflows
 write access needed for historical workflow-changing commits. Configure
 `RELEASE_APP_ID` as a repository variable and `RELEASE_APP_PRIVATE_KEY` as a
-repository secret. No branch bypass or manifest push is needed. See
-`doc/DEVELOPMENT.md` for setup, operation, and recovery details.
+repository secret. The beta workflow uses a separate read-only `GITHUB_TOKEN`
+with Issues and Pull requests read permissions for merge-time label history.
+No additional release App permissions, branch bypass, or manifest push is needed.
+See `doc/DEVELOPMENT.md` for setup, operation, and recovery details.
