@@ -197,6 +197,18 @@ class TestPublishing:
         assert [call.args[2] for call in command.call_args_list] == ["upload", "edit"]
         assert "--latest=false" in command.call_args_list[-1].args
 
+    def test_stable_draft_retry_replaces_old_beta_notes(self, monkeypatch, tmp_path):
+        """Recovered stable drafts publish fresh notes instead of stale beta provenance."""
+        command = Mock(return_value="")
+        monkeypatch.setattr(release, "run", command)
+        notes = "## What's Changed\nAll changes since v1.0.25"
+        release.publish("v1.0.26", "commit", tmp_path / "mijnted.zip",
+                        {"v1.0.26": release_record(draft=True)}, notes)
+        assert [call.args[2] for call in command.call_args_list] == ["upload", "edit"]
+        edit = command.call_args_list[-1].args
+        assert edit[edit.index("--notes") + 1] == notes
+        assert "--latest=true" in edit
+
     def test_reconciliation_skips_published_and_retries_failed_commit(self, monkeypatch, tmp_path, source_zip):
         """A rerun preserves assigned numbers and processes every remaining commit."""
         monkeypatch.chdir(tmp_path)
@@ -275,6 +287,9 @@ class TestPublishing:
             tags[stable_tag] = "main-tip"
             records[stable_tag] = release_record(draft=True)
         monkeypatch.setattr(release, "get_releases", lambda: records)
+        monkeypatch.setenv("GH_REPO", "owner/repository")
+        stable_notes = ("## What's Changed\nAll changes since v1.0.25\n\n"
+                        f"**Full Changelog**: v1.0.25...{stable_tag}")
         stamped = {}
 
         def capture_package(tag, commit, asset, releases, notes):
@@ -295,6 +310,12 @@ class TestPublishing:
             if args[:3] == ("gh", "release", "download"):
                 directory = Path(args[args.index("--dir") + 1])
                 release.package_source(source_zip, "v1.0.26-beta.3", directory / "mijnted.zip")
+            if args[:2] == ("gh", "api"):
+                assert "repos/owner/repository/releases/generate-notes" in args
+                assert f"tag_name={stable_tag}" in args
+                assert "target_commitish=main-tip" in args
+                assert "previous_tag_name=v1.0.25" in args
+                return json.dumps({"body": stable_notes})
             return ""
 
         monkeypatch.setattr(release, "run", command)
@@ -303,6 +324,7 @@ class TestPublishing:
         require_main.assert_called_once_with("main-tip")
         assert publish.call_args.args[:2] == (stable_tag, "main-tip")
         assert stamped["version"] == stable_tag[1:]
+        assert publish.call_args.args[4] == stable_notes
         tags[stable_tag] = "main-tip"
         records[stable_tag] = release_record()
         assert release.next_beta(tags, release.latest_stable(records)) == next_beta

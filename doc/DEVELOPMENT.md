@@ -189,10 +189,14 @@ least that beta's core version; promotion never lowers its version.
 
 Promotion downloads the selected beta's existing integration ZIP and changes
 only its manifest version to the calculated stable version. It tags the same
-source commit, publishes a full release marked latest, and carries over beta
-release notes with the source tag, commit, and selected bump recorded. Existing
-beta releases stay available. Selecting an older beta is supported even when
-`main` has advanced.
+source commit, and publishes a full release marked latest with the stable tag
+as its title. GitHub generates fresh release notes from the previous published
+stable tag to the selected source commit, including a stable-to-stable full
+changelog link (for example, `v1.0.25...v1.0.26`). Beta notes are not copied into
+the stable release. The source beta tag, commit, and selected bump are recorded
+in the Actions log. Draft retries refresh the stable release notes as well.
+Existing beta releases stay available. Selecting an older beta is supported
+even when `main` has advanced.
 Existing stable tags cannot be moved, and stable versions cannot go backwards.
 
 After promotion, new commits normally start the next patch's beta cycle shown

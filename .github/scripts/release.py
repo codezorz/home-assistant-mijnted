@@ -184,9 +184,12 @@ def publish(tag: str, commit: str, asset: Path, releases: dict[str, dict],
             args += ["--prerelease"]
         run(*args)
     run("gh", "release", "upload", tag, str(asset), "--clobber")
-    run("gh", "release", "edit", tag, "--draft=false",
-        f"--prerelease={'true' if beta else 'false'}",
-        f"--latest={'false' if beta else 'true'}")
+    args = ["gh", "release", "edit", tag, "--draft=false",
+            f"--prerelease={'true' if beta else 'false'}",
+            f"--latest={'false' if beta else 'true'}"]
+    if notes is not None:
+        args += ["--notes", notes]
+    run(*args)
     print(f"Published {tag} at {commit}", flush=True)
 
 
@@ -285,9 +288,15 @@ def promote(beta_tag: str = "", version_bump: str = "patch") -> None:
         asset = directory / "stable" / ASSET_NAME
         asset.parent.mkdir()
         promote_package(directory / ASSET_NAME, beta_tag, stable_tag, asset)
-        notes = (f"Promoted from {beta_tag}; source commit `{commit}`.\n"
-                 f"Version bump: {version_bump} from `v{format_version(baseline)}`.\n\n"
-                 + (release["body"] or ""))
+        previous_tag = f"v{format_version(baseline)}"
+        notes = json.loads(run(
+            "gh", "api", "--method", "POST",
+            f"repos/{os.environ['GH_REPO']}/releases/generate-notes",
+            "-f", f"tag_name={stable_tag}",
+            "-f", f"target_commitish={commit}",
+            "-f", f"previous_tag_name={previous_tag}"))["body"]
+        print(f"Promoting {beta_tag} at {commit} to {stable_tag}; "
+              f"version bump: {version_bump} from {previous_tag}", flush=True)
         reserve_tag(stable_tag, commit, tags)
         publish(stable_tag, commit, asset, releases, notes)
 
