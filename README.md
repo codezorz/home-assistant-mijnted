@@ -50,6 +50,13 @@ normal choice; enable prerelease versions in HACS to test numbered betas such as
 `v1.0.26-beta.1`. Direct downloads of `main` are hidden in HACS. Historical
 releases without the ZIP asset are available through manual installation.
 
+### Integration icon
+
+Home Assistant 2026.3 and newer display the bundled MijnTed icon from
+`custom_components/mijnted/brand/`. The images are included in the release ZIP
+and installed by HACS; no separate branding configuration is needed. Older
+Home Assistant versions do not support these local brand images.
+
 ## Configuration
 
 To set up the MijnTed integration, you'll need:
