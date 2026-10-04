@@ -108,6 +108,9 @@ and changes only the manifest version in its package. It does not rebuild
 application code. It cannot lower the beta's core version or release an older
 beta cycle again. Completed promotions are no-ops on retry; unfinished ones
 must retain their original target and bump selection.
+Stable release notes are generated between the previous published stable tag
+and the promoted commit, with a stable-to-stable changelog link. Keep beta
+provenance and bump details in the Actions log rather than the public notes.
 The next beta defaults to `vX.Y.(Z+1)-beta.1`, unless a higher cycle is active.
 
 Both publishers share a concurrency lock, recover unfinished draft releases,
