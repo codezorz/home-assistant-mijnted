@@ -175,11 +175,61 @@ GitHub prerelease with a flat `mijnted.zip` asset, containing the matching
 manifest version without the tag's `v` prefix. The tracked manifest remains
 `0.0.0-dev.0`; no versioning commits are pushed to `main`.
 
-For a minor or major cycle, change `next_version` from `null` to a core version
-such as `"1.1.0"` or `"2.0.0"` through a normal PR. A target cannot move an
-active higher cycle backwards. Once that target is released, it is consumed
-automatically and the next patch becomes the default; resetting it to `null`
-is optional housekeeping.
+### PR labels and beta targets
+
+Before merging, apply at most one release label:
+
+| Label | Release intent |
+|---|---|
+| `release:patch` | Next patch after the latest stable; the default without a release label |
+| `release:minor` | Next minor after the latest stable, with patch reset to zero |
+| `release:major` | Next major after the latest stable, with minor and patch reset to zero |
+
+These labels are independent of type labels such as `bug` or `enhancement`.
+The boundary is **integration behavior**, not the size of the diff:
+
+- Operational-only work (CI, release automation, agent tooling, documentation)
+  and routine nonbreaking fixes use normal betas without a release label or question.
+- For new integration features, agents ask for patch, minor, major, or normal
+  betas with no label, unless the user already chose. Recommend minor for
+  backward-compatible features.
+- Breaking integration behavior requires a major-version discussion, even
+  when introduced by a bug fix.
+
+No label already supplies default patch intent; an explicit patch label is
+unnecessary just to continue normal betas.
+
+The beta publisher identifies the PR's merge commit into `main` and reconstructs
+its labels from GitHub issue events up to that merge. Labels on open PRs have no
+effect, and label changes after merge do not alter the release intent. Direct
+pushes and intermediate branch commits default to patch; a PR's label applies
+at its merge commit. Prefer squash merges so the labelled change gets one beta.
+
+The highest bump accumulates **since the latest published stable**, not from the
+current beta version. With latest stable `v1.0.23`:
+
+| Merged PR | New beta |
+|---|---|
+| Patch / unlabelled | `v1.0.24-beta.1` |
+| Minor | `v1.1.0-beta.1` |
+| Another minor | `v1.1.0-beta.2` |
+| Patch / unlabelled | `v1.1.0-beta.3` |
+| Major | `v2.0.0-beta.1` |
+
+Each assigned beta tag preserves the accumulated target for subsequent commits
+and retries. Existing higher-version cycles, including legacy `v1.1.0` betas,
+cannot move backwards. `release-config.json` contains only the bootstrap anchor;
+there is no `next_version` override. After a stable release, its version becomes
+the new baseline and requests included in it are consumed.
+
+An urgent fix merged while a minor-labelled feature PR is still open stays in
+the patch cycle. Once the feature merges, its minor target takes effect. A fix
+merged after the feature includes that feature's code and remains in its cycle.
+
+Conflicting release labels at merge stop publication rather than guessing a
+target; verify labels before merging. Missing merge-event metadata also stops
+publication and can be retried once GitHub exposes the event. Tag reservation
+freezes assigned versions; draft retries never reassign a tag from current labels.
 
 ### Promoting to stable
 
@@ -187,24 +237,22 @@ is optional housekeeping.
 2. Select branch **main**.
 3. Enter the beta tag, such as `v1.0.26-beta.3`, or leave it empty to use the
    published beta for the current `main` commit.
-4. Choose **version_bump**: **patch** (default), **minor**, or **major**.
-5. Run the workflow. If an empty input reports no beta for `main`, wait for
+4. Run the workflow. If an empty input reports no beta for `main`, wait for
    **Tag beta release** to finish or rerun it, then retry promotion.
 
-The selected bump is calculated from the latest published stable version,
-not by incrementing the beta's version. For stable `v1.0.25` and beta
-`v1.0.26-beta.3`:
+Promotion has no bump choice. It removes the beta suffix and publishes the
+**same core version**:
 
-| Selection | Stable release | Next default beta cycle |
+| Selected beta | Stable release | Next default beta cycle |
 |---|---|---|
-| `patch` | `v1.0.26` | `v1.0.27-beta.1` |
-| `minor` | `v1.1.0` | `v1.1.1-beta.1` |
-| `major` | `v2.0.0` | `v2.0.1-beta.1` |
+| `v1.0.26-beta.3` | `v1.0.26` | `v1.0.27-beta.1` |
+| `v1.1.0-beta.2` | `v1.1.0` | `v1.1.1-beta.1` |
+| `v2.0.0-beta.1` | `v2.0.0` | `v2.0.1-beta.1` |
 
-Minor and major bumps reset the lower version components to zero. A beta from
-an already-released version cycle cannot be promoted again to a new release.
-For an explicitly configured higher beta cycle, choose a bump that reaches at
-least that beta's core version; promotion never lowers its version.
+The beta's core version must exceed the latest stable version, and its commit
+must be newer than and descend from the latest stable commit. Repeating an
+already-completed promotion is a no-op. A later beta from an already-released
+core cannot overwrite that stable or be renumbered during promotion.
 
 Promotion downloads the selected beta's existing integration ZIP and changes
 only its manifest version to the calculated stable version. It tags the same
@@ -212,14 +260,18 @@ source commit, and publishes a full release marked latest with the stable tag
 as its title. GitHub generates fresh release notes from the previous published
 stable tag to the selected source commit, including a stable-to-stable full
 changelog link (for example, `v1.0.25...v1.0.26`). Beta notes are not copied into
-the stable release. The source beta tag, commit, and selected bump are recorded
+the stable release. The source beta tag and commit are recorded
 in the Actions log. Draft retries refresh the stable release notes as well.
 Existing beta releases stay available. Selecting an older beta is supported
 even when `main` has advanced.
 Existing stable tags cannot be moved, and stable versions cannot go backwards.
 
-After promotion, new commits normally start the next patch's beta cycle shown
-above. An already-active higher minor/major cycle continues instead.
+After promotion, new commits default to the next patch's beta cycle shown above.
+The counter starts at one unless tags already exist for that cycle, in which
+case it continues after the highest reserved beta number. An already-active
+higher cycle continues instead, and labels on newly merged PRs may raise the target.
+Existing legacy betas retain their core version and promote to matching stable
+versions; deleting the old override does not send numbering backwards.
 Promotion does not create a new commit or immediately publish a beta for the
 unchanged `main` tip.
 
@@ -250,15 +302,19 @@ The workflows check these settings before validation, generate a short-lived
 token scoped to the current repository, and request Contents and Workflows write
 access explicitly. Checkout credentials and `GH_TOKEN` both use this App token,
 so Git tag pushes and GitHub release operations have the same permissions. The
-token action revokes it at job completion; the built-in workflow token only has
-Contents read access. No bypass permission for `main` is needed. Tag rules must
-allow these release tags. Normal publication requires dispatch from `main`.
+token action revokes it at job completion. The beta workflow separately uses
+the built-in `GITHUB_TOKEN` with Contents, Issues, and Pull requests read access
+to query PR associations and label history. It passes that token as `GH_READ_TOKEN`
+only to metadata reads; publishing continues to use the App token. The release
+App needs no additional permissions for labels. No bypass permission for `main`
+is needed. Tag rules must allow these release tags. Normal publication requires
+dispatch from `main`.
 
 To verify App setup without publishing, manually run **Tag beta release** with
 `verify_only` enabled. This mode may run from a topic branch before its workflow
 changes are merged; it requests the actual Contents/Workflows write permissions
-and checks GitHub API and Git repository access, but skips publication. Normal
-beta publication and stable promotion still run only from `main`.
+and checks GitHub API, label metadata, and Git repository access, but skips
+publication. Normal beta publication and stable promotion still run only from `main`.
 
 If token creation fails, check the App ID/private key pair, repository
 installation, and App permissions. After changing App permissions, approve
@@ -279,8 +335,10 @@ Packages are attached to draft releases before publication. Rerunning a failed
 workflow repairs unfinished drafts, preserving the assigned tag/version.
 Published betas are skipped, and repeating the same completed promotion is a
 no-op even though the latest stable version has advanced. An unfinished
-promotion keeps its original target; retry with the original bump selection
-rather than creating a second release for the same beta. Tags are never
+promotion keeps its original target; retry with a beta of the original core
+version rather than creating a second release for the same commit. Historical
+unfinished promotions created with a different stable target must be recovered
+before switching to matching-core promotion. Tags are never
 force-updated. If a workflow times out on a large batch,
 rerun **Tag beta release**; already-published commits are not tested again.
 

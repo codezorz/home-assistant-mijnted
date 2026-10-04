@@ -16,11 +16,12 @@ TAG_PATTERN = re.compile(r"v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-beta\.([
 ASSET_NAME = "mijnted.zip"
 INTEGRATION = "custom_components/mijnted/"
 VERSION_BUMPS = ("patch", "minor", "major")
+RELEASE_LABELS = {f"release:{bump}": bump for bump in VERSION_BUMPS}
 
 
-def run(*args: str, cwd: Path | None = None) -> str:
+def run(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
     """Run a checked command without a shell."""
-    return subprocess.check_output(args, cwd=cwd, text=True).strip()
+    return subprocess.check_output(args, cwd=cwd, env=env, text=True).strip()
 
 
 def parse_tag(tag: str) -> tuple[tuple[int, int, int], int | None]:
@@ -51,23 +52,49 @@ def bump_version(stable: tuple[int, int, int], version_bump: str) -> tuple[int, 
 
 
 def next_beta(tags: dict[str, str], stable: tuple[int, int, int],
-              requested: str | None = None) -> str:
-    """Continue the active cycle or start the next patch after stable."""
+              version_bump: str = "patch") -> str:
+    """Accumulate the highest requested bump from stable without lowering an active cycle."""
     parsed = [(tag, *parse_tag(tag)) for tag in tags if TAG_PATTERN.fullmatch(tag)]
     active = [version for _, version, beta in parsed if beta is not None and version > stable]
-    target = max(active, default=(stable[0], stable[1], stable[2] + 1))
-    if requested:
-        requested_version, beta = parse_tag(f"v{requested}")
-        if beta is not None:
-            raise ValueError("next_version must be a stable core version")
-        # A released override is consumed automatically; no bookkeeping commit is needed.
-        if requested_version > stable:
-            if requested_version < target:
-                raise ValueError("next_version cannot move an active beta cycle backwards")
-            target = requested_version
+    target = max([bump_version(stable, version_bump), *active])
     number = max((beta for _, version, beta in parsed
                   if version == target and beta is not None), default=0) + 1
     return f"v{format_version(target)}-beta.{number}"
+
+
+def read_api_pages(endpoint: str) -> list[dict]:
+    """Read paginated PR metadata using the workflow's read-only token."""
+    env = dict(os.environ)
+    if env.get("GH_READ_TOKEN"):
+        env["GH_TOKEN"] = env["GH_READ_TOKEN"]
+    pages = json.loads(run("gh", "api", "--paginate", "--slurp", endpoint, env=env))
+    return [record for page in pages for record in page]
+
+
+def merged_pr_bump(number: int, commit: str) -> str:
+    """Recover release labels at the merge event, ignoring subsequent label edits."""
+    events = read_api_pages(f"repos/{os.environ['GH_REPO']}/issues/{number}/events")
+    labels = set()
+    for event in sorted(events, key=lambda event: event["id"]):
+        if event["event"] == "merged" and event["commit_id"] == commit:
+            bumps = [RELEASE_LABELS[label] for label in labels if label in RELEASE_LABELS]
+            if len(bumps) > 1:
+                raise ValueError(f"PR #{number} had conflicting release labels at merge")
+            return bumps[0] if bumps else "patch"
+        if event["event"] == "labeled":
+            labels.add(event["label"]["name"])
+        elif event["event"] == "unlabeled":
+            labels.discard(event["label"]["name"])
+    raise ValueError(f"PR #{number} has no matching merge event; retry after GitHub metadata is available")
+
+
+def commit_bump(commit: str) -> str:
+    """Apply release intent only at a PR's merge commit into main; direct pushes default to patch."""
+    pulls = read_api_pages(f"repos/{os.environ['GH_REPO']}/commits/{commit}/pulls")
+    bumps = [merged_pr_bump(pull["number"], commit) for pull in pulls
+             if pull["merged_at"] and pull["merge_commit_sha"] == commit
+             and pull["base"]["ref"] == "main"]
+    return max(bumps, key=VERSION_BUMPS.index, default="patch")
 
 
 def get_tags() -> dict[str, str]:
@@ -97,6 +124,12 @@ def latest_stable(releases: dict[str, dict]) -> tuple[int, int, int]:
 def require_on_main(commit: str) -> None:
     """Reject commits outside the fetched main history."""
     subprocess.run(["git", "merge-base", "--is-ancestor", commit, "origin/main"], check=True)
+
+
+def require_after_stable(commit: str, stable_commit: str) -> None:
+    """Require new code descended from the latest stable, regardless of beta numbering."""
+    if commit == stable_commit or run("git", "merge-base", stable_commit, commit) != stable_commit:
+        raise ValueError("Select a beta whose commit is newer than and descends from the latest stable")
 
 
 def pending_commits(start: str) -> list[str]:
@@ -165,8 +198,8 @@ def promote_package(source: Path, beta_tag: str, stable_tag: str, destination: P
     stable_version, stable_beta = parse_tag(stable_tag)
     if beta_number is None or stable_beta is not None:
         raise ValueError("Promotion requires a beta source and stable destination")
-    if stable_version < beta_version:
-        raise ValueError("Promotion cannot lower the beta's core version")
+    if stable_version != beta_version:
+        raise ValueError("Promotion must preserve the beta's core version")
     write_package(files, stable_tag, destination)
 
 
@@ -213,7 +246,7 @@ def publish_betas() -> None:
                       if target == commit and parse_tag(tag)[1] is not None]
         if any(tag in releases and not releases[tag]["draft"] for tag in candidates):
             continue
-        tag = candidates[0] if candidates else next_beta(tags, stable, config["next_version"])
+        tag = candidates[0] if candidates else next_beta(tags, stable, commit_bump(commit))
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             source = source_archive(commit)
@@ -247,8 +280,8 @@ def published_stable_for_commit(commit: str, tags: dict[str, str],
     return max(completed, key=parse_tag) if completed else None
 
 
-def promote(beta_tag: str = "", version_bump: str = "patch") -> None:
-    """Promote only an existing published beta from main, without rebuilding code."""
+def promote(beta_tag: str = "") -> None:
+    """Publish the selected beta's core version as stable, without rebuilding code."""
     beta_tag = beta_tag.strip()
     if not beta_tag:
         beta_tag = beta_for_main(get_tags(), get_releases())
@@ -262,16 +295,15 @@ def promote(beta_tag: str = "", version_bump: str = "patch") -> None:
     commit = tags[beta_tag]
     require_on_main(commit)
     baseline = latest_stable(releases)
-    target_version = bump_version(baseline, version_bump)
     completed = published_stable_for_commit(commit, tags, releases)
     if completed:
         print(f"{completed} is already published for this source commit", flush=True)
         return
     if version <= baseline:
         raise ValueError("Select a beta from a newer version cycle than the latest stable")
-    if target_version < version:
-        raise ValueError("Selected version bump would lower the beta's core version")
-    stable_tag = f"v{format_version(target_version)}"
+    previous_tag = f"v{format_version(baseline)}"
+    require_after_stable(commit, tags[previous_tag])
+    stable_tag = f"v{format_version(version)}"
     if stable_tag in tags and tags[stable_tag] != commit:
         raise ValueError("Stable tag already points to a different commit")
     if stable_tag in releases and not releases[stable_tag]["draft"]:
@@ -280,7 +312,7 @@ def promote(beta_tag: str = "", version_bump: str = "patch") -> None:
                and parse_tag(tag)[1] is None
                and (tag not in releases or releases[tag]["draft"])]
     if any(tag != stable_tag for tag in pending):
-        raise ValueError("An unfinished promotion exists; retry with its original version bump")
+        raise ValueError("An unfinished promotion exists; retry with its original beta version")
     with tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary)
         run("gh", "release", "download", beta_tag, "--pattern", ASSET_NAME,
@@ -288,7 +320,6 @@ def promote(beta_tag: str = "", version_bump: str = "patch") -> None:
         asset = directory / "stable" / ASSET_NAME
         asset.parent.mkdir()
         promote_package(directory / ASSET_NAME, beta_tag, stable_tag, asset)
-        previous_tag = f"v{format_version(baseline)}"
         notes = json.loads(run(
             "gh", "api", "--method", "POST",
             f"repos/{os.environ['GH_REPO']}/releases/generate-notes",
@@ -296,7 +327,7 @@ def promote(beta_tag: str = "", version_bump: str = "patch") -> None:
             "-f", f"target_commitish={commit}",
             "-f", f"previous_tag_name={previous_tag}"))["body"]
         print(f"Promoting {beta_tag} at {commit} to {stable_tag}; "
-              f"version bump: {version_bump} from {previous_tag}", flush=True)
+              f"previous stable: {previous_tag}", flush=True)
         reserve_tag(stable_tag, commit, tags)
         publish(stable_tag, commit, asset, releases, notes)
 
@@ -308,13 +339,12 @@ def main() -> None:
     commands.add_parser("beta")
     promotion = commands.add_parser("promote")
     promotion.add_argument("beta_tag", nargs="?", default="")
-    promotion.add_argument("--version-bump", choices=VERSION_BUMPS, default="patch")
     args = parser.parse_args()
     run("git", "fetch", "origin", "main", "--tags")
     if args.command == "beta":
         publish_betas()
     else:
-        promote(args.beta_tag, args.version_bump)
+        promote(args.beta_tag)
 
 
 if __name__ == "__main__":

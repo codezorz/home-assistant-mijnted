@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: read
+  issues: read
+  pull-requests: read
 
 # Both publishers share this lock. Reconciliation recovers superseded pending runs.
 concurrency:
@@ -55,6 +57,13 @@ jobs:
         run: |
           gh api "repos/$GH_REPO" --silent
           git ls-remote --exit-code origin refs/heads/main
+      - name: Verify release-label metadata access
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$GH_REPO/pulls?per_page=1" --silent
+          gh api "repos/$GH_REPO/issues/events?per_page=1" --silent
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
@@ -63,5 +72,6 @@ jobs:
         if: github.ref == 'refs/heads/main' && !inputs.verify_only
         env:
           GH_TOKEN: ${{ steps.release-app.outputs.token }}
+          GH_READ_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: python .github/scripts/release.py beta
