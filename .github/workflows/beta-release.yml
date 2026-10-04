@@ -28,18 +28,18 @@ jobs:
     steps:
       - name: Check release App configuration
         env:
-          RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID }}
+          RELEASE_APP_CLIENT_ID: ${{ vars.RELEASE_APP_CLIENT_ID }}
           RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
         run: |
-          if [[ -z "$RELEASE_APP_ID" || -z "$RELEASE_APP_PRIVATE_KEY" ]]; then
-            echo "::error::Configure RELEASE_APP_ID as a repository variable and RELEASE_APP_PRIVATE_KEY as a repository secret."
+          if [[ -z "$RELEASE_APP_CLIENT_ID" || -z "$RELEASE_APP_PRIVATE_KEY" ]]; then
+            echo "::error::Configure RELEASE_APP_CLIENT_ID as a repository variable and RELEASE_APP_PRIVATE_KEY as a repository secret."
             exit 1
           fi
       - name: Create release App token
         id: release-app
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}

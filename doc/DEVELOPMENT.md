@@ -295,8 +295,13 @@ Configure a release App, such as **MijnTed Release Orchestrator**:
 
    | Kind | Name | Value |
    |---|---|---|
-   | Repository variable | `RELEASE_APP_ID` | Numeric App ID |
+   | Repository variable | `RELEASE_APP_CLIENT_ID` | GitHub App Client ID from the App settings, not the numeric App ID |
    | Repository secret | `RELEASE_APP_PRIVATE_KEY` | Complete downloaded PEM private key, including its headers |
+
+Both workflows use the token action's `client-id` input. When migrating from
+the former `RELEASE_APP_ID` setting, add `RELEASE_APP_CLIENT_ID` before merging
+the workflow update. Keep the old variable until older workflows no longer need it.
+The private key and installation permissions do not change.
 
 The workflows check these settings before validation, generate a short-lived
 token scoped to the current repository, and request Contents and Workflows write
@@ -316,7 +321,7 @@ changes are merged; it requests the actual Contents/Workflows write permissions
 and checks GitHub API, label metadata, and Git repository access, but skips
 publication. Normal beta publication and stable promotion still run only from `main`.
 
-If token creation fails, check the App ID/private key pair, repository
+If token creation fails, check the Client ID/private key pair, repository
 installation, and App permissions. After changing App permissions, approve
 the installation's updated permissions in GitHub before retrying. A GitHub CLI
 login's `workflow` scope does not change the workflow's built-in token.

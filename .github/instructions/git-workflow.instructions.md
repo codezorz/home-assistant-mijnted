@@ -141,7 +141,7 @@ and use a short-lived GitHub App installation token with Contents and Workflows
 write access, scoped to this repository. Both Git checkout/tag pushes and `gh`
 release operations must use that token. `GITHUB_TOKEN` cannot obtain Workflows
 write access needed for historical workflow-changing commits. Configure
-`RELEASE_APP_ID` as a repository variable and `RELEASE_APP_PRIVATE_KEY` as a
+`RELEASE_APP_CLIENT_ID` as a repository variable and `RELEASE_APP_PRIVATE_KEY` as a
 repository secret. The beta workflow uses a separate read-only `GITHUB_TOKEN`
 with Issues and Pull requests read permissions for merge-time label history.
 No additional release App permissions, branch bypass, or manifest push is needed.
