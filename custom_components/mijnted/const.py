@@ -8,6 +8,7 @@ AUTH_URL = "https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/
 PLATFORMS = [Platform.SENSOR, Platform.BUTTON]
 DEFAULT_POLLING_INTERVAL = timedelta(hours=1)
 UNIT_MIJNTED = "Units"
+UNIT_WATER = "m³"
 
 # API constants
 REQUEST_TIMEOUT = 10
