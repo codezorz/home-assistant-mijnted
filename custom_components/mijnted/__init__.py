@@ -1486,6 +1486,59 @@ def _build_room_usage(usage_per_room_data: Any) -> Dict[str, Any]:
     return room_usage
 
 
+async def _fetch_extra_delivery_type(api: MijntedApi, delivery_type: Any) -> Dict[str, Any]:
+    """Fetch the data for one additional delivery type; failed endpoints become empty defaults."""
+    unit_of_measures, active_model, filter_status = await asyncio.gather(
+        api.get_unit_of_measures(delivery_type=delivery_type),
+        api.get_active_model(delivery_type=delivery_type),
+        api.get_filter_status(delivery_type=delivery_type),
+        return_exceptions=True,
+    )
+    residential_unit = api.residential_unit
+    name = f"delivery_type_{delivery_type}"
+    return {
+        "delivery_type": delivery_type,
+        "unit_of_measures": _handle_gather_result(f"{name}_unit_of_measures", unit_of_measures, [], residential_unit),
+        "active_model": ApiUtil.extract_value(
+            _handle_gather_result(f"{name}_active_model", active_model, {}, residential_unit), None
+        ),
+        "filter_status": _handle_gather_result(f"{name}_filter_status", filter_status, [], residential_unit),
+    }
+
+
+async def _fetch_extra_delivery_types(api: MijntedApi, delivery_types: List[Any]) -> Dict[str, Dict[str, Any]]:
+    """Fetch data for every delivery type except the primary one, keyed by str(delivery type).
+
+    A failure for one delivery type is logged and skipped so it can never
+    break the primary (heat) data.
+    """
+    primary = str(api.delivery_type)
+    extra_types: List[Any] = []
+    for delivery_type in delivery_types:
+        if (
+            isinstance(delivery_type, (str, int))
+            and str(delivery_type) != primary
+            and str(delivery_type) not in {str(known) for known in extra_types}
+        ):
+            extra_types.append(delivery_type)
+    results = await asyncio.gather(
+        *(_fetch_extra_delivery_type(api, delivery_type) for delivery_type in extra_types),
+        return_exceptions=True,
+    )
+    extra_data: Dict[str, Dict[str, Any]] = {}
+    for delivery_type, result in zip(extra_types, results):
+        if isinstance(result, Exception):
+            _LOGGER.warning(
+                "Failed to fetch delivery type %s: %s",
+                delivery_type,
+                result,
+                extra={"residential_unit": api.residential_unit, "error_type": type(result).__name__},
+            )
+            continue
+        extra_data[str(delivery_type)] = result
+    return extra_data
+
+
 async def _fetch_and_normalize_api_data(api: MijntedApi) -> Dict[str, Any]:
     """Fetch all API data via gather + delivery_types and normalize (exceptions to defaults)."""
     last_year = DateUtil.get_last_year()
@@ -1530,6 +1583,7 @@ async def _fetch_and_normalize_api_data(api: MijntedApi) -> Dict[str, Any]:
         "unit_of_measures", unit_of_measures_data, [], residential_unit
     )
     delivery_types = await api.get_delivery_types()
+    extra_delivery_data = await _fetch_extra_delivery_types(api, delivery_types)
     return {
         "energy_usage_data": energy_usage_data,
         "last_update_data": last_update_data,
@@ -1541,6 +1595,7 @@ async def _fetch_and_normalize_api_data(api: MijntedApi) -> Dict[str, Any]:
         "usage_per_room_data": usage_per_room_data,
         "unit_of_measures_data": unit_of_measures_data,
         "delivery_types": delivery_types,
+        "extra_delivery_data": extra_delivery_data,
     }
 
 
@@ -2030,6 +2085,7 @@ def _build_coordinator_return_dict(
     current_last_update_date: Optional[str],
     statistics_tracking: StatisticsTracking,
     statistics_reinject: Dict[str, List[str]],
+    extra_delivery_data: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Build the coordinator data dictionary returned by async_update_data."""
     return {
@@ -2054,6 +2110,7 @@ def _build_coordinator_return_dict(
         "cached_last_update_date": current_last_update_date,
         "statistics_tracking": statistics_tracking,
         "statistics_reinject": statistics_reinject,
+        "extra_delivery_data": extra_delivery_data or {},
     }
 
 
@@ -2277,6 +2334,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     current_last_update_date,
                     statistics_tracking,
                     statistics_reinject,
+                    data["extra_delivery_data"],
                 )
         except MijntedGrantExpiredError as err:
             _handle_grant_expired(hass, entry, err)

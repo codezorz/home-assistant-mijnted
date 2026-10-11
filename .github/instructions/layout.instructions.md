@@ -22,6 +22,7 @@ custom_components/mijnted/
 │   ├── models.py        # StatisticsTracking, MonthCacheEntry, DeviceReading, etc.
 │   ├── usage.py         # Usage sensors (monthly, total, average, last year)
 │   ├── device.py        # Per-device/room sensors
+│   ├── water.py         # Water (m³) meter and monthly usage sensors for extra delivery types
 │   ├── diagnostics.py   # Last update, active model, delivery types, etc.
 │   └── button.py        # Reset statistics button
 ├── utils/               # Helpers, including OAuthUtil's synchronous credential flow

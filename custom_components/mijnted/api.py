@@ -282,13 +282,17 @@ class MijntedApi:
         url = f"{self.base_url}/getLastSyncDate/{self.residential_unit}/{self.delivery_type}/{self._get_current_year()}"
         return await self._make_request("GET", url)
 
-    async def get_filter_status(self) -> List[Dict[str, Any]]:
+    async def get_filter_status(self, delivery_type: Optional[Any] = None) -> List[Dict[str, Any]]:
         """Get filter status information.
         
+        Args:
+            delivery_type: Delivery type to query (defaults to the primary type)
+
         Returns:
             List of device status objects, empty list if none found
         """
-        url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{self._get_current_year()}"
+        delivery_type = self.delivery_type if delivery_type is None else delivery_type
+        url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{delivery_type}/{self._get_current_year()}"
         result = await self._make_request("GET", url)
         if isinstance(result, list):
             return result
@@ -337,13 +341,17 @@ class MijntedApi:
         url = f"{self.base_url}/usageInsight/{year}/{self.residential_unit}/{self.delivery_type}"
         return await self._make_request("GET", url)
 
-    async def get_active_model(self) -> Dict[str, Any]:
+    async def get_active_model(self, delivery_type: Optional[Any] = None) -> Dict[str, Any]:
         """Get active model information.
         
+        Args:
+            delivery_type: Delivery type to query (defaults to the primary type)
+
         Returns:
             Dictionary containing active model data
         """
-        url = f"{self.base_url}/activeModel/{self.residential_unit}/{self.delivery_type}"
+        delivery_type = self.delivery_type if delivery_type is None else delivery_type
+        url = f"{self.base_url}/activeModel/{self.residential_unit}/{delivery_type}"
         return await self._make_request("GET", url)
 
     async def get_residential_unit_detail(self) -> Dict[str, Any]:
@@ -370,14 +378,18 @@ class MijntedApi:
         url = f"{self.base_url}/residentialUnitUsagePerRoom/{year}/{self.residential_unit}/{self.delivery_type}"
         return await self._make_request("GET", url)
 
-    async def get_unit_of_measures(self) -> List[Dict[str, Any]]:
+    async def get_unit_of_measures(self, delivery_type: Optional[Any] = None) -> List[Dict[str, Any]]:
         """Get unit of measures for the residential unit.
         
+        Args:
+            delivery_type: Delivery type to query (defaults to the primary type)
+
         Returns:
             List of unit of measure objects, empty list if none found
         """
         current_year = self._get_current_year()
-        url = f"{self.base_url}/unitOfMeasures/{self.residential_unit}/{self.delivery_type}/{current_year}"
+        delivery_type = self.delivery_type if delivery_type is None else delivery_type
+        url = f"{self.base_url}/unitOfMeasures/{self.residential_unit}/{delivery_type}/{current_year}"
         result = await self._make_request("GET", url)
         if isinstance(result, list):
             return result

@@ -232,6 +232,41 @@ Device sensor creation behavior:
 - If new devices appear later, entities are not auto-created until integration reload.
 - If a known device disappears from API response, state falls back to last known value.
 
+## Water Sensors
+
+Besides the primary delivery type (heat cost allocators), every other delivery
+type returned by `address/deliveryTypes` is fetched each refresh and stored in
+`coordinator.data["extra_delivery_data"]`, keyed by delivery type ID. Delivery
+types that report `m³` (device `unitOfMeasure` or `unitOfMeasures`) get water
+sensors; other types are ignored. A delivery type that fails to load never
+affects the heat sensors: failed endpoints become empty defaults, and a type
+whose whole fetch fails is skipped for that refresh. Water entities are created
+only from data available at setup: if the extra fetch fails during the first
+refresh after Home Assistant starts, no water entities are created until the
+integration is reloaded.
+
+Names use the active model (`WWZF*` = warm, `KWZF*` = cold) and fall back to the
+delivery type ID (`2` = warm, `3` = cold, as observed). With neither, the
+generic name `Water meter <deviceNumber>` is used.
+Water sensors are never persisted in the monthly cache and have no recorder
+injection. A monthly water usage sensor is not provided yet.
+
+### Water meter
+
+- Class: `MijnTedWaterMeterSensor`
+- Unique ID: `mijnted_<configEntryId>_water_<deliveryType>_device_<deviceNumber>`
+- Name: `<configured device name> <Warm|Cold> water meter <translated room>`
+  (without room: `... water meter <deviceNumber>`)
+- Source: `currentReadingValue` of the device in that delivery type's `deviceStatuses`.
+- Unit/classes: `m³`, device class `water`, state class `total_increasing`, so it
+  can be used directly in the Energy dashboard's water consumption.
+- Attributes: `delivery_type`, `room`, `device_id`, `measurement_device_id`.
+- Created at setup, one per unique `deviceNumber`; new devices need a reload.
+  If the device disappears from the API response, the last known reading is kept.
+  A reading of `0` (or below) is treated as missing data, never as a new value:
+  a `total_increasing` sensor would otherwise record a meter reset and later add
+  the whole counter to the Energy statistics. Unknown until the first valid reading.
+
 ## Edge Cases and Expected Behavior
 
 | Edge case | Expected behavior |
@@ -244,6 +279,7 @@ Device sensor creation behavior:
 | Newly observed device without a known month-start reading | Its first observed reading becomes the usage baseline outside January; January uses the annual zero baseline. |
 | `unit_of_measures` endpoint fails/returns empty | `unit_of_measures` sensor keeps last known state. |
 | `delivery_types` empty | `delivery type` sensor returns `None`. |
+| Water delivery type fails to load | Heat sensors are unaffected; existing water sensors keep their last known value (or stay unknown). If it fails during the first refresh, no water entities exist until the next reload. |
 | API last sync date cannot be parsed | Sensors that require parsed date from `_build_current_data` cannot recompute current period and use fallback behavior. |
 | Start of a month while API still reports previous month (`api_behind`) | Current period uses current calendar month key, `days = 0`, `end_date = start_date`, and monthly usage resolves to 0 or fallback to last known if source data is empty. |
 | January month rollover | Usage calculations use end totals directly (no subtraction from previous year baseline). |
