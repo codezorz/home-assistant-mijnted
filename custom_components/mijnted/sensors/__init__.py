@@ -16,6 +16,7 @@ from .diagnostics import (
     MijnTedLastSuccessfulSyncSensor,
     MijnTedLatestAvailableInsightSensor,
 )
+from .water import MijnTedWaterMeterSensor
 from .button import MijnTedResetStatisticsButton
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "MijnTedUnitOfMeasuresSensor",
     "MijnTedLastSuccessfulSyncSensor",
     "MijnTedLatestAvailableInsightSensor",
+    "MijnTedWaterMeterSensor",
     "MijnTedResetStatisticsButton"
 ]
 

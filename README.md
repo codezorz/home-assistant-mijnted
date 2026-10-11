@@ -121,6 +121,7 @@ Detailed references: [sensor catalog](doc/SENSORS.md), [month-switch timeline](d
 - **Residential unit** - Detailed information about your residential unit
 - **Unit of measures** - Unit of measurement information
 - **Latest available insight** - Month with the last available insight data including average. Displays the month name only (e.g. "January 2026"). Attributes include month_id, usage_unit, has_average.
+- **Water sensors** - If your residential unit has water meters (warm and/or cold, reported in m³), a meter reading sensor per meter is created, usable in the Energy dashboard's water consumption. See [water sensors](doc/SENSORS.md#water-sensors).
 - **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)
 - **Reset statistics** - Button to reset statistics tracking and trigger re-injection of historical data. See [reset behavior](doc/SENSORS.md#related-button) for what it clears.
 

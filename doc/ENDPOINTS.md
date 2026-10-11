@@ -44,13 +44,19 @@ Home Assistant reauthentication flow.
 | `get_delivery_types()` | `address/deliveryTypes` (selects the first returned type for other requests) |
 | `get_energy_usage(year=None)` | `residentialUnitUsage` |
 | `get_last_data_update()` | `getLastSyncDate` |
-| `get_filter_status()` | Latest `deviceStatuses` |
+| `get_filter_status(delivery_type=None)` | Latest `deviceStatuses` |
 | `get_device_statuses_for_date(target_date)` | `deviceStatuses` with `fromDate` and target-date year |
 | `get_usage_insight(year=None)` | `usageInsight` |
-| `get_active_model()` | `activeModel` |
+| `get_active_model(delivery_type=None)` | `activeModel` |
 | `get_residential_unit_detail()` | `residentialUnitDetailItem` |
 | `get_usage_per_room(year=None)` | `residentialUnitUsagePerRoom` |
-| `get_unit_of_measures()` | `unitOfMeasures` |
+| `get_unit_of_measures(delivery_type=None)` | `unitOfMeasures` |
+
+The methods with a `delivery_type` argument default to the first delivery type
+selected by `get_delivery_types()`. The coordinator passes the other returned
+delivery types explicitly to read additional meters, such as water in `m³`
+(for example `[1, 2, 3]` for heat, warm water, and cold water). Response shapes
+are the same for every delivery type; only the units differ.
 
 Optional-year methods default to the current calendar year. Latest-status,
 last-sync, and unit-of-measure requests also use that year. Historical device

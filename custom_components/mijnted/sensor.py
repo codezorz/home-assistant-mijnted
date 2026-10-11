@@ -20,8 +20,10 @@ from .sensors import (
     MijnTedLastYearAverageMonthlyUsageSensor,
     MijnTedLastYearMonthlyUsageSensor,
     MijnTedLatestAvailableInsightSensor,
+    MijnTedWaterMeterSensor,
 )
 from .sensors.base import MijnTedSensor
+from .sensors.water import get_water_deliveries
 
 
 def _sanitize_room_for_unique_id(room: str) -> str:
@@ -129,4 +131,8 @@ async def async_setup_entry(
                         )
                         sensors.append(MijnTedDeviceSensor(coordinator, device_id, entry.entry_id, config_name=config_name))
     
+    for delivery_type, device_numbers in get_water_deliveries(coordinator.data).items():
+        for device_number in device_numbers:
+            sensors.append(MijnTedWaterMeterSensor(coordinator, delivery_type, device_number, entry.entry_id, config_name=config_name))
+
     async_add_entities(sensors, True)
