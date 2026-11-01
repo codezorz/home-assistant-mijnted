@@ -321,3 +321,41 @@ class TestMixedMonthlyGraph:
                 if row["start"] == datetime(2026, 3, 1, tzinfo=timezone.utc)
             )
             assert march[stat_type] == value
+
+
+class TestAverageStatisticDisplayNames:
+    """Match statistic labels to the existing sentence-cased sensor names."""
+
+    @pytest.mark.parametrize(("sensor_class", "expected_name", "statistic_id"), [
+        (
+            MijnTedAverageMonthlyUsageSensor,
+            "Average monthly usage",
+            "mijnted:test_entry_average_monthly_usage",
+        ),
+        (
+            MijnTedLastYearAverageMonthlyUsageSensor,
+            "Last year average monthly usage",
+            "mijnted:test_entry_last_year_average_monthly_usage",
+        ),
+    ])
+    async def test_names_match_sensors_without_changing_series_on_rename(
+        self, recorder, sensor_class, expected_name, statistic_id,
+    ):
+        """Initial import and device rename -> same sentence-cased label, ID and data."""
+        sensor = _sensor({"2025-03": _cache_entry("2025-03", 181.0)}, sensor_class)
+        unique_id = sensor._attr_unique_id
+        await sensor._async_inject_statistics()
+
+        metadata, statistics = recorder.external.call_args.args[1:]
+        assert metadata["name"] == expected_name == sensor.name
+        assert metadata["statistic_id"] == statistic_id
+
+        sensor._config_name = "Office"
+        sensor.entity_id = f"sensor.renamed_{sensor.sensor_type}"
+        await sensor._async_inject_statistics()
+
+        renamed_metadata, reimported_statistics = recorder.external.call_args.args[1:]
+        assert renamed_metadata["name"] == expected_name
+        assert renamed_metadata["statistic_id"] == statistic_id
+        assert sensor._attr_unique_id == unique_id
+        assert reimported_statistics == statistics

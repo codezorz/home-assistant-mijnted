@@ -485,7 +485,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         metadata = StatisticMetaData(
             mean_type=StatisticMeanType.ARITHMETIC,
             has_sum=False,
-            name=f"{self._config_name} {self.name} (monthly)",
+            name=self.name,
             source=DOMAIN,
             statistic_id=self._get_average_statistic_id(),
             unit_of_measurement=UNIT_MIJNTED,

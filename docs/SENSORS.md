@@ -340,8 +340,8 @@ rows. Use statistics-capable graphs to view the imported periods.
 
 ### Monthly Building-Average Graphs
 
-In a Statistics graph card, select the building-average statistics whose names
-end in **(monthly)** and choose **Month + Mean**. Their IDs are also available in
+In a Statistics graph card, select the building-average statistics from source
+**mijnted** and choose **Month + Mean**. Their IDs are also available in
 each average sensor's `monthly_statistic_id` attribute. Historical API averages
 are placed in their HA-local consumption month, independent of publication time.
 For a combined usage-and-average graph, select **State + Mean**
