@@ -23,6 +23,6 @@ You will receive an acknowledgment as soon as practical. After validation, we wi
 
 ## Maintainer triage
 
-The local Aikido setup and finding-to-tracking process are documented in
-[SECURITY_TRIAGE.md](doc/SECURITY_TRIAGE.md). That process follows the private
-reporting policy above.
+Follow the [security triage instructions](.github/instructions/security-triage.instructions.md)
+for findings from any source. Tool-specific skills provide scanner commands
+and credentials; the triage process follows the private reporting policy above.

@@ -75,9 +75,5 @@ Copy this into a new issue and fill it in:
 <!-- Screenshots, related issues, workarounds -->
 ````
 
-## Suggested labels
-
-- `bug` for failures and regressions
-- `enhancement` for feature requests
-- `question` for support-style issues
-- Maintainers may adjust labels during triage or closure (for example: `duplicate`, `invalid`, `wontfix`).
+Maintainers choose labels during triage. Select the issue form that best matches
+your report; you do not need to assign labels yourself.

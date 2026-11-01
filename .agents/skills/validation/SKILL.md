@@ -5,9 +5,11 @@ description: Use when validating changes in this Home Assistant integration repo
 
 # Validation
 
-Follow `doc/DEVELOPMENT.md` for environment setup, commands, CI expectations,
-and the distinction between local tests and Home Assistant runtime checks.
-Read `.github/instructions/testing.instructions.md` when editing tests.
+Follow [development instructions](../../../.github/instructions/development.instructions.md)
+for environment setup, commands, and the distinction between local tests and
+Home Assistant runtime checks. Follow [CI instructions](../../../.github/instructions/ci.instructions.md)
+for required checks, and read [testing instructions](../../../.github/instructions/testing.instructions.md)
+when editing tests.
 
 1. Choose checks appropriate to the changes, using the preferred environment.
 2. Treat syntax errors and failed behavioral assertions as blocking. Diagnose

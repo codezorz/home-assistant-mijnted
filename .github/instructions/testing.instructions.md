@@ -5,16 +5,18 @@ description: Test design, mock boundaries, async behavior, and Home Assistant st
 
 # Testing
 
-Environment setup, check commands, CI, and HA smoke testing are owned by
-`doc/DEVELOPMENT.md`. Test discovery and async mode are configured in `pytest.ini`.
+Follow [development rules](development.instructions.md) and the
+[development guide](../../docs/DEVELOPMENT.md) for environment setup, commands,
+and HA smoke testing. Test discovery and async mode are configured in `pytest.ini`.
 Development dependency inputs belong in `pyproject.toml`; `uv.lock` records the
 resolved runtime/test graph. The Home Assistant manifest owns runtime requirements,
 mirrored in the project's dependencies and checked by `test_dependency_metadata.py`.
 `requirements_test.txt` is an ignored pip export generated from the lock, not a
 second dependency source. Regenerate it with `uv export --locked` after lock updates;
-see `doc/DEVELOPMENT.md` for the full command and Dependabot maintenance.
+see [dependency maintenance](../../docs/DEVELOPMENT.md#dependency-maintenance)
+for the full command and Dependabot maintenance.
 Lint changed GitHub Actions workflows with `actionlint`. CodeQL's fork-PR
-approval and required-check behavior are documented in `doc/DEVELOPMENT.md`.
+approval and required-check behavior are documented in the [CI guide](../../docs/CI.md).
 Keep its analysis independent of repository activation variables: the temporary
 migration guard skipped fork PRs even after workflow approval.
 
@@ -96,4 +98,5 @@ Keep these tests independent of HA and production network access.
 
 Aikido helper tests use mocked HTTP and simulated Windows credential buffers.
 They must not read the maintainer's credential store or mutate live findings;
-see `doc/SECURITY_TRIAGE.md` for the separate read-only smoke test.
+see the [Aikido tool reference](../../.agents/skills/aikido-triage/references/aikido.md#validation-and-references)
+for the separate read-only smoke test.

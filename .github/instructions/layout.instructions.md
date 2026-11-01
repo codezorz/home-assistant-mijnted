@@ -1,6 +1,6 @@
 ---
-applyTo: "custom_components/mijnted/**"
-description: Integration module layout and the correct registration points for platforms, entities, and config changes.
+applyTo: "custom_components/mijnted/**,icon.svg,icon.png"
+description: Integration module layout, entity registration points, and brand artwork maintenance.
 ---
 
 # Project layout
@@ -44,3 +44,22 @@ custom_components/mijnted/
 
 Repository-level instructions and tooling are mapped in `AGENTS.md`; document
 ownership is defined in `documentation.instructions.md`.
+
+## Brand artwork
+
+The root [`icon.svg`](../../icon.svg) is a scalable trace of the original 128 x 128
+favicon from <https://mijnted.nl/favicon@128.png>. It preserves the red
+house/heart artwork and transparent background, with smoothed outer heart and
+hand curves on the right edge to remove favicon clipping artifacts. Export the
+SVG when updating the PNG images: root [`icon.png`](../../icon.png) and
+`custom_components/mijnted/brand/icon.png` at 256 x 256, and the integration's
+`icon@2x.png` at 512 x 512. Home Assistant uses the integration's PNG exports,
+not the SVG.
+
+For example, with Inkscape installed, run from the checkout root:
+
+```sh
+inkscape icon.svg --export-width=256 --export-height=256 --export-filename=icon.png
+inkscape icon.svg --export-width=256 --export-height=256 --export-filename=custom_components/mijnted/brand/icon.png
+inkscape icon.svg --export-width=512 --export-height=512 --export-filename=custom_components/mijnted/brand/icon@2x.png
+```

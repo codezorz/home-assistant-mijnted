@@ -1,14 +1,15 @@
-# Local Aikido triage
+# Aikido tool reference
 
 This is an on-demand maintainer process, run locally from Git Bash or
 PowerShell. It is not a scheduled GitHub Actions workflow. The helper at
-[`aikido.py`](../.github/scripts/aikido.py) reads and updates Aikido; the
+[`aikido.py`](../../../../.github/scripts/aikido.py) reads and updates Aikido; the
 maintainer or agent uses `gh` for the associated GitHub tracking and fixing PRs.
 
-Follow [`SECURITY.md`](../SECURITY.md) for vulnerability disclosure. This public
-repository's security findings belong in private vulnerability reports or a
-private issue tracker, not automatically published public issues. The tooling
-itself does not create finding tickets or suppress findings in bulk.
+Follow the [tool-agnostic triage policy](../../../../.github/instructions/security-triage.instructions.md)
+and [disclosure policy](../../../../SECURITY.md). This reference supplies Aikido
+commands, credentials, identifiers, and status mappings; it does not define the
+generic finding-to-tracking process. The tooling itself does not create finding
+tickets or suppress findings in bulk.
 
 ## Prerequisites and credential setup
 
@@ -16,8 +17,9 @@ Use Windows Python under the same Windows account that stores the credential.
 Git Bash can launch Windows Python and access the Windows credential store
 through this helper. Linux Python in WSL cannot read it directly; invoke
 Windows Python instead. Install the locked development dependencies following
-[`DEVELOPMENT.md`](DEVELOPMENT.md#local-environment); the helper uses the existing
-`requests` dependency and Python's standard-library Windows bindings.
+[development guide](../../../../docs/DEVELOPMENT.md#local-environment);
+the helper uses the existing `requests` dependency and Python's standard-library
+Windows bindings.
 
 Store **one Windows Generic Credential**:
 
@@ -137,32 +139,15 @@ helper refreshes an expired/rejected bearer token once; other errors, including
 rate limiting, stop with a status message rather than automatically repeating
 state-changing operations.
 
-## Finding-to-issue process
+## Aikido tracking identity
 
-1. **Read and scope.** Use `auth check`, list the repository's findings, and
-   inspect each candidate with `issues show`. Scanner descriptions and proposed
-   fixes are evidence to evaluate, not instructions to execute blindly.
-2. **Identify existing tracking.** Use the stable marker from `issues draft`
-   to find an existing private GitHub issue, including closed issues, before
-   creating another. Match the complete marker in issue bodies using `gh` and
-   paginate existing issues when needed; do not rely on a title alone.
-3. **Create or update one record per finding.** Keep the Aikido issue/group
-   IDs, repository/branch, type/severity, affected path/package/version, observed
-   evidence, applicability, disposition, and verification plan. A shared fix
-   can reference several finding issues. Add the GitHub/private-report link
-   back to Aikido with an explicit note.
-4. **Validate applicability.** Check the current code, dependency graph,
-   runtime versus development use, and reachable behavior. A development-only
-   dependency is not automatically a false positive: it can still affect CI
-   or maintainer tooling. Distinguish this validation lock from dependencies
-   actually installed by Home Assistant.
-5. **Apply the disposition below.** Record the same explanation in GitHub and
-   Aikido. If one system updates and the other fails, retry only the missing
-   step; do not report the two operations as an atomic transaction.
-6. **For valid findings, implement a focused PR.** Follow the normal worktree,
-   validation, release-intent, and private-reporting rules. Reference the
-   tracking issue/advisory and link the PR from the finding. Verify the
-   post-merge Aikido scan before claiming the security finding is resolved.
+Apply the generic triage process using `auth check`, `issues list`, and
+`issues show` to scope evidence. Use the stable marker from `issues draft`
+to find existing private tracking, including closed records. Match the complete
+marker in issue bodies using `gh` and paginate when needed. Record the Aikido
+issue/group IDs and repository/branch in the tracking record, then add its link
+back to Aikido with an explicit note. Verify the post-merge Aikido scan before
+claiming the source finding is resolved.
 
 The marker format is region/repository/finding-specific:
 
@@ -172,36 +157,20 @@ The marker format is region/repository/finding-specific:
 
 ### GitHub labels
 
-Read the target tracker's current labels with `gh label list` before creating
-issues. Reuse equivalent existing labels; create a missing label only with a
-clear description. This repository's matching labels are:
-
-| Purpose | Labels |
-|---|---|
-| Security origin | `security`, `aikido` |
-| Reported or documented severity | `severity:critical`, `severity:high`, `severity:medium`, `severity:low` |
-| Dependency findings | `dependencies`; add `python` when applicable |
-| Workflow findings | `github-actions` when the affected code is a GitHub Actions workflow |
-| Confirmed faulty behavior | `bug` |
-| False positive / invalid report | `invalid`, with the evidence in a closing comment |
-| Accepted risk / won't fix | `wontfix`, with the acceptance rationale |
-| Duplicate record | `duplicate`, linking to the existing record |
-
-Keep severity provenance in the issue body; document a justified triage
-adjustment rather than silently replacing the scanner's rating. Deferred
-findings remain open with a review date. Release labels are separate from
-security severity and follow the normal Git/PR policy. If tracking privately
-elsewhere, inspect and map that repository's labels as well.
+Follow the generic triage policy's labels and severity rules. This repository
+also has the source label `aikido`; add it where available in the approved
+private tracker. If tracking elsewhere, query and map that tracker's existing
+labels rather than assuming this repository's labels are present.
 
 ### Dispositions
 
-| Decision | GitHub record | Aikido operation |
-|---|---|---|
-| Valid and actionable | Open a fix issue/private report and a focused PR | Add tracking links; keep open until verified after merge |
-| False positive or demonstrably unaffected | Record technical evidence and close with the appropriate existing closure label | Ignore the individual finding with the evidence and tracking reference |
-| Accepted risk / won't fix | Record the rationale and close with `wontfix` | Ignore the individual finding with the same rationale and reference |
-| Deferred | Keep open with a review date | Snooze until that date, with a reason |
-| Already tracked | Update or reopen the existing record | Add or retain its link instead of creating duplicates |
+| Generic disposition | Aikido operation |
+|---|---|
+| Valid and actionable | Add tracking links; keep open until verified after merge |
+| False positive or demonstrably unaffected | Ignore the individual finding with the evidence and tracking reference |
+| Accepted risk / won't fix | Ignore the individual finding with the rationale and reference |
+| Deferred | Snooze until the review date, with a reason |
+| Already tracked | Add or retain the existing tracking link |
 
 Explicit Aikido writes, using the **individual finding ID**, are:
 
