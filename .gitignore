@@ -124,6 +124,8 @@ celerybeat.pid
 # Environments
 .env
 .venv
+# Generated from uv.lock for pip-based development and candidate validation.
+/requirements_test.txt
 env/
 venv/
 ENV/

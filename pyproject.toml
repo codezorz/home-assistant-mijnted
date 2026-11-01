@@ -1,0 +1,22 @@
+[project]
+name = "home-assistant-mijnted"
+version = "0.0.0.dev0"
+requires-python = ">=3.11"
+# Keep runtime inputs aligned with the Home Assistant manifest.
+dependencies = [
+    "aiohttp",
+    "PyJWT",
+    "pkce",
+    "requests",
+]
+
+[dependency-groups]
+dev = [
+    "packaging",
+    "pytest",
+    "pytest-asyncio",
+    "voluptuous",
+]
+
+[tool.uv]
+package = false

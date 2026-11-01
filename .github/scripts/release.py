@@ -150,6 +150,12 @@ def validate_commit(commit: str, directory: Path) -> None:
     run("git", "clone", "--quiet", "--no-hardlinks", "--no-checkout",
         str(Path.cwd()), str(directory))
     run("git", "checkout", "--quiet", "--detach", commit, cwd=directory)
+    if (directory / "uv.lock").is_file():
+        subprocess.run(
+            [sys.executable, "-m", "uv", "export", "--locked", "--no-hashes", "--no-emit-project",
+             "--format", "requirements-txt", "--output-file", "requirements_test.txt"],
+            cwd=directory, check=True,
+        )
     subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements_test.txt"],
                    cwd=directory, check=True)
     manifest = json.loads((directory / INTEGRATION / "manifest.json").read_text(encoding="utf-8"))

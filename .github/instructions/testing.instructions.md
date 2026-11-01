@@ -1,5 +1,5 @@
 ---
-applyTo: "tests/**,.github/scripts/*.test.py,pytest.ini,requirements_test.txt,.github/workflows/validate-code.yml,.github/workflows/codeql.yml"
+applyTo: "tests/**,.github/scripts/*.test.py,pytest.ini,pyproject.toml,uv.lock,requirements_test.txt,.github/dependabot.yml,.github/workflows/validate-code.yml,.github/workflows/codeql.yml"
 description: Test design, mock boundaries, async behavior, and Home Assistant stand-ins for local tests.
 ---
 
@@ -7,7 +7,12 @@ description: Test design, mock boundaries, async behavior, and Home Assistant st
 
 Environment setup, check commands, CI, and HA smoke testing are owned by
 `doc/DEVELOPMENT.md`. Test discovery and async mode are configured in `pytest.ini`.
-Dependency lists belong in `requirements_test.txt` and the runtime manifest.
+Development dependency inputs belong in `pyproject.toml`; `uv.lock` records the
+resolved runtime/test graph. The Home Assistant manifest owns runtime requirements,
+mirrored in the project's dependencies and checked by `test_dependency_metadata.py`.
+`requirements_test.txt` is an ignored pip export generated from the lock, not a
+second dependency source. Regenerate it with `uv export --locked` after lock updates;
+see `doc/DEVELOPMENT.md` for the full command and Dependabot maintenance.
 Lint changed GitHub Actions workflows with `actionlint`. CodeQL's staged
 activation and fork-PR behavior are documented in `doc/DEVELOPMENT.md`; preserve
 its activation guard so the workflow can land before default setup is disabled.
