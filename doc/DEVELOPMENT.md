@@ -119,7 +119,7 @@ runs this job without path filters. After the check has appeared on a PR,
 select **Validate code** in the branch rules' required status checks to require
 syntax checking and the complete integration/release-tooling test suite.
 
-### CodeQL scanning and activation
+### CodeQL scanning and fork approvals
 
 The [advanced CodeQL workflow](../.github/workflows/codeql.yml) analyzes Python
 and GitHub Actions using the default query suites. It runs on PRs targeting
@@ -128,47 +128,44 @@ dispatch. It scans the normal PR merge checkout using `pull_request`, with the
 built-in token and no repository secrets. GitHub supports uploading CodeQL
 results from this event for public fork PRs despite the read-only fork token.
 The existing first-time-contributor workflow approval policy still applies.
+Approval permits a workflow run; it is not permanent contributor approval.
+Updating or rebasing an external contributor's PR can require approval for the
+new run while they remain a first-time contributor.
 
 GitHub's [default CodeQL setup](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types#about-default-setup)
 excludes fork PRs. Requiring its **CodeQL** check therefore leaves those PRs
 waiting even after **Validate code** passes. Advanced setup supplies the missing
 scan; rerunning the test workflow does not start a CodeQL analysis.
 
-The advanced analysis jobs require the repository Actions variable
-`CODEQL_ADVANCED_ENABLED` to be exactly `true`. Leaving it unset keeps them
-skipped so the workflow can land while default setup still supplies scans.
-Default setup rejects advanced result uploads, so activate in this order:
+Default setup must remain disabled while the repository workflow performs
+advanced uploads. The workflow runs directly on its configured events, without
+an activation variable. The temporary `CODEQL_ADVANCED_ENABLED` migration
+variable is obsolete and can be removed from repository Actions settings.
+Its guard evaluated false on fork PR #70 even when the base repository's value
+was `true`, skipping analysis after workflow approval. Do not reintroduce a
+repository-variable gate for these scans.
 
-1. Merge the workflow PR while keeping default setup enabled and
-   `CODEQL_ADVANCED_ENABLED` unset.
-2. In **Settings → Advanced Security → CodeQL analysis**, choose
-   **Switch to advanced** and confirm **Disable CodeQL**. This disables the
-   default-setup scheduler; the merged workflow supplies advanced scanning.
-   Use the existing workflow rather than committing a second generated one.
-3. Under **Settings → Secrets and variables → Actions → Variables**, set the
-   repository variable `CODEQL_ADVANCED_ENABLED` to `true`.
-4. Run **Actions → CodeQL → Run workflow** on `main` and wait for both
-   language jobs and the **CodeQL** code-scanning check to pass. This establishes
-   the advanced baseline using the same `/language:actions` and
-   `/language:python` analysis categories as default setup.
-5. For existing blocked PRs, trigger a fresh `pull_request` event, for example
-   by closing and reopening the PR. Approve the fork workflow run if prompted.
-   Re-enable auto-merge if closing/reopening cleared it. Existing PRs do not
-   automatically run a newly merged workflow, and rerunning an old test run
-   does not discover it.
-
-Equivalent commands for steps 3 and 4, after switching the repository setting:
+For a baseline or manual verification, run **Actions → CodeQL → Run workflow**
+on `main`, or use:
 
 ```sh
-gh variable set CODEQL_ADVANCED_ENABLED --repo codezorz/home-assistant-mijnted --body true
 gh workflow run codeql.yml --repo codezorz/home-assistant-mijnted --ref main
 ```
 
 Keep the required **CodeQL** code-scanning check and **Validate code** check in
 the `main` ruleset. The workflow is named **CodeQL**, with matrix jobs named
-**Analyze (actions)** and **Analyze (python)**. A skipped advanced job before
-activation is not evidence of a completed scan. After activation, verify the
-first external PR receives both analyses and the required **CodeQL** result.
+**Analyze (actions)** and **Analyze (python)**. Both analyses upload using the
+`/language:actions` and `/language:python` categories, then GitHub reports the
+separate **CodeQL** code-scanning check. A skipped analysis job does not supply
+that result, so the required check can remain **Expected**. A job skipped by a
+job-level condition before matrix expansion can also display the literal name
+`Analyze (${{ matrix.language }})`; that is not a completed language scan.
+
+After a workflow fix lands, trigger a fresh PR event for an existing blocked PR
+by updating its branch or closing and reopening it. Approve the fork workflow
+run if prompted and verify both language jobs and the **CodeQL** result pass.
+Re-enable auto-merge if closing/reopening cleared it. Rerunning an older run
+uses its original workflow revision, so it may repeat the obsolete condition.
 
 ## Brand artwork
 
