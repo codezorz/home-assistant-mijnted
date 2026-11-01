@@ -20,5 +20,8 @@ description: Aikido helper implementation rules for credentials, scoped API oper
   writes. Prefix shared-group notes with the source repository/finding.
 - Preserve stable tracking markers, reasoned dispositions, and the distinction
   between opening a fix PR and verifying that a scan has resolved a finding.
+  A root-cause issue may contain multiple individual markers; link and verify
+  every affected finding without broadening API suppression to its display group.
+  For won't-fix cases, verify ignored states/reasons before closing GitHub.
 - Mock HTTP and native APIs in unit tests. Live smoke tests are read-only;
   applying finding dispositions is a separate explicit operation.

@@ -121,7 +121,8 @@ the read-only check does not modify a real finding to probe write access.
 
 `issues list` and `issues show` return selected JSON metadata, excluding raw
 secret evidence and arbitrary type-specific payloads. `issues draft` prints a
-local Markdown draft to review and complete before private publication.
+local per-finding input for a root-cause record. Review/sanitize the combined
+record and choose its visibility under the generic triage/disclosure policy.
 Authentication material is redacted from command output, and error messages
 omit response bodies, HTTP headers, and underlying request-library text.
 
@@ -141,25 +142,39 @@ state-changing operations.
 
 ## Aikido tracking identity
 
-Apply the generic triage process using `auth check`, `issues list`, and
-`issues show` to scope evidence. Use the stable marker from `issues draft`
-to find existing private tracking, including closed records. Match the complete
-marker in issue bodies using `gh` and paginate when needed. Record the Aikido
-issue/group IDs and repository/branch in the tracking record, then add its link
-back to Aikido with an explicit note. Verify the post-merge Aikido scan before
-claiming the source finding is resolved.
+Apply the generic root-cause triage process using `auth check`, `issues list`,
+and `issues show` to scope evidence. Aikido's display groups are feed categories,
+not an instruction to merge all their findings into one fix. Assess the common
+technical cause and remediation, then create or reuse one root-cause GitHub
+issue. Search open and closed records using each complete stable marker from
+`issues draft` and paginate when needed.
+
+Place all related per-finding markers in the root-cause issue body, alongside
+a table of Aikido finding/group IDs, original severities, affected components,
+and the common disposition/acceptance criteria. This lets later runs find the
+same issue from any of its source findings. Add the root-cause issue link to
+each finding with an explicit note; do not create a ticket per occurrence or
+silently discard IDs when consolidating. Notes use the group-note API but are
+prefixed with the repository and individual finding ID.
 
 The marker format is region/repository/finding-specific:
 
 ```text
 <!-- aikido:app.aikido.dev:repo:123:issue:456 -->
+<!-- aikido:app.aikido.dev:repo:123:issue:457 -->
 ```
+
+One focused fixing PR normally completes the actionable root-cause issue.
+Follow the generic issue-closing rules for full versus partial fixes, and
+verify all related Aikido findings after the applicable scan/reassessment.
+GitHub issue closure at merge does not automatically prove those findings
+resolved in Aikido.
 
 ### GitHub labels
 
 Follow the generic triage policy's labels and severity rules. This repository
 also has the source label `aikido`; add it where available in the approved
-private tracker. If tracking elsewhere, query and map that tracker's existing
+tracker. If tracking elsewhere, query and map that tracker's existing
 labels rather than assuming this repository's labels are present.
 
 ### Dispositions
@@ -168,16 +183,17 @@ labels rather than assuming this repository's labels are present.
 |---|---|
 | Valid and actionable | Add tracking links; keep open until verified after merge |
 | False positive or demonstrably unaffected | Ignore the individual finding with the evidence and tracking reference |
-| Accepted risk / won't fix | Ignore the individual finding with the rationale and reference |
+| Accepted risk / won't fix | Ignore every applicable individual finding with the rationale and root-cause reference, verify its ignored status/reason, then close GitHub as not planned with `wontfix` |
 | Deferred | Snooze until the review date, with a reason |
 | Already tracked | Add or retain the existing tracking link |
 
 Explicit Aikido writes, using the **individual finding ID**, are:
 
 ```bash
-python .github/scripts/aikido.py issues note 123 --message "Tracked in PRIVATE_ISSUE_OR_ADVISORY_URL; disposition: investigating"
-python .github/scripts/aikido.py issues ignore 123 --reason "False positive: EVIDENCE; tracked in PRIVATE_ISSUE_OR_ADVISORY_URL"
-python .github/scripts/aikido.py issues snooze 123 --until 2027-01-15 --reason "Deferred until REVIEW_REASON; tracked in PRIVATE_ISSUE_OR_ADVISORY_URL"
+python .github/scripts/aikido.py issues note 123 --message "Root-cause tracking: TRACKING_ISSUE_OR_ADVISORY_URL; disposition: investigating"
+python .github/scripts/aikido.py issues ignore 123 --reason "False positive: EVIDENCE; root-cause tracking: TRACKING_ISSUE_OR_ADVISORY_URL"
+python .github/scripts/aikido.py issues ignore 123 --reason "Accepted risk / won't fix: RATIONALE; root-cause tracking: TRACKING_ISSUE_OR_ADVISORY_URL"
+python .github/scripts/aikido.py issues snooze 123 --until 2027-01-15 --reason "Deferred until REVIEW_REASON; root-cause tracking: TRACKING_ISSUE_OR_ADVISORY_URL"
 python .github/scripts/aikido.py issues unignore 123
 python .github/scripts/aikido.py issues unsnooze 123
 ```
@@ -186,6 +202,38 @@ Snooze dates use `YYYY-MM-DD` at midnight UTC and must be in the future. Notes
 are attached through Aikido's group-note API and automatically identify this
 repository and the individual finding ID. No command marks a finding solved
 merely because a PR has been opened.
+
+For won't-fix tracking, apply `issues ignore` to each listed finding ID, using
+the accepted-risk rationale and root-cause link. Read back the individual
+finding's `status` and `ignore_reasons` through `GET /issues/{issue_id}` to
+verify the ignore and its explanation. Some finding types return only the
+generic `api_ignore` reason "Ignored via API" even when the ignore request
+included a custom reason. That generic text does not verify the explanation:
+add the full rationale and tracking link as a repository/finding-prefixed
+group note, then verify it through `GET /issues/groups/{group_id}/notes`.
+The Aikido state is **ignored**,
+not **closed/solved**: the report is accepted rather than fixed. Only after all
+applicable source states are verified should the agent close the GitHub issue
+as not planned with `wontfix` and a closing comment. For example:
+
+```bash
+gh issue close ISSUE_NUMBER --repo OWNER/REPOSITORY --reason "not planned" --comment "Won't fix: RATIONALE. Every related Aikido finding was ignored via API and its status/reason read back."
+```
+
+The helper's `issues show` output intentionally omits arbitrary raw metadata;
+it does not currently expose `ignore_reasons`. Do not infer verification from
+`completed: true` alone. Keep any unfinished cross-system step visible and
+retry only that step. Do not ignore unrelated findings in the same Aikido
+display group.
+
+### API pacing
+
+Aikido's standard public API limit is **20 calls per minute per workspace**
+(50 only when enabled by Aikido). Pace multi-finding triage accordingly and
+honor `Retry-After` on HTTP 429. Reuse authentication/repository resolution
+where possible, and read existing notes before repeating a link operation
+after a partial failure. Retry throttled reads after the indicated delay;
+do not blindly repeat a state-changing request that may already have succeeded.
 
 ## Validation and references
 
@@ -207,4 +255,5 @@ dispositions are applied only as explicit triage operations.
 - [Ignore a finding](https://apidocs.aikido.dev/reference/ignoreissue.md)
 - [Snooze a finding](https://apidocs.aikido.dev/reference/snoozeissue.md)
 - [Group notes](https://apidocs.aikido.dev/reference/addnotetoissuegroup.md)
+- [Rate limiting](https://apidocs.aikido.dev/reference/rate-limiting.md)
 - [Windows cmdkey](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmdkey)
