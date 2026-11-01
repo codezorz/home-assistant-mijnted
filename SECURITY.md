@@ -25,4 +25,7 @@ You will receive an acknowledgment as soon as practical. After validation, we wi
 
 Follow the [security triage instructions](.github/instructions/security-triage.instructions.md)
 for findings from any source. Tool-specific skills provide scanner commands
-and credentials; the triage process follows the private reporting policy above.
+and credentials. Maintainers may use owner-approved, sanitized public issues
+to track hardening work by root cause. Keep credentials, exploitable details,
+and sensitive vulnerability evidence in private reporting channels. This does
+not change the private reporting policy for vulnerability submissions above.
