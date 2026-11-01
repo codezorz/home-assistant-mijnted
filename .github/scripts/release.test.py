@@ -259,6 +259,33 @@ class TestPromotionHistory:
 class TestCandidateValidation:
     """Verify candidate tests run in a real checkout at the requested commit."""
 
+    @pytest.mark.parametrize("has_lock", [False, True])
+    def test_dependency_install_uses_each_candidates_dependency_format(self, monkeypatch, tmp_path, has_lock):
+        """Locked candidates export before installation; historical requirements-only candidates still work."""
+        directory = tmp_path / "candidate"
+        integration = directory / release.INTEGRATION
+        integration.mkdir(parents=True)
+        (integration / "manifest.json").write_text(json.dumps({"requirements": []}), encoding="utf-8")
+        if has_lock:
+            (directory / "uv.lock").touch()
+        else:
+            (directory / "requirements_test.txt").write_text("pytest\n", encoding="utf-8")
+        process = Mock(return_value=subprocess.CompletedProcess([], 0))
+        monkeypatch.setattr(release, "run", Mock())
+        monkeypatch.setattr(release.subprocess, "run", process)
+
+        release.validate_commit("candidate-commit", directory)
+
+        commands = [call.args[0] for call in process.call_args_list]
+        install = [sys.executable, "-m", "pip", "install", "-r", "requirements_test.txt"]
+        assert install in commands
+        exports = [command for command in commands if command[2] == "uv"]
+        assert bool(exports) == has_lock
+        if has_lock:
+            assert "--locked" in exports[0]
+            assert exports[0][-2:] == ["--output-file", "requirements_test.txt"]
+            assert commands.index(exports[0]) < commands.index(install)
+
     def test_validation_preserves_git_discovery_at_exact_commit(self, monkeypatch, tmp_path):
         """Historical candidates retain Git metadata and pass the previously failing test."""
         repository = Path(__file__).resolve().parents[2]
@@ -283,7 +310,7 @@ class TestCandidateValidation:
         def run_command(command, **kwargs):
             if command[0] == sys.executable:
                 python_commands.append(command)
-                if command[2] == "pip":
+                if command[2] in {"pip", "uv"}:
                     return subprocess.CompletedProcess(command, 0)
                 if command[2] == "pytest":
                     # Exercise the real regression without recursively running release tests.

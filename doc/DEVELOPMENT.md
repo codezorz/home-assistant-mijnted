@@ -43,21 +43,49 @@ Do not share one virtual environment between Windows Python and WSL Python.
 From the active checkout's root:
 
 ```sh
+python -m pip install uv
+python -m uv export --locked --no-hashes --no-emit-project --format requirements-txt --output-file requirements_test.txt
 python -m pip install -r requirements_test.txt
 ```
 
-`requirements_test.txt` owns local test dependencies; `manifest.json` owns
-Home Assistant runtime requirements. CI installs both. For exact runtime
-dependency versions outside HA, install the manifest requirements as well:
+`pyproject.toml` declares runtime dependency inputs and the `dev` test group;
+`uv.lock` pins their full transitive graph across supported platforms. The
+project is virtual (`package = false`), so installing these dependencies does
+not build or install the integration as a Python package. The development
+project targets Python 3.11 and newer; use the latest stable Python for CI parity.
 
-```sh
-python -c "import json, subprocess, sys; r=json.load(open('custom_components/mijnted/manifest.json', encoding='utf-8'))['requirements']; subprocess.check_call([sys.executable, '-m', 'pip', 'install', *r])"
-```
+`requirements_test.txt` is an ignored, generated pip export, recreated by the
+commands above and by CI/release validation. It is not a dependency source to
+edit or commit. Exporting with `--locked` rejects stale project metadata rather
+than silently changing the lock. Regenerate the export after every lock update.
+
+Home Assistant continues to install runtime requirements from
+`custom_components/mijnted/manifest.json`. Keep those inputs mirrored in
+`pyproject.toml`; a test checks their names and constraints match. The lock
+describes the development/validation environment, while HA owns its installed
+runtime environment.
 
 Tests mock Home Assistant and do not need a full HA installation. A shared venv
 can serve worktrees with compatible requirements; use a separate environment
 when a task needs conflicting dependency versions. Do not copy environments
 or credentials between checkouts automatically.
+
+### Dependency updates and security scanning
+
+Commit `pyproject.toml` and `uv.lock` together. To resolve intentional input
+changes, run `python -m uv lock`; to refresh all pinned versions, run
+`python -m uv lock --upgrade`. Then recreate the pip export using the command
+above, install it, and run the relevant tests. Check metadata/lock consistency
+without updates using `python -m uv lock --check`.
+
+[Aikido supports `uv.lock`](https://help.aikido.dev/code-scanning/scanning-practices/python-projects-security-scanning-best-practices)
+for Python dependency scanning, including exact transitive dependency versions.
+The [Dependabot configuration](../.github/dependabot.yml) uses the `uv` ecosystem
+to update the project metadata and lock weekly, grouping Python updates and
+retaining the existing major-version ignore policy. Generated pip exports are
+created at installation time so lock-only Dependabot updates cannot leave a
+committed export stale. Review runtime constraint changes against the HA
+manifest as well. GitHub Actions updates remain in their separate weekly group.
 
 ## Checks appropriate to the change
 
@@ -65,6 +93,7 @@ or credentials between checkouts automatically.
 |---|---|
 | Documentation / agent guidance | `git diff --check`; verify local links, imports, skill metadata, and referenced code behavior |
 | GitHub Actions workflows | `actionlint <changed-workflow>`; `git diff --check`; relevant tooling tests if script behavior changes |
+| Dependency inputs / lock | `python -m uv lock --check`; regenerate/install the pip export; `python -m pytest -q` |
 | Integration Python | `python -m compileall custom_components/mijnted`; relevant existing tests |
 | Cache, date, or statistics behavior | Target affected tests, including rollover, API lag, zero/missing values, and late corrections |
 | Broad integration changes | `python -m pytest -q`, plus an HA smoke test for runtime-sensitive behavior |
@@ -118,7 +147,7 @@ Default setup rejects advanced result uploads, so activate in this order:
    Use the existing workflow rather than committing a second generated one.
 3. Under **Settings → Secrets and variables → Actions → Variables**, set the
    repository variable `CODEQL_ADVANCED_ENABLED` to `true`.
-4. Run **Actions → CodeQL advanced → Run workflow** on `main` and wait for both
+4. Run **Actions → CodeQL → Run workflow** on `main` and wait for both
    language jobs and the **CodeQL** code-scanning check to pass. This establishes
    the advanced baseline using the same `/language:actions` and
    `/language:python` analysis categories as default setup.
@@ -136,9 +165,8 @@ gh workflow run codeql.yml --repo codezorz/home-assistant-mijnted --ref main
 ```
 
 Keep the required **CodeQL** code-scanning check and **Validate code** check in
-the `main` ruleset. The advanced workflow's matrix jobs are named
-**CodeQL advanced (actions)** and **CodeQL advanced (python)** to distinguish
-them from default-setup jobs during migration. A skipped advanced job before
+the `main` ruleset. The workflow is named **CodeQL**, with matrix jobs named
+**Analyze (actions)** and **Analyze (python)**. A skipped advanced job before
 activation is not evidence of a completed scan. After activation, verify the
 first external PR receives both analyses and the required **CodeQL** result.
 
@@ -216,7 +244,8 @@ intermediate branch commits.
 Each candidate is validated in a temporary local Git clone with its exact commit
 checked out in detached-HEAD mode. This preserves Git metadata for tests that
 discover the repository root. The workflow installs that commit's test/runtime
-requirements, checks syntax, and runs its test suite before packaging tracked
+requirements (exporting that commit's `uv.lock` when present), checks syntax,
+and runs its test suite before packaging tracked
 integration files from a separate Git archive. A failed candidate
 stops the batch without publishing it. Inspect the workflow log before retrying;
 fixing only a later commit does not make the failed historical commit pass.
