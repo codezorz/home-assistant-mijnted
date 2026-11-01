@@ -101,8 +101,6 @@ class MijnTedResetStatisticsButton(CoordinatorEntity, ButtonEntity):
         statistics_tracking = StatisticsTracking(
             monthly_usage=None,
             last_year_monthly_usage=None,
-            average_monthly_usage=None,
-            last_year_average_monthly_usage=None,
             total_usage=None
         )
         

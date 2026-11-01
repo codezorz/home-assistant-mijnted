@@ -71,12 +71,13 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - Unique ID: `mijnted_<configEntryId>_average_monthly_usage`
 - Name: `<configured device name> Average monthly usage`
 - Unit: `Units`
-- State class: `TOTAL`
+- State class: none (monthly statistics are imported separately).
 - Purpose: latest available historical monthly average.
 - Value source: newest history entry with non-null `average_usage`.
 - Missing data behavior: returns `None` (no last-known fallback in this sensor).
 - Attributes:
   - `month_id` (of the history entry used for the value)
+  - `monthly_statistic_id` (import-only monthly-average series for graphs)
 
 ### Last year average monthly usage
 
@@ -84,13 +85,14 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - Unique ID: `mijnted_<configEntryId>_last_year_average_monthly_usage`
 - Name: `<configured device name> Last year average monthly usage`
 - Unit: `Units`
-- State class: `TOTAL`
+- State class: none (monthly statistics are imported separately).
 - Purpose: average usage for the same month in the previous year.
 - Value source: previous-year same-month entry in `monthly_history_cache` (`average_usage`).
 - Missing data behavior: returns last known value.
 - Attributes:
   - `month_id` (current month key)
   - `last_year_month_id`
+  - `monthly_statistic_id` (import-only last-year comparison series for graphs)
 
 ### Total usage
 
@@ -323,18 +325,27 @@ rows. Use statistics-capable graphs to view the imported periods.
   - Entity has `entity_id`
   - `hass` is available
   - Recorder integration is loaded
-- Duplicate protection:
+- Duplicate protection for non-average usage statistics:
   - `statistics_tracking` stores the last injected month key per sensor type
   - The current calendar month is re-imported after updates so its statistic does not freeze at the first value
   - When a historical month value is corrected later (for example previous month final-day data arrives after month switch), a one-time reinjection hint allows that corrected month to be imported even if it is older than `last_injected`
 - `total_usage` injection:
   - Uses monthly `total_usage_end` states and updates `sum` cumulatively
 - `average_monthly_usage` and `last_year_average_monthly_usage` injection:
-  - Imports one monthly state value per period (state-only statistics, no mean/sum aggregation)
-  - In Statistics UI, use the state view for these two entities
+  - API history backfills separate monthly mean series; cached periods are reimported on refresh to include late values and corrections.
+  - The current month is excluded from the average series; the last-year comparison shifts periods forward one year and excludes future comparison months.
 - Reset path:
   - The reset button clears persisted monthly cache and in-memory `statistics_tracking`, then triggers refresh
   - It does not delete existing recorder history/statistics or clear each sensor's in-memory last-known state
+
+### Monthly Building-Average Graphs
+
+In a Statistics graph card, select the building-average statistics whose names
+end in **(monthly)** and choose **Month + Mean**. Their IDs are also available in
+each average sensor's `monthly_statistic_id` attribute. Historical API averages
+are placed in their HA-local consumption month, independent of publication time.
+For a combined usage-and-average graph, select **State + Mean**
+(`stat_types: [state, mean]`): usage lines use `state`, averages use `mean`.
 
 ## Related Button
 

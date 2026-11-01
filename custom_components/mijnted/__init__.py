@@ -1740,7 +1740,7 @@ def _snapshot_historical_month_usage_values(
     monthly_history_cache: Dict[str, MonthCacheEntry],
     now: datetime,
 ) -> Dict[str, Dict[str, Optional[float]]]:
-    """Snapshot historical-month total/average usage values for change detection."""
+    """Snapshot historical-month totals for monthly-usage reinjection detection."""
     current_month_key = DateUtil.format_month_key(now.year, now.month)
     snapshot: Dict[str, Dict[str, Optional[float]]] = {}
 
@@ -1749,19 +1749,15 @@ def _snapshot_historical_month_usage_values(
             continue
 
         total_usage: Optional[float] = None
-        average_usage: Optional[float] = None
         if isinstance(cache_entry, MonthCacheEntry):
             total_usage = DataUtil.safe_float(cache_entry.total_usage)
-            average_usage = DataUtil.safe_float(cache_entry.average_usage)
         elif isinstance(cache_entry, dict):
             total_usage = DataUtil.safe_float(cache_entry.get("total_usage"))
-            average_usage = DataUtil.safe_float(cache_entry.get("average_usage"))
         else:
             continue
 
         snapshot[month_key] = {
             "total_usage": total_usage,
-            "average_usage": average_usage,
         }
 
     return snapshot
@@ -1783,7 +1779,6 @@ def _detect_statistics_reinject_hints(
     """Detect historical months whose corrected values should be re-injected."""
     hints: Dict[str, set[str]] = {
         "monthly_usage": set(),
-        "average_monthly_usage": set(),
     }
 
     for month_key, after_values in after_snapshot.items():
@@ -1798,11 +1793,6 @@ def _detect_statistics_reinject_hints(
         if after_total is not None and before_total != after_total:
             hints["monthly_usage"].add(tracking_month_key)
 
-        before_average = before_values.get("average_usage")
-        after_average = after_values.get("average_usage")
-        if after_average is not None and before_average != after_average:
-            hints["average_monthly_usage"].add(tracking_month_key)
-
     return {sensor_type: months for sensor_type, months in hints.items() if months}
 
 
@@ -1814,6 +1804,8 @@ def _normalize_statistics_reinject(raw: Any) -> Dict[str, set[str]]:
 
     for sensor_type, months_raw in raw.items():
         if not isinstance(sensor_type, str):
+            continue
+        if sensor_type in {"average_monthly_usage", "last_year_average_monthly_usage"}:
             continue
 
         month_values: set[str] = set()
@@ -1894,8 +1886,6 @@ def _get_or_create_statistics_tracking(
     return StatisticsTracking(
         monthly_usage=None,
         last_year_monthly_usage=None,
-        average_monthly_usage=None,
-        last_year_average_monthly_usage=None,
         total_usage=None
     )
 

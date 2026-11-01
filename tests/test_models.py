@@ -155,14 +155,14 @@ class TestStatisticsTracking:
         st = StatisticsTracking()
         d = st.to_dict()
         assert all(v is None for v in d.values())
-        assert len(d) == 5
+        assert len(d) == 3
 
     def test_to_dict_with_values(self):
         st = StatisticsTracking(monthly_usage="2025-11", total_usage="2025-10")
         d = st.to_dict()
         assert d["monthly_usage"] == "2025-11"
         assert d["total_usage"] == "2025-10"
-        assert d["average_monthly_usage"] is None
+        assert d["last_year_monthly_usage"] is None
 
 
 # ---------------------------------------------------------------------------

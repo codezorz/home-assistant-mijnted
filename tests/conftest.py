@@ -59,6 +59,8 @@ _SUBMODULES = {
     "homeassistant.components.recorder.statistics": _ha.components.recorder.statistics,
     "homeassistant.data_entry_flow": _ha.data_entry_flow,
     "homeassistant.exceptions": _ha.exceptions,
+    "homeassistant.util": _ha.util,
+    "homeassistant.util.dt": _ha.util.dt,
 }
 
 for name, mock in _SUBMODULES.items():

@@ -269,14 +269,10 @@ class StatisticsTracking:
     Attributes:
         monthly_usage: Last injected month key for monthly usage sensor, or None.
         last_year_monthly_usage: Last injected month key for last year monthly usage, or None.
-        average_monthly_usage: Last injected month key for average monthly usage, or None.
-        last_year_average_monthly_usage: Last injected month key for last year average, or None.
         total_usage: Last injected month key for total usage sensor, or None.
     """
     monthly_usage: Optional[str] = None
     last_year_monthly_usage: Optional[str] = None
-    average_monthly_usage: Optional[str] = None
-    last_year_average_monthly_usage: Optional[str] = None
     total_usage: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -288,8 +284,6 @@ class StatisticsTracking:
         return {
             "monthly_usage": self.monthly_usage,
             "last_year_monthly_usage": self.last_year_monthly_usage,
-            "average_monthly_usage": self.average_monthly_usage,
-            "last_year_average_monthly_usage": self.last_year_average_monthly_usage,
             "total_usage": self.total_usage
         }
 

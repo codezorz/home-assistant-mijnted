@@ -129,9 +129,9 @@ Usage sensors request zero decimal places for display; underlying values retain 
 ### History and Statistics
 
 With recorder enabled, usage sensors import historical long-term statistics.
-This does not backfill ordinary sensor state history. Total usage uses
-`TOTAL_INCREASING`; other usage sensors use `TOTAL`. Average statistics are
-state-only: use the Statistics state view for the two average entities.
+This does not backfill ordinary sensor state history. For historical building
+averages, select the dedicated monthly statistics and use **Month + Mean**;
+see [monthly-average graphs](docs/SENSORS.md#monthly-building-average-graphs).
 
 Late month corrections can trigger reinjection. The reset button rebuilds the
 integration cache and injection tracking; it does not delete recorder data.
