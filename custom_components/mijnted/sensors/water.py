@@ -16,15 +16,22 @@ _MODEL_PREFIX_KINDS = {"WWZF": WATER_KIND_WARM, "KWZF": WATER_KIND_COLD}
 _DELIVERY_TYPE_KINDS = {"2": WATER_KIND_WARM, "3": WATER_KIND_COLD}
 
 
-def _delivery_data(data: Optional[Dict[str, Any]], delivery_type: str) -> Dict[str, Any]:
-    """Return the extra delivery-type payload for a delivery type, or an empty dict."""
+def _delivery_payloads(data: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Combine additional deliveries with the already-fetched primary payload."""
     if not data:
         return {}
     extra = data.get("extra_delivery_data")
-    if not isinstance(extra, dict):
-        return {}
-    delivery = extra.get(str(delivery_type))
-    return delivery if isinstance(delivery, dict) else {}
+    deliveries: Dict[str, Dict[str, Any]] = {}
+    if isinstance(extra, dict):
+        for delivery_type, delivery in extra.items():
+            if isinstance(delivery, dict):
+                deliveries[str(delivery_type)] = delivery
+    delivery_types = data.get("delivery_types")
+    if isinstance(delivery_types, list) and delivery_types:
+        primary = delivery_types[0]
+        if isinstance(primary, (str, int)):
+            deliveries[str(primary)] = data
+    return deliveries
 
 
 def _delivery_devices(delivery: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -65,18 +72,15 @@ def get_water_deliveries(data: Optional[Dict[str, Any]]) -> Dict[str, List[str]]
     """Map each water delivery type ID to its unique device numbers.
 
     Args:
-        data: Coordinator data containing ``extra_delivery_data``.
+        data: Coordinator data containing primary and additional delivery payloads.
 
     Returns:
         Delivery type ID (string) -> device numbers (strings, in API order).
         Delivery types that are not measured in m³ are left out.
     """
     water: Dict[str, List[str]] = {}
-    extra = data.get("extra_delivery_data") if data else None
-    if not isinstance(extra, dict):
-        return water
-    for delivery_type, delivery in extra.items():
-        if not isinstance(delivery, dict) or not is_water_delivery(delivery):
+    for delivery_type, delivery in _delivery_payloads(data).items():
+        if not is_water_delivery(delivery):
             continue
         device_numbers: List[str] = []
         for device in _delivery_devices(delivery):
@@ -128,8 +132,8 @@ class MijnTedWaterMeterSensor(MijnTedSensor):
 
     @property
     def _delivery(self) -> Dict[str, Any]:
-        """Extra delivery-type payload for this sensor's delivery type."""
-        return _delivery_data(self.coordinator.data, self.delivery_type)
+        """Primary or additional delivery payload for this sensor's delivery type."""
+        return _delivery_payloads(self.coordinator.data).get(self.delivery_type, {})
 
     @property
     def _device_data(self) -> Optional[Dict[str, Any]]:

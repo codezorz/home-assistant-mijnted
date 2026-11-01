@@ -34,22 +34,24 @@ class TestEntityUniqueId:
                         "filter_status": [
                             {"deviceNumber": "1001", "room": "W"}
                         ]
-                    }
+                    },
+                    async_add_listener=MagicMock(),
                 ),
                 "entry_two": SimpleNamespace(
                     data={
                         "filter_status": [
                             {"deviceNumber": "1001", "room": "KA"}
                         ]
-                    }
+                    },
+                    async_add_listener=MagicMock(),
                 ),
             }
         }
         first_entry = SimpleNamespace(
-            entry_id="entry_one", data={"name": "Home"}
+            entry_id="entry_one", data={"name": "Home"}, async_on_unload=MagicMock()
         )
         second_entry = SimpleNamespace(
-            entry_id="entry_two", data={"name": "Office"}
+            entry_id="entry_two", data={"name": "Office"}, async_on_unload=MagicMock()
         )
         first_add = MagicMock()
         second_add = MagicMock()

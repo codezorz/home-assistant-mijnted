@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Set, Tuple
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -131,8 +131,32 @@ async def async_setup_entry(
                         )
                         sensors.append(MijnTedDeviceSensor(coordinator, device_id, entry.entry_id, config_name=config_name))
     
-    for delivery_type, device_numbers in get_water_deliveries(coordinator.data).items():
-        for device_number in device_numbers:
-            sensors.append(MijnTedWaterMeterSensor(coordinator, delivery_type, device_number, entry.entry_id, config_name=config_name))
+    known_water_devices: Set[Tuple[str, str]] = set()
 
+    def _discover_water_sensors() -> List[SensorEntity]:
+        """Create water entities only for delivery/device pairs not yet added."""
+        new_sensors: List[SensorEntity] = []
+        for delivery_type, device_numbers in get_water_deliveries(coordinator.data).items():
+            for device_number in device_numbers:
+                key = (delivery_type, device_number)
+                if key in known_water_devices:
+                    continue
+                known_water_devices.add(key)
+                new_sensors.append(
+                    MijnTedWaterMeterSensor(
+                        coordinator, delivery_type, device_number, entry.entry_id,
+                        config_name=config_name,
+                    )
+                )
+        return new_sensors
+
+    def _add_new_water_sensors() -> None:
+        """Retry water discovery after successful refreshes, including partial recovery."""
+        if coordinator.last_update_success:
+            new_sensors = _discover_water_sensors()
+            if new_sensors:
+                async_add_entities(new_sensors, True)
+
+    sensors.extend(_discover_water_sensors())
     async_add_entities(sensors, True)
+    entry.async_on_unload(coordinator.async_add_listener(_add_new_water_sensors))
