@@ -64,6 +64,7 @@ or credentials between checkouts automatically.
 | Change | Checks |
 |---|---|
 | Documentation / agent guidance | `git diff --check`; verify local links, imports, skill metadata, and referenced code behavior |
+| GitHub Actions workflows | `actionlint <changed-workflow>`; `git diff --check`; relevant tooling tests if script behavior changes |
 | Integration Python | `python -m compileall custom_components/mijnted`; relevant existing tests |
 | Cache, date, or statistics behavior | Target affected tests, including rollover, API lag, zero/missing values, and late corrections |
 | Broad integration changes | `python -m pytest -q`, plus an HA smoke test for runtime-sensitive behavior |
@@ -88,6 +89,58 @@ The workflow and its job are named **Validate code**. Every PR targeting `main`
 runs this job without path filters. After the check has appeared on a PR,
 select **Validate code** in the branch rules' required status checks to require
 syntax checking and the complete integration/release-tooling test suite.
+
+### CodeQL scanning and activation
+
+The [advanced CodeQL workflow](../.github/workflows/codeql.yml) analyzes Python
+and GitHub Actions using the default query suites. It runs on PRs targeting
+`main` (including fork PRs), pushes to `main`, a weekly schedule, and manual
+dispatch. It scans the normal PR merge checkout using `pull_request`, with the
+built-in token and no repository secrets. GitHub supports uploading CodeQL
+results from this event for public fork PRs despite the read-only fork token.
+The existing first-time-contributor workflow approval policy still applies.
+
+GitHub's [default CodeQL setup](https://docs.github.com/en/code-security/concepts/code-scanning/setup-types#about-default-setup)
+excludes fork PRs. Requiring its **CodeQL** check therefore leaves those PRs
+waiting even after **Validate code** passes. Advanced setup supplies the missing
+scan; rerunning the test workflow does not start a CodeQL analysis.
+
+The advanced analysis jobs require the repository Actions variable
+`CODEQL_ADVANCED_ENABLED` to be exactly `true`. Leaving it unset keeps them
+skipped so the workflow can land while default setup still supplies scans.
+Default setup rejects advanced result uploads, so activate in this order:
+
+1. Merge the workflow PR while keeping default setup enabled and
+   `CODEQL_ADVANCED_ENABLED` unset.
+2. In **Settings → Advanced Security → CodeQL analysis**, choose
+   **Switch to advanced** and confirm **Disable CodeQL**. This disables the
+   default-setup scheduler; the merged workflow supplies advanced scanning.
+   Use the existing workflow rather than committing a second generated one.
+3. Under **Settings → Secrets and variables → Actions → Variables**, set the
+   repository variable `CODEQL_ADVANCED_ENABLED` to `true`.
+4. Run **Actions → CodeQL advanced → Run workflow** on `main` and wait for both
+   language jobs and the **CodeQL** code-scanning check to pass. This establishes
+   the advanced baseline using the same `/language:actions` and
+   `/language:python` analysis categories as default setup.
+5. For existing blocked PRs, trigger a fresh `pull_request` event, for example
+   by closing and reopening the PR. Approve the fork workflow run if prompted.
+   Re-enable auto-merge if closing/reopening cleared it. Existing PRs do not
+   automatically run a newly merged workflow, and rerunning an old test run
+   does not discover it.
+
+Equivalent commands for steps 3 and 4, after switching the repository setting:
+
+```sh
+gh variable set CODEQL_ADVANCED_ENABLED --repo codezorz/home-assistant-mijnted --body true
+gh workflow run codeql.yml --repo codezorz/home-assistant-mijnted --ref main
+```
+
+Keep the required **CodeQL** code-scanning check and **Validate code** check in
+the `main` ruleset. The advanced workflow's matrix jobs are named
+**CodeQL advanced (actions)** and **CodeQL advanced (python)** to distinguish
+them from default-setup jobs during migration. A skipped advanced job before
+activation is not evidence of a completed scan. After activation, verify the
+first external PR receives both analyses and the required **CodeQL** result.
 
 ## Brand artwork
 
