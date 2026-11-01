@@ -117,6 +117,11 @@ unchanged `main` tip.
 
 ## Permissions, retries, and validation
 
+Release workflow actions are pinned to full commit SHAs with readable version
+comments. The grouped GitHub Actions Dependabot configuration proposes pin
+updates for review; check upstream changes and action inputs before accepting
+them, especially for actions that receive the release App private key/token.
+
 Both publishers use a GitHub App installation token to create tags and manage
 releases. Historical commits can differ from current `main` in workflow files;
 GitHub then requires Workflows write permission for tag/release operations.
