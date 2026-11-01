@@ -1,5 +1,5 @@
 ---
-applyTo: "tests/**,.github/scripts/*.test.py,pytest.ini,requirements_test.txt,.github/workflows/validate-code.yml"
+applyTo: "tests/**,.github/scripts/*.test.py,pytest.ini,requirements_test.txt,.github/workflows/validate-code.yml,.github/workflows/codeql.yml"
 description: Test design, mock boundaries, async behavior, and Home Assistant stand-ins for local tests.
 ---
 
@@ -8,6 +8,9 @@ description: Test design, mock boundaries, async behavior, and Home Assistant st
 Environment setup, check commands, CI, and HA smoke testing are owned by
 `doc/DEVELOPMENT.md`. Test discovery and async mode are configured in `pytest.ini`.
 Dependency lists belong in `requirements_test.txt` and the runtime manifest.
+Lint changed GitHub Actions workflows with `actionlint`. CodeQL's staged
+activation and fork-PR behavior are documented in `doc/DEVELOPMENT.md`; preserve
+its activation guard so the workflow can land before default setup is disabled.
 
 Integration tests live in `tests/`; release-tooling tests live beside their
 script in `.github/scripts/release.test.py`. Pytest discovers both locations
