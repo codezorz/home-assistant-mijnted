@@ -22,7 +22,7 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
 
 ## Values, availability, and statistics
 
-- `doc/SENSORS.md` owns the per-sensor source and missing-data contract. A
+- `docs/SENSORS.md` owns the per-sensor source and missing-data contract. A
   failed coordinator refresh makes sensors unavailable; a successful partial
   refresh can leave individual values stale or unknown.
 - Preserve `_last_known_value` only for sensors designed to cache it. Do not
@@ -36,8 +36,8 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
   display precision does not round underlying values.
 - Recorder injection helpers live in `sensors/base.py`. Preserve deduplication
   and late-correction reinjection behavior; average statistics are state-only.
-  Apply the `doc/SENSORS.md` missing-data contract consistently to live values
+  Apply the `docs/SENSORS.md` missing-data contract consistently to live values
   and recorder imports.
 - Reuse `_build_device_info` for sensor/button device association.
-- Follow `doc/MONTH_SWITCH.md` for calendar-month identity, zero-day API lag,
+- Follow `docs/MONTH_SWITCH.md` for calendar-month identity, zero-day API lag,
   previous-month completion, and current-month baseline locking.

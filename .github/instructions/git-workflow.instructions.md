@@ -35,29 +35,40 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   pushes and merged branches. Prefer squash merges if intermediate commits
   are not independently releasable.
 - PR release labels determine beta targets: `release:patch`, `release:minor`,
-  or `release:major`. Use at most one; unlabelled PRs and direct pushes default
-  to patch. The beta publisher reconstructs labels at the main merge event,
-  ignoring later label edits. Open PRs do not influence versions.
+  or `release:major`. They select version intent, not beta versus stable
+  publication. Unlabelled PRs and direct pushes still default to patch in the
+  publisher; this fallback does not replace explicit labeling of integration
+  changes. The publisher reconstructs labels at the main merge event, ignoring
+  later label edits. Open PRs do not influence versions.
 - Accumulate the highest requested bump since the latest published stable,
   rather than incrementing the current beta core for each PR. Repeated minor
   requests continue the same minor cycle. An already-reserved higher beta cycle
   cannot move backwards, including legacy cycles. Promotion publishes that
   beta's exact core version; it has no bump selection. Do not add version
   overrides to `.github/release-config.json`.
-- Operational-only changes that do not change integration behavior (CI,
-  release automation, agent tooling, or documentation) use normal betas with
-  no release label or bump question. Integration impact is the boundary,
-  rather than the size of the diff or changes to developer workflows.
-- Routine nonbreaking integration bug fixes also use normal betas without a
-  release label or bump question.
-- For new integration features, ask for patch, minor, major, or normal betas
-  with no label before creating/updating the PR, unless the user already chose.
-  Recommend minor for backward-compatible features. Ask about major for
-  breaking integration behavior, even a bug fix.
-- Apply at most one user-selected release label and record the decision in
-  the PR description. No label already supplies default patch intent; do not
-  suggest an explicit patch label merely to continue betas. Generic type labels
-  such as `enhancement` and `bug` do not determine release versions.
+- Apply exactly one explicit release label to PRs that change integration
+  behavior. Leave release labels off operational-only PRs. Classify by behavior
+  and compatibility, not file paths or diff size; mixed PRs follow their highest
+  integration impact.
+
+  | PR impact | Release-label guidance |
+  |---|---|
+  | Documentation, instructions, CI, release automation, or developer tooling only | No release label; use an appropriate existing type label |
+  | Nonbreaking integration fix | `release:patch` |
+  | Backward-compatible integration feature | Recommend `release:minor`; confirm the feature's release target with the user |
+  | Breaking integration change, even a bug fix | Discuss and confirm `release:major` with the user |
+
+- Routine nonbreaking integration fixes receive `release:patch` without a bump
+  question. For new features or breaking behavior, confirm the release target
+  before creating/updating the PR unless the user already chose. Use an explicit
+  label for the agreed target; leaving it unlabelled is not an integration-change
+  release decision.
+- Record the release decision in the PR body, including why an operational-only
+  PR has no release label. Generic type labels such as `documentation`,
+  `enhancement`, and `bug` do not determine release versions. Documentation and
+  tooling commits still receive normal betas; omitting a label does not skip
+  publication. An explicit patch label records reviewed integration intent but
+  does not lower or restart an active minor/major beta cycle.
 - Keep each PR focused on its task. Note an explicit target-version decision
   in the PR description when applicable.
 
@@ -89,13 +100,49 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   labels when creating/updating PRs and when triaging/closing issues.
 - The release-label scheme above is part of repository automation. If its
   labels are missing, create those defined labels when setting up that scheme.
-  Verify that at most one release label is present before merging.
+  Before merging, verify exactly one release label for integration-changing PRs
+  and none for operational-only PRs. Recheck the classification and label when
+  the PR's scope changes; conflicting release labels stop publication.
 - Keep labels on merged PRs. Remove labels when closing an unmerged PR or
   cleaning up previously closed, unmerged PRs.
 - For a fixed issue, keep the type label (`bug`, `enhancement`, or `question`)
   and add a closing comment referencing the fixing PR/commit.
 - For an issue closed without a fix, apply the appropriate existing closure
   label (`duplicate`, `invalid`, or `wontfix`) and explain the reason in a comment.
+
+### Issue references versus closing keywords
+
+- Use `Refs #123`, `Related to #123`, or `Part of #123` for context,
+  investigations, interim work, and partial implementations. State what the PR
+  completes and what remains; leave the broader issue open.
+- Use `Fixes #123`, `Closes #123`, or `Resolves #123` only when merging the PR
+  completes the issue's entire agreed scope. Read the issue and its relevant
+  discussion first. If completion is unclear, use a reference and ask about
+  closure; do not infer completion from a related feature or a passing test suite.
+- GitHub closes the whole issue when a closing PR merges into the default branch
+  (`main`). There is no partial-close syntax: `Closes #123 (partially)` still
+  closes #123. A later sentence saying that work remains does not prevent closure.
+- Closing keywords also work in commit messages when the commit reaches `main`.
+  Manually linking an issue through the **Development** sidebar can also close it
+  on merge. Use plain references for partial work rather than these closing links.
+- A partial PR may close a separate, fully completed sub-issue while referencing
+  its parent. Do not silently narrow the parent issue or move its remaining scope
+  to follow-ups just to justify closing it.
+- Before creating/updating a PR and before merging any PR (including contributor
+  PRs), review its body, included commit messages, final merge/squash message, and
+  Development links for unintended closures. Inspect GitHub's parsed PR-body and
+  manual closing links with
+  `gh pr view <number> --json body,closingIssuesReferences`; inspect commit messages
+  separately because commit-based closures need not appear in that list. Confirm
+  each intended closure against the issue's scope and replace partial-work
+  closing keywords/links with references before merging.
+- If a partial PR already closed an issue accidentally, correct the PR body/link,
+  reopen the issue, and comment with the merged PR, completed subset, and remaining
+  scope. Editing a merged PR body alone does not reopen the issue. Preserve its
+  type label; accidental closure is not a `duplicate`, `invalid`, or `wontfix`.
+
+See [GitHub's linking documentation](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
+for supported keywords and auto-closing behavior.
 
 ## Post-merge local cleanup
 
@@ -145,4 +192,5 @@ write access needed for historical workflow-changing commits. Configure
 repository secret. The beta workflow uses a separate read-only `GITHUB_TOKEN`
 with Issues and Pull requests read permissions for merge-time label history.
 No additional release App permissions, branch bypass, or manifest push is needed.
-See `doc/DEVELOPMENT.md` for setup, operation, and recovery details.
+See [release operations](../../docs/RELEASING.md) for setup, operation, and recovery
+details, and [development instructions](development.instructions.md) for checks.

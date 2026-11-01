@@ -96,7 +96,7 @@ def _read_entry(target: str, api) -> Credentials:
     """Decode a native entry and always release its Credential Manager buffer."""
     pointer = ctypes.POINTER(_Credential)()
     if not api.CredReadW(target, CRED_TYPE_GENERIC, 0, ctypes.byref(pointer)):
-        raise AikidoError(f"Cannot read Generic Credential '{target}'. Check the target and Windows user; see doc/SECURITY_TRIAGE.md.")
+        raise AikidoError(f"Cannot read Generic Credential '{target}'. Check the target and Windows user; see .agents/skills/aikido-triage/references/aikido.md.")
     try:
         credential = pointer.contents
         if not credential.CredentialBlobSize or not credential.CredentialBlob:

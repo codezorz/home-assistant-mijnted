@@ -114,7 +114,7 @@ class TestAgentGuidanceHook:
         env = dict(os.environ)
         env.pop("CLAUDE_PROJECT_DIR", None)
         result = subprocess.run(
-            [bash, HOOK.as_posix()], cwd=ROOT / "doc", env=env,
+            [bash, HOOK.as_posix()], cwd=ROOT / "docs", env=env,
             capture_output=True, text=True, encoding="utf-8", check=True,
         )
         for name in ("git-worktrees", "doc-sync", "pr-workflow", "validation"):

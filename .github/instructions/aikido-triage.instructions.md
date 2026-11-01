@@ -1,12 +1,15 @@
 ---
-applyTo: ".github/scripts/aikido.py,.github/scripts/aikido.test.py,doc/SECURITY_TRIAGE.md,.agents/skills/aikido-triage/**"
-description: Local Aikido credentials, scoped API operations, security triage, and private finding tracking.
+applyTo: ".github/scripts/aikido.py,.github/scripts/aikido.test.py,.agents/skills/aikido-triage/**,.github/instructions/aikido-triage.instructions.md"
+description: Aikido helper implementation rules for credentials, scoped API operations, and mocked validation.
 ---
 
 # Local Aikido triage tooling
 
-- `doc/SECURITY_TRIAGE.md` owns setup and the triage process; `SECURITY.md`
-  owns disclosure. This tooling runs locally on demand.
+- [Security triage instructions](security-triage.instructions.md) own the generic
+  process; [SECURITY.md](../../SECURITY.md) owns disclosure. The
+  [Aikido skill](../../.agents/skills/aikido-triage/SKILL.md) and its
+  [tool reference](../../.agents/skills/aikido-triage/references/aikido.md)
+  own Aikido setup and commands. This tooling runs locally on demand.
 - Read one Windows Generic Credential through the native API. Do not add
   credential files, environment fallbacks, token-printing commands, or logging
   of authentication values/response bodies. Release native buffers on errors.

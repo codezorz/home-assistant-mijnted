@@ -324,7 +324,8 @@ class TestCandidateValidation:
         release.validate_commit(commit, directory)
         assert (directory / ".git").is_dir()
         assert release.run("git", "rev-parse", "HEAD", cwd=directory) == commit
-        assert release.run("git", "rev-parse", "--show-toplevel", cwd=directory / "doc") == directory.as_posix()
+        assert release.run("git", "rev-parse", "--show-toplevel",
+                           cwd=directory / "custom_components" / "mijnted") == directory.as_posix()
         assert release.run("git", "rev-parse", "HEAD", cwd=root) == source_head
         assert any(command[2] == "compileall" for command in python_commands)
         assert any(command[2] == "pytest" for command in python_commands)

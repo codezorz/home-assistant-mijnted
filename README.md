@@ -5,15 +5,14 @@ This custom component integrates MijnTed devices with Home Assistant, allowing y
 ## Documentation
 
 This README covers installation, configuration, and everyday usage. Detailed
-references live in [`doc/`](doc/):
+references live in [`docs/`](docs/README.md):
 
 | Guide | What it covers |
 |---|---|
-| [Sensors and buttons](doc/SENSORS.md) | Values, attributes, missing-data behavior, statistics, and the reset button |
-| [Month transitions](doc/MONTH_SWITCH.md) | API lag, month lifecycle, baseline locking, and late corrections |
-| [API and authentication](doc/ENDPOINTS.md) | Endpoints, client methods, response formats, and token rotation |
-| [Reporting issues](doc/ISSUE_REPORTING.md) | Diagnostic information and a bug-report template |
-| [Development](doc/DEVELOPMENT.md) | Environment setup, tests, Home Assistant verification, and agent tooling |
+| [Sensors and buttons](docs/SENSORS.md) | Values, attributes, missing-data behavior, statistics, and the reset button |
+| [Month transitions](docs/MONTH_SWITCH.md) | API lag, month lifecycle, baseline locking, and late corrections |
+| [API and authentication](docs/ENDPOINTS.md) | Endpoints, client methods, response formats, and token rotation |
+| [Reporting issues](docs/ISSUE_REPORTING.md) | Diagnostic information and a bug-report template |
 
 ## Installation
 
@@ -101,13 +100,13 @@ Form Data:
 - You can configure this during setup or leave it at the default
 - To change it later, open the integration's options/configure dialog in Settings > Devices & services. Saving the interval reloads the integration.
 
-During setup, enter your client ID, username, and password. The integration handles OAuth 2.0 and retains credentials and tokens in the Home Assistant config entry for automatic reauthentication. See the [authentication reference](doc/ENDPOINTS.md#authentication-lifecycle) for details.
+During setup, enter your client ID, username, and password. The integration handles OAuth 2.0 and retains credentials and tokens in the Home Assistant config entry for automatic reauthentication. See the [authentication reference](docs/ENDPOINTS.md#authentication-lifecycle) for details.
 
 ## Usage
 
 Once configured, the integration will create several sensors in Home Assistant:
 
-Detailed references: [sensor catalog](doc/SENSORS.md), [month-switch timeline](doc/MONTH_SWITCH.md), and [API/authentication](doc/ENDPOINTS.md).
+Detailed references: [sensor catalog](docs/SENSORS.md), [month-switch timeline](docs/MONTH_SWITCH.md), and [API/authentication](docs/ENDPOINTS.md).
 
 - **Monthly usage** - Current calendar month's energy usage, calculated from start/end readings with annual-reset handling in January. Attributes include `start_date`, `end_date`, `days`, and `month_id`. Use the **Last update** sensor to see the date through which API readings are available.
 - **Last year monthly usage** - Last year's monthly usage for the corresponding month (prefers API-provided value from previous year's data)
@@ -121,9 +120,9 @@ Detailed references: [sensor catalog](doc/SENSORS.md), [month-switch timeline](d
 - **Residential unit** - Detailed information about your residential unit
 - **Unit of measures** - Unit of measurement information
 - **Latest available insight** - Month with the last available insight data including average. Displays the month name only (e.g. "January 2026"). Attributes include month_id, usage_unit, has_average.
-- **Water sensors** - If your residential unit has water meters (warm and/or cold, reported in m³), a meter reading sensor per meter is created, usable in the Energy dashboard's water consumption. See [water sensors](doc/SENSORS.md#water-sensors).
+- **Water sensors** - If your residential unit has water meters (warm and/or cold, reported in m³), a meter reading sensor per meter is created, usable in the Energy dashboard's water consumption. See [water sensors](docs/SENSORS.md#water-sensors).
 - **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)
-- **Reset statistics** - Button to reset statistics tracking and trigger re-injection of historical data. See [reset behavior](doc/SENSORS.md#related-button) for what it clears.
+- **Reset statistics** - Button to reset statistics tracking and trigger re-injection of historical data. See [reset behavior](docs/SENSORS.md#related-button) for what it clears.
 
 Usage sensors request zero decimal places for display; underlying values retain their precision.
 
@@ -136,15 +135,15 @@ state-only: use the Statistics state view for the two average entities.
 
 Late month corrections can trigger reinjection. The reset button rebuilds the
 integration cache and injection tracking; it does not delete recorder data.
-See [statistics behavior](doc/SENSORS.md#statistics-injection-behavior) for the
-full contract and [month-switch behavior](doc/MONTH_SWITCH.md) for boundary cases.
+See [statistics behavior](docs/SENSORS.md#statistics-injection-behavior) for the
+full contract and [month-switch behavior](docs/MONTH_SWITCH.md) for boundary cases.
 
 You can use these sensors in your automations, scripts, and dashboards to monitor and analyze your energy consumption. The sensors include additional attributes with detailed information that can be accessed in templates and automations.
 
 ## API
 
 `MijntedApi` handles data endpoints and `MijntedAuth` manages tokens and
-credential-based rotation. The [endpoint reference](doc/ENDPOINTS.md) owns the
+credential-based rotation. The [endpoint reference](docs/ENDPOINTS.md) owns the
 method mapping, request/response examples, and retry details.
 
 ## Troubleshooting
@@ -155,7 +154,7 @@ If you encounter issues:
 2. Ensure your internet connection is stable.
 3. Verify that the MijnTed API is accessible.
 4. Refresh-token rotation is automatic. If it fails and Home Assistant requests reauthentication, complete that flow with your client ID, username, and password; you do not need to paste a refresh token manually.
-5. If readings look stale, compare **Last update** with **Last successful sync**. MijnTed readings often lag the calendar date; a recent sync can also contain partial endpoint failures. Check logs and the [sensor edge cases](doc/SENSORS.md#edge-cases-and-expected-behavior).
+5. If readings look stale, compare **Last update** with **Last successful sync**. MijnTed readings often lag the calendar date; a recent sync can also contain partial endpoint failures. Check logs and the [sensor edge cases](docs/SENSORS.md#edge-cases-and-expected-behavior).
 
 For more detailed error messages, enable debug logging for the MijnTed component in your Home Assistant configuration by adding the following to your `configuration.yaml`:
 
@@ -170,7 +169,7 @@ logger:
 
 When opening a GitHub issue, include reproducible steps, expected vs actual behavior, logs, and environment details.
 
-- See [issue reporting](doc/ISSUE_REPORTING.md) for a full checklist and copy/paste bug report template.
+- See [issue reporting](docs/ISSUE_REPORTING.md) for a full checklist and copy/paste bug report template.
 - Use the default GitHub issue forms (`Bug report`, `Feature request`, `Question`) to start with the right structure.
 - For security vulnerabilities, follow the [private reporting policy](SECURITY.md) instead of opening a public issue.
 
@@ -178,6 +177,8 @@ When opening a GitHub issue, include reproducible steps, expected vs actual beha
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-Start with the [development guide](doc/DEVELOPMENT.md) for local setup, tests,
-CI, Home Assistant verification, and agent tooling. [AGENTS.md](AGENTS.md)
-maps implementation instructions; [CLAUDE.md](CLAUDE.md) is the Claude entry point.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) for the development guidance map,
+including local setup, tests, CI, and Home Assistant verification. Development
+instructions live in [`.github/instructions/`](.github/instructions/README.md);
+shared skills live in [`.agents/skills/`](.agents/skills/README.md).
+[AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md) are the agent entry points.
