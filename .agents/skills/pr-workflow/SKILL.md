@@ -21,13 +21,12 @@ policy; this skill does not authorize publishing without a user request.
 3. Follow [development instructions](../../../.github/instructions/development.instructions.md)
    for checks appropriate to the changes.
 4. When publishing is requested, follow the policy's commit-message/PR-body
-   file conventions, review ownership, and labeling rules. Follow its logical
-   commit-slice rules: one commit per feature or independent fix; related fixes
-   may share a multi-commit PR. Explain the commit-to-issue mapping and check
-   that each retained commit is independently releasable. Follow the policy's
-   permission requirements when rewriting history.
-   Apply its **Issue references versus closing keywords** rules when writing or
-   reviewing PRs, including the pre-merge closure check for contributor PRs.
+   file conventions, review ownership, and labeling rules. Apply its
+   [review-update and history rules](../../../.github/instructions/git-workflow.instructions.md#review-updates-and-history)
+   when incorporating corrections into an existing PR.
+   Follow [issue policy](../../../.github/instructions/issues.instructions.md)
+   for completion and beta feedback, and the Git policy's **Issue references
+   versus closing keywords** section for PR links and the pre-merge closure check.
 5. Report validation, version decisions, and the PR URL when created.
 6. After confirming through GitHub that the PR has merged, ask whether to remove
    its task worktree and local topic branch. Follow the policy's post-merge

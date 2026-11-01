@@ -9,6 +9,7 @@ Contributions are welcome. Start with the shared
 - [CI rules](.github/instructions/ci.instructions.md) and
   [checks and fork approvals](docs/CI.md)
 - [Branches, PRs, issue references, and releases](.github/instructions/git-workflow.instructions.md)
+- [Issue creation, completion, and beta feedback](.github/instructions/issues.instructions.md)
 - [Documentation ownership](.github/instructions/documentation.instructions.md)
 
 These are the authoritative instructions for contributors and coding agents.

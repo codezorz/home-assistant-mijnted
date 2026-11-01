@@ -37,17 +37,14 @@ policy. [SECURITY.md](../../SECURITY.md) owns vulnerability disclosure.
 5. **Record the disposition.** Keep the same explanation in the tracker and
    finding source where supported. If one system updates and another fails,
    retry only the missing step; do not describe separate writes as atomic.
-6. **Implement and close the remediation.** Related actionable root causes may
-   share a fixing PR, with one logical commit per independent root-cause issue,
-   following the normal
-   [Git/PR policy](git-workflow.instructions.md) and
-   [development checks](development.instructions.md). Multiple scanner findings
-   for one root cause remain one issue/fix commit, not one commit per finding ID.
+6. **Implement and close the remediation.** Follow the
+   [Git/PR logical-commit and review-update policy](git-workflow.instructions.md#commits-and-pull-requests)
+   and [development checks](development.instructions.md). Multiple scanner findings
+   for one root cause remain one remediation scope, not separate changes by
+   finding ID.
    Reference every tracking record and link the PR from all related findings
-   where supported. Use a closing keyword for each issue whose whole remediation
-   scope and required pre-merge checks are complete; use plain references for
-   partial work. Post-merge finding verification is follow-up triage under the
-   process below; it does not block issue closure.
+   where supported. Apply the [issue completion policy](issues.instructions.md#completion-and-beta-feedback)
+   and the security-specific follow-up process below.
 
 ## Dispositions
 
@@ -83,10 +80,9 @@ close a group.
 
 For PR-body references and automatic issue closure, follow the
 [issue-closing rules](git-workflow.instructions.md#issue-references-versus-closing-keywords).
-A complete remediation PR should close the root-cause issue on merge. A partial
-PR must leave it open. A source finding's verification state and a GitHub issue's
-closure are distinct: record post-merge verification as pending without keeping
-an otherwise completed remediation issue open.
+Issue completion follows [issue policy](issues.instructions.md#completion-and-beta-feedback).
+A scanner finding's verification state is tracked separately from GitHub issue
+completion; apply the source-specific follow-up rules below.
 
 During subsequent triage:
 
@@ -121,8 +117,8 @@ equivalent labels when tracking in another repository.
 - Use `security` and the appropriate existing severity label when available.
 - Add dependency/language/workflow labels when applicable, such as
   `dependencies`, `python`, or `github-actions`.
-- Use `bug` for confirmed faulty behavior; use the appropriate existing
-  `invalid`, `wontfix`, or `duplicate` label when closing without a fix.
+- Follow [issue policy](issues.instructions.md#creating-and-triaging-issues)
+  for type and closure labels.
 - Keep severity provenance in the record. Explain a justified triage adjustment
   rather than silently replacing the scanner's rating. Use the highest linked
   severity for the root-cause label while retaining each finding's own rating;

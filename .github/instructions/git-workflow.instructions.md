@@ -1,6 +1,6 @@
 ---
 applyTo: "**"
-description: Branches, version decisions, requested commits/PRs, labels, review ownership, and releases.
+description: Branches, version decisions, commits/PRs, labels, issue links, review ownership, and releases.
 ---
 
 # Git and GitHub workflow
@@ -32,8 +32,8 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
 - Every newly reachable commit on `main` after the configured bootstrap commit
   receives a numbered beta after its syntax check and tests pass. This includes
   documentation and tooling changes, plus intermediate commits in multi-commit
-  pushes and merged branches. Prefer squash merges if intermediate commits
-  are not independently releasable.
+  pushes and merged branches. Keep retained history aligned with the
+  [logical-commit policy](#commits-and-pull-requests).
 - PR release labels determine beta targets: `release:patch`, `release:minor`,
   or `release:major`. They select version intent, not beta versus stable
   publication. Unlabelled PRs and direct pushes still default to patch in the
@@ -84,12 +84,7 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   identify which issues are fully fixed versus only referenced.
 - Each retained commit must pass its appropriate checks and be independently
   releasable: the beta publisher validates every commit reaching `main`.
-  Preserve logical slices when merging a multi-fix PR; use squash merges to
-  consolidate unfinished review history for a single feature/fix. Review
-  adjustments belong with their logical slice, subject to the history-editing
-  permissions below.
-- Combining already-pushed commits still requires explicit permission for any
-  history rewrite and force-push; use `--force-with-lease` when authorized.
+  Preserve logical slices when merging a multi-change PR.
 - Before committing, inspect status, diff, and `git log --oneline -10`.
   Stage only intended files; never stage credentials or unrelated work.
 - Write the commit message to a temporary file and use `git commit --file <file>`.
@@ -101,11 +96,34 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   remove the file afterward. Summarize behavior, validation, and version decisions.
 - Use `gh` for GitHub operations. Request review from the applicable owners in
   `CODEOWNERS`, and return the PR URL.
-- Do not amend, force-push, skip hooks, or change Git configuration unless
-  explicitly requested. If a commit hook fails, fix the problem and retry
-  with a new commit attempt.
+- Do not skip hooks or change Git configuration unless explicitly requested.
+  If a commit hook fails, fix the problem and retry the appropriate commit
+  operation under the review-update rules below.
+
+### Review updates and history
+
+- Corrections to an existing PR feature/fix, including code, tests, documentation,
+  and review feedback, belong in that feature/fix's existing commit. Amend or
+  consolidate them into the owning logical slice; never retain an additional
+  "fix review finding" or "follow-up tweak" commit for the same change.
+- Create another commit only for a genuinely independent logical change. If the
+  affected commit is not the branch tip, rewrite that slice while preserving the
+  other logical commits. Present the agreed logical commit count before merge;
+  do not defer review-history cleanup to a merge-time squash.
+- For an agent-managed task branch with an open PR, the maintainer's request to
+  update/fix that PR authorizes amending/consolidating its logical commits and
+  updating the pushed branch with `--force-with-lease`. Do not request separate
+  permission for routine review corrections within that authorized task.
+  Rewriting unrelated/shared branches still requires explicit authorization.
+- Record the expected remote tip before rewriting and use an explicit lease for
+  that task branch. If the lease fails, investigate remote changes rather than
+  overwriting them. Never use an unguarded force push or rewrite `main` as part
+  of PR maintenance.
 
 ## Labels and issue closure
+
+Follow [issue instructions](issues.instructions.md) for creation, triage,
+completion criteria, and beta feedback.
 
 - Query the repository's existing labels; do not invent labels. Apply suitable
   labels when creating/updating PRs and when triaging/closing issues.
@@ -116,10 +134,6 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   the PR's scope changes; conflicting release labels stop publication.
 - Keep labels on merged PRs. Remove labels when closing an unmerged PR or
   cleaning up previously closed, unmerged PRs.
-- For a fixed issue, keep the type label (`bug`, `enhancement`, or `question`)
-  and add a closing comment referencing the fixing PR/commit.
-- For an issue closed without a fix, apply the appropriate existing closure
-  label (`duplicate`, `invalid`, or `wontfix`) and explain the reason in a comment.
 
 ### Issue references versus closing keywords
 
@@ -127,14 +141,10 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   investigations, interim work, and partial implementations. State what the PR
   completes and what remains; leave the broader issue open.
 - Use `Fixes #123`, `Closes #123`, or `Resolves #123` only when merging the PR
-  completes the issue's entire agreed scope. Read the issue and its relevant
-  discussion first. If completion is unclear, use a reference and ask about
-  closure; do not infer completion from a related feature or a passing test suite.
-- For security remediation, a PR that completes the remediation scope and required
-  pre-merge checks should close the issue on merge. Post-merge scanner verification
-  is follow-up triage; reopen the existing issue if a fresh check confirms an
-  unresolved finding with the same root cause. Follow the
-  [security follow-up policy](security-triage.instructions.md#pr-closure-and-post-merge-follow-up).
+  fulfills the [issue completion policy](issues.instructions.md#completion-and-beta-feedback).
+  Read the issue and its relevant discussion first. If implementation scope is
+  unclear, use a reference and ask; do not infer completion from a related
+  feature or a passing test suite.
 - GitHub closes the whole issue when a closing PR merges into the default branch
   (`main`). There is no partial-close syntax: `Closes #123 (partially)` still
   closes #123. A later sentence saying that work remains does not prevent closure.

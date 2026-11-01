@@ -22,7 +22,8 @@ change. Verify claims against code; distinguish existing behavior from proposals
 | CI operation, CodeQL setup, fork troubleshooting | `docs/CI.md` | CI instructions own development constraints |
 | Agent setup and discovery | `.github/instructions/agent-tooling.instructions.md` | Entry files and skills reference this policy |
 | Brand artwork maintenance | `.github/instructions/layout.instructions.md` | README owns installed icon behavior |
-| Branches, version policy, publishing, labels, issue references/closure | `.github/instructions/git-workflow.instructions.md` | Skills should reference this policy |
+| Branches, version policy, publishing, labels, PR issue-link mechanics | `.github/instructions/git-workflow.instructions.md` | Skills should reference this policy |
+| Issue creation, triage, completion, beta feedback | `.github/instructions/issues.instructions.md` | Reporting guide and specialized workflows reference this policy |
 | Detailed release setup, operation, and recovery | `docs/RELEASING.md` | Git workflow instructions own release policy |
 | Worktree placement and naming | `.agents/skills/git-worktrees/SKILL.md` | Keep generic and repository-relative |
 | Issue reporting / private vulnerability reporting | `docs/ISSUE_REPORTING.md` / `SECURITY.md` | GitHub issue forms when report fields change |

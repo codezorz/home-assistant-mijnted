@@ -142,12 +142,9 @@ state-changing operations.
 
 ## Aikido tracking identity
 
-Apply the generic root-cause triage process using `auth check`, `issues list`,
-and `issues show` to scope evidence. Aikido's display groups are feed categories,
-not an instruction to merge all their findings into one fix. Assess the common
-technical cause and remediation, then create or reuse one root-cause GitHub
-issue. Search open and closed records using each complete stable marker from
-`issues draft` and paginate when needed.
+Apply the [root-cause tracking process](../../../../.github/instructions/security-triage.instructions.md#finding-to-root-cause-tracking-process)
+using `auth check`, `issues list`, and `issues show`. Use each complete stable
+marker from `issues draft` for tracker searches and paginate results when needed.
 
 Place all related per-finding markers in the root-cause issue body, alongside
 a table of Aikido finding/group IDs, original severities, affected components,
@@ -164,25 +161,15 @@ The marker format is region/repository/finding-specific:
 <!-- aikido:app.aikido.dev:repo:123:issue:457 -->
 ```
 
-Related root-cause issues may share a fixing PR under the generic security and
-Git policies, with one logical commit per independent issue rather than per
-Aikido finding ID. Use closing keywords for each fully remediated issue; follow the
-[generic post-merge triage policy](../../../../.github/instructions/security-triage.instructions.md#pr-closure-and-post-merge-follow-up)
-for scan freshness, verification, and reopening the same issue. Match every
-finding marker and the technical cause against closed records as well as open
-ones, including when a later scan assigns a new ID. Aikido's open status alone
-does not establish whether the merged fix has been scanned.
-
-When a fresh scan/reassessment confirms an unresolved actionable finding with
-the same cause, reopen its existing GitHub issue with sanitized evidence:
+The [post-merge triage policy](../../../../.github/instructions/security-triage.instructions.md#pr-closure-and-post-merge-follow-up)
+determines when to reopen existing tracking. Use the following GitHub command
+when that policy calls for reopening:
 
 ```bash
 gh issue reopen ISSUE_NUMBER --repo OWNER/REPOSITORY --comment "Post-merge verification: FINDING_IDS remain actionable on FIXED_COMMIT after SCAN_OR_REASSESSMENT_DATE. Previous fix: PR_URL. Remaining work: EVIDENCE_AND_REMEDIATION."
 ```
 
-The maintainer/agent performs this triage explicitly; the helper does not
-automatically reopen GitHub issues. Retain the existing tracking link in Aikido
-and add any new finding IDs/markers to the same root-cause record.
+The helper does not update GitHub tracking automatically.
 
 ### GitHub labels
 
@@ -195,9 +182,9 @@ labels rather than assuming this repository's labels are present.
 
 | Generic disposition | Aikido operation |
 |---|---|
-| Valid and actionable | Add tracking links; leave the Aikido finding open until verified after merge, even when the remediation PR has closed GitHub tracking |
+| Valid and actionable | Add tracking notes; leave the Aikido finding open pending verification |
 | False positive or demonstrably unaffected | Ignore the individual finding with the evidence and tracking reference |
-| Accepted risk / won't fix | Ignore every applicable individual finding with the rationale and root-cause reference, verify its ignored status/reason, then close GitHub as not planned with `wontfix` |
+| Accepted risk / won't fix | Ignore applicable individual findings with the rationale and tracking reference; perform the API read-back checks below |
 | Deferred | Snooze until the review date, with a reason |
 | Already tracked | Add or retain the existing tracking link |
 
@@ -225,10 +212,9 @@ generic `api_ignore` reason "Ignored via API" even when the ignore request
 included a custom reason. That generic text does not verify the explanation:
 add the full rationale and tracking link as a repository/finding-prefixed
 group note, then verify it through `GET /issues/groups/{group_id}/notes`.
-The Aikido state is **ignored**,
-not **closed/solved**: the report is accepted rather than fixed. Only after all
-applicable source states are verified should the agent close the GitHub issue
-as not planned with `wontfix` and a closing comment. For example:
+The Aikido state is **ignored**, not **closed/solved**. After satisfying the
+[won't-fix closure policy](../../../../.github/instructions/security-triage.instructions.md#wont-fix-closure-in-both-systems),
+use the following GitHub command:
 
 ```bash
 gh issue close ISSUE_NUMBER --repo OWNER/REPOSITORY --reason "not planned" --comment "Won't fix: RATIONALE. Every related Aikido finding was ignored via API and its status/reason read back."
