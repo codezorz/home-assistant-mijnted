@@ -13,9 +13,10 @@ mirrored in the project's dependencies and checked by `test_dependency_metadata.
 `requirements_test.txt` is an ignored pip export generated from the lock, not a
 second dependency source. Regenerate it with `uv export --locked` after lock updates;
 see `doc/DEVELOPMENT.md` for the full command and Dependabot maintenance.
-Lint changed GitHub Actions workflows with `actionlint`. CodeQL's staged
-activation and fork-PR behavior are documented in `doc/DEVELOPMENT.md`; preserve
-its activation guard so the workflow can land before default setup is disabled.
+Lint changed GitHub Actions workflows with `actionlint`. CodeQL's fork-PR
+approval and required-check behavior are documented in `doc/DEVELOPMENT.md`.
+Keep its analysis independent of repository activation variables: the temporary
+migration guard skipped fork PRs even after workflow approval.
 
 Integration tests live in `tests/`; release-tooling tests live beside their
 script in `.github/scripts/release.test.py`. Pytest discovers both locations

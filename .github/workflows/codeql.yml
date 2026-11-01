@@ -21,8 +21,6 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # Default setup rejects advanced uploads. Activate after the documented switch.
-    if: vars.CODEQL_ADVANCED_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
