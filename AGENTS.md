@@ -25,6 +25,7 @@ Runtime code lives in `custom_components/mijnted/`; there is no separate build.
 | Test design and Home Assistant mocks | `.github/instructions/testing.instructions.md` |
 | Required documentation updates and ownership | `.github/instructions/documentation.instructions.md` |
 | Shared skill metadata and Claude discovery | `.github/instructions/agent-tooling.instructions.md` |
+| Local Aikido credentials and finding triage | `doc/SECURITY_TRIAGE.md`, `.github/instructions/aikido-triage.instructions.md` |
 | Code layout | `.github/instructions/layout.instructions.md` |
 | Architecture and monthly cache | `.github/instructions/orchestration.instructions.md` |
 | Python conventions and design | `.github/instructions/conventions.instructions.md`, `.github/instructions/coding-guidelines.instructions.md` |

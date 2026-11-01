@@ -18,9 +18,9 @@ approval and required-check behavior are documented in `doc/DEVELOPMENT.md`.
 Keep its analysis independent of repository activation variables: the temporary
 migration guard skipped fork PRs even after workflow approval.
 
-Integration tests live in `tests/`; release-tooling tests live beside their
-script in `.github/scripts/release.test.py`. Pytest discovers both locations
-and uses importlib mode to support the dotted release-test filename.
+Integration tests live in `tests/`; tooling tests live beside their scripts in
+`.github/scripts/*.test.py`. Pytest discovers both locations
+and uses importlib mode to support dotted tooling-test filenames.
 
 ## Test design
 
@@ -93,3 +93,7 @@ runtime-specific checks belong in the real-HA verification step.
 Session-hook tests run the shell script in temporary Git repositories to verify
 worktree-root discovery, metadata-only output, and missing-directory handling.
 Keep these tests independent of HA and production network access.
+
+Aikido helper tests use mocked HTTP and simulated Windows credential buffers.
+They must not read the maintainer's credential store or mutate live findings;
+see `doc/SECURITY_TRIAGE.md` for the separate read-only smoke test.
