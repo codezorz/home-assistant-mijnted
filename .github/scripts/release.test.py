@@ -1,5 +1,6 @@
 """Verify version allocation, immutable packaging, and safe release retries."""
 
+import base64
 import importlib.util
 import io
 import json
@@ -286,6 +287,32 @@ class TestCandidateValidation:
             assert exports[0][-2:] == ["--output-file", "requirements_test.txt"]
             assert commands.index(exports[0]) < commands.index(install)
 
+    def test_candidate_processes_do_not_inherit_tokens_or_git_auth(self, monkeypatch, tmp_path):
+        """Dependency builds, Git, and tests receive only the validation allowlist."""
+        monkeypatch.setenv("GH_TOKEN", "publisher-secret")
+        monkeypatch.setenv("GH_READ_TOKEN", "reader-secret")
+        monkeypatch.setenv("ACTIONS_RUNTIME_TOKEN", "artifact-secret")
+        monkeypatch.setenv("RELEASE_APP_PRIVATE_KEY", "private-key")
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+        monkeypatch.setenv("GIT_CONFIG_VALUE_0", "AUTHORIZATION: secret")
+        monkeypatch.setenv("PYTHONPATH", "untrusted-python-path")
+        directory = tmp_path / "candidate"
+        integration = directory / release.INTEGRATION
+        integration.mkdir(parents=True)
+        (integration / "manifest.json").write_text(json.dumps({"requirements": ["example"]}))
+        command, process = Mock(), Mock()
+        monkeypatch.setattr(release, "run", command)
+        monkeypatch.setattr(release.subprocess, "run", process)
+        release.validate_commit("candidate", directory)
+        for call in [*command.call_args_list, *process.call_args_list]:
+            env = call.kwargs["env"]
+            assert not any("secret" in value or "private-key" in value for value in env.values())
+            assert "GH_TOKEN" not in env and "PYTHONPATH" not in env
+            assert "GIT_CONFIG_COUNT" not in env and "GIT_CONFIG_VALUE_0" not in env
+            assert env["GIT_CONFIG_GLOBAL"] == release.os.devnull
+            assert env["PYTHONNOUSERSITE"] == "1"
+        assert release.os.environ["GH_TOKEN"] == "publisher-secret"
+
     def test_validation_preserves_git_discovery_at_exact_commit(self, monkeypatch, tmp_path):
         """Historical candidates retain Git metadata and pass the previously failing test."""
         repository = Path(__file__).resolve().parents[2]
@@ -329,6 +356,87 @@ class TestCandidateValidation:
         assert release.run("git", "rev-parse", "HEAD", cwd=root) == source_head
         assert any(command[2] == "compileall" for command in python_commands)
         assert any(command[2] == "pytest" for command in python_commands)
+
+
+class TestReleasePlanning:
+    """Bind validation and publication to one immutable, independently planned snapshot."""
+
+    @pytest.mark.parametrize("value", ['{}', '["short"]', '[1]', '[["nested"]]',
+                                      json.dumps(["a" * 40, "a" * 40])])
+    def test_invalid_or_duplicate_commit_lists_are_rejected(self, value):
+        """Only unique, full immutable commit IDs can authorize a publication batch."""
+        with pytest.raises(ValueError):
+            release.parse_commits(value)
+
+    def test_full_commit_ids_round_trip(self):
+        """A planned ordered batch retains exact IDs, including an empty batch."""
+        commits = ["a" * 40, "b" * 40]
+        assert release.parse_commits(json.dumps(commits)) == commits
+        assert release.parse_commits("[]") == []
+
+    def test_snapshot_remains_the_checked_out_commit_when_main_advances(self, monkeypatch):
+        """Refreshing main cannot silently add unvalidated newer commits to publication."""
+        snapshot = "a" * 40
+        command = Mock(side_effect=["", snapshot, ""])
+        require = Mock()
+        monkeypatch.setattr(release, "run", command)
+        monkeypatch.setattr(release, "require_on_main", require)
+        assert release.prepare_snapshot(snapshot) == snapshot
+        require.assert_called_once_with(snapshot)
+        assert command.call_args.args == ("git", "update-ref", "refs/remotes/origin/main", snapshot)
+
+    def test_publisher_checkout_must_match_the_planned_snapshot(self, monkeypatch):
+        """A different checkout is rejected before the reconciliation ref is changed."""
+        command = Mock(side_effect=["", "b" * 40])
+        monkeypatch.setattr(release, "run", command)
+        with pytest.raises(ValueError, match="snapshot"):
+            release.prepare_snapshot("a" * 40)
+        assert command.call_count == 2
+
+    def test_real_remote_advance_cannot_expand_the_release_snapshot(self, monkeypatch, tmp_path):
+        """New remote commits remain ineligible after the workflow pins its older snapshot."""
+        remote, checkout = tmp_path / "origin.git", tmp_path / "checkout"
+        subprocess.run(["git", "init", "--quiet", "--bare", str(remote)], check=True)
+        subprocess.run(["git", "init", "--quiet", "-b", "main", str(checkout)], check=True)
+
+        def commit(message):
+            subprocess.run(["git", "-c", "user.name=Release test", "-c",
+                            "user.email=release-test@example.invalid", "commit", "--quiet",
+                            "--allow-empty", "-m", message], cwd=checkout, check=True)
+            return release.run("git", "rev-parse", "HEAD", cwd=checkout)
+
+        snapshot = commit("Planned snapshot")
+        newer = commit("New remote main")
+        release.run("git", "remote", "add", "origin", str(remote), cwd=checkout)
+        release.run("git", "push", "--quiet", "origin", "main", cwd=checkout)
+        release.run("git", "checkout", "--quiet", "--detach", snapshot, cwd=checkout)
+        monkeypatch.chdir(checkout)
+        assert release.prepare_snapshot(snapshot) == snapshot
+        assert release.run("git", "rev-parse", "origin/main") == snapshot
+        assert release.run("git", "rev-parse", "FETCH_HEAD") == newer
+        with pytest.raises(subprocess.CalledProcessError):
+            release.require_on_main(newer)
+
+    def test_validation_failure_stops_the_read_only_batch(self, monkeypatch):
+        """A failed historical candidate prevents successful completion of validation."""
+        monkeypatch.setattr(release, "require_on_main", Mock())
+        validator = Mock(side_effect=RuntimeError("tests failed"))
+        monkeypatch.setattr(release, "validate_commit", validator)
+        with pytest.raises(RuntimeError, match="tests failed"):
+            release.validate_commits(["first", "second"])
+        assert [call.args[0] for call in validator.call_args_list] == ["first"]
+
+    def test_plan_outputs_only_snapshot_and_unpublished_commit_ids(self, monkeypatch, capsys):
+        """The read-only planning command emits values consumable by GitHub job outputs."""
+        snapshot, candidate = "a" * 40, "b" * 40
+        monkeypatch.setattr(sys, "argv", ["release.py", "plan"])
+        monkeypatch.setattr(release, "prepare_snapshot", Mock(return_value=snapshot))
+        monkeypatch.setattr(release, "get_tags", Mock(return_value={}))
+        monkeypatch.setattr(release, "get_releases", Mock(return_value={}))
+        monkeypatch.setattr(release, "beta_candidates", Mock(return_value=[candidate]))
+        release.main()
+        values = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+        assert values == {"snapshot": snapshot, "commits": json.dumps([candidate])}
 
 
 class TestPublishing:
@@ -411,29 +519,29 @@ class TestPublishing:
         monkeypatch.setattr(release, "validate_commit", validate)
         monkeypatch.setattr(release, "publish", publish)
         monkeypatch.setattr(release, "reserve_tag", Mock())
-        release.publish_betas()
+        release.publish_betas(["retry", "new"])
         assert [(call.args[0], call.args[1]) for call in publish.call_args_list] == [
             (retry_tag, "retry"), (new_tag, "new")]
-        assert validate.call_count == 2
-        assert [call.args[0] for call in validate.call_args_list] == ["retry", "new"]
+        validate.assert_not_called()
         mock_commit_bump.assert_called_once_with("new")
 
-    def test_failed_validation_cannot_publish(self, monkeypatch, tmp_path, source_zip):
-        """A failing candidate stops reconciliation before creating any release."""
+    def test_unvalidated_candidate_cannot_publish_any_part_of_batch(self, monkeypatch, tmp_path, source_zip):
+        """The publisher rejects an incomplete validation set before reserving any tag."""
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".github").mkdir()
         (tmp_path / ".github/release-config.json").write_text(
             json.dumps({"start_commit": "anchor"}))
-        monkeypatch.setattr(release, "pending_commits", lambda start: ["broken"])
+        monkeypatch.setattr(release, "pending_commits", lambda start: ["validated", "unvalidated"])
         monkeypatch.setattr(release, "get_tags", lambda: {})
         monkeypatch.setattr(release, "get_releases", lambda: {"v1.0.25": release_record()})
         monkeypatch.setattr(release, "source_archive", lambda commit: source_zip)
-        monkeypatch.setattr(release, "validate_commit", Mock(side_effect=RuntimeError("tests failed")))
-        publish = Mock()
+        publish, reserve = Mock(), Mock()
         monkeypatch.setattr(release, "publish", publish)
-        with pytest.raises(RuntimeError, match="tests failed"):
-            release.publish_betas()
+        monkeypatch.setattr(release, "reserve_tag", reserve)
+        with pytest.raises(ValueError, match="separate validation job"):
+            release.publish_betas(["validated"])
         publish.assert_not_called()
+        reserve.assert_not_called()
 
     def test_beta_publisher_accumulates_labels_and_resets_after_stable(self, monkeypatch,
                                                                      tmp_path, source_zip,
@@ -460,7 +568,7 @@ class TestPublishing:
             published.append((tag, commit))
 
         monkeypatch.setattr(release, "publish", capture)
-        release.publish_betas()
+        release.publish_betas(commits)
         assert published == list(zip([
             "v1.0.24-beta.1", "v1.1.0-beta.1", "v1.1.0-beta.2",
             "v1.1.0-beta.3", "v2.0.0-beta.1",
@@ -468,7 +576,7 @@ class TestPublishing:
         tags["v2.0.0"] = "breaking"
         records["v2.0.0"] = release_record()
         commits.append("next-fix")
-        release.publish_betas()
+        release.publish_betas(commits)
         assert published[-1] == ("v2.0.1-beta.1", "next-fix")
         assert len(published) == 6
 
@@ -643,13 +751,29 @@ class TestPublishing:
 
     def test_tag_reservation_is_immutable_and_retryable(self, monkeypatch):
         """An upload failure leaves the commit's tag reserved without force-pushing."""
+        monkeypatch.setenv("GH_TOKEN", "test-publisher-token")
+        original = dict(release.os.environ)
         command = Mock(return_value="")
         monkeypatch.setattr(release, "run", command)
         release.reserve_tag("v1.0.26-beta.1", "tested", {})
-        command.assert_called_once_with(
-            "git", "push", "origin", "tested:refs/tags/v1.0.26-beta.1")
+        assert command.call_args.args == ("git", "push", "origin", "tested:refs/tags/v1.0.26-beta.1")
+        env = command.call_args.kwargs["env"]
+        assert env["GIT_CONFIG_COUNT"] == "1"
+        assert env["GIT_CONFIG_KEY_0"] == "http.https://github.com/.extraheader"
+        encoded = env["GIT_CONFIG_VALUE_0"].removeprefix("AUTHORIZATION: basic ")
+        assert base64.b64decode(encoded).decode() == "x-access-token:test-publisher-token"
+        assert dict(release.os.environ) == original
         command.reset_mock()
         release.reserve_tag("v1.0.26-beta.1", "tested", {"v1.0.26-beta.1": "tested"})
         command.assert_not_called()
         with pytest.raises(ValueError, match="different commit"):
             release.reserve_tag("v1.0.26-beta.1", "tested", {"v1.0.26-beta.1": "other"})
+
+    def test_new_tag_requires_explicit_transient_authentication(self, monkeypatch):
+        """Missing publisher authentication cannot fall back to persisted checkout credentials."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        command = Mock()
+        monkeypatch.setattr(release, "run", command)
+        with pytest.raises(ValueError, match="GH_TOKEN"):
+            release.reserve_tag("v1.0.26-beta.1", "tested", {})
+        command.assert_not_called()

@@ -14,14 +14,23 @@ enabling publication. Multiple commits in one push each receive a beta, includin
 branch commits introduced by a merge. Squash merges avoid publishing unfinished
 intermediate branch commits.
 
-Each candidate is validated in a temporary local Git clone with its exact commit
-checked out in detached-HEAD mode. This preserves Git metadata for tests that
-discover the repository root. The workflow installs that commit's test/runtime
-requirements (exporting that commit's `uv.lock` when present), checks syntax,
-and runs its test suite before packaging tracked integration files from a separate
-Git archive. A failed candidate stops the batch without publishing it. Inspect the
-workflow log before retrying; fixing only a later commit does not make the failed
-historical commit pass.
+The workflow uses three separate jobs: read-only planning, candidate validation,
+and trusted publication. Planning freezes the checked-out workflow commit as the
+main snapshot and lists its unpublished candidates. Validation checks out each
+exact historical candidate in a temporary local Git clone, preserving Git
+metadata for repository-discovery tests. It installs that commit's requirements
+(exporting its `uv.lock` when present), checks syntax, and runs its test suite.
+Candidate subprocesses receive a minimal environment without workflow tokens or
+inherited Git authentication settings. The validation runner never receives the
+release App private key/token.
+
+Only after the entire planned batch passes does a fresh publication runner mint
+the App token. It packages tracked integration files directly from the validated
+Git commits, without executing their tests, dependency installers, or build code.
+Publication rejects pending commits outside the validated plan, and a newer main
+commit is left for a later run. A failed candidate prevents publication of the
+whole batch in that run. Inspect the workflow log before retrying; fixing only a
+later commit does not make a failed historical commit pass.
 
 Versions are allocated from tags and published stable releases, not from the
 repository manifest. With latest stable `v1.0.25`, the first cycle is
@@ -148,14 +157,18 @@ the former `RELEASE_APP_ID` setting, add `RELEASE_APP_CLIENT_ID` before merging
 the workflow update. Keep the old variable until older workflows no longer need
 it. The private key and installation permissions do not change.
 
-The workflows check these settings before validation, generate a short-lived
-token scoped to the current repository, and request Contents and Workflows write
-access explicitly. Checkout credentials and `GH_TOKEN` both use this App token,
-so Git tag pushes and GitHub release operations have the same permissions. The
-token action revokes it at job completion. The beta workflow separately uses
-the built-in `GITHUB_TOKEN` with Contents, Issues, and Pull requests read access
-to query PR associations and label history. It passes that token as
-`GH_READ_TOKEN` only to metadata reads; publishing continues to use the App token.
+The privileged publication phase generates a short-lived token scoped to this
+repository and explicitly requests Contents and Workflows write access. All
+release checkouts use read-only access with `persist-credentials: false`, and
+Python setup completes before the App token is minted. `GH_TOKEN` authenticates
+release API operations; tag pushes receive the same App token through a
+process-local Git extraheader environment, without saving it in checkout config
+or a remote URL. The action revokes the token at job completion.
+
+The beta workflow separately uses the built-in `GITHUB_TOKEN` with Contents,
+Issues, and Pull requests read access for planning and PR/label metadata. The
+publisher supplies it as `GH_READ_TOKEN` for metadata reads. Candidate validation
+has only Contents read permission and receives neither token in its processes.
 The release App needs no additional permissions for labels. No bypass permission
 for `main` is needed. Tag rules must allow these release tags. Normal publication
 requires dispatch from `main`.
@@ -163,9 +176,10 @@ requires dispatch from `main`.
 To verify App setup without publishing, manually run **Tag beta release** with
 `verify_only` enabled. This mode may run from a topic branch before its workflow
 changes are merged; it requests the actual Contents/Workflows write permissions
-and checks GitHub API, label metadata, and Git repository access, but skips
-publication. Normal beta publication and stable promotion still run only from
-`main`.
+and checks GitHub API, label metadata, and Git repository access in a dedicated
+job that does not check out or execute repository code. It skips planning,
+candidate validation, and publication. Normal beta publication and stable
+promotion still run only from `main`.
 
 If token creation fails, check the Client ID/private key pair, repository
 installation, and App permissions. After changing App permissions, approve the
@@ -175,8 +189,8 @@ login's `workflow` scope does not change the workflow's built-in token.
 Both publishers use the same concurrency group without cancelling running
 publication. GitHub may replace a pending run with a newer one; reconciliation
 on the next push or manual beta dispatch recovers missing commits. Each run
-works with a fetched main snapshot. A commit arriving during promotion is
-handled by the next beta run.
+plans and publishes against the same immutable workflow snapshot for betas.
+Commits arriving during a run are handled by a subsequent beta run.
 
 Packages are attached to draft releases before publication. Rerunning a failed
 workflow repairs unfinished drafts, preserving the assigned tag/version.
@@ -192,7 +206,7 @@ already-published commits are not tested again.
 Validate release tooling locally without publishing:
 
 ```sh
-python -m pytest .github/scripts/release.test.py -q
+python -m pytest .github/scripts/release.test.py .github/scripts/workflows.test.py -q
 git diff --check
 ```
 
