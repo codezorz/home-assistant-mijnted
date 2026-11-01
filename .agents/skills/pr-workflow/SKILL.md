@@ -21,9 +21,11 @@ policy; this skill does not authorize publishing without a user request.
 3. Follow [development instructions](../../../.github/instructions/development.instructions.md)
    for checks appropriate to the changes.
 4. When publishing is requested, follow the policy's commit-message/PR-body
-   file conventions, review ownership, and labeling rules. Prefer one commit
-   per PR; ask before splitting into multiple commits unless already requested.
-   Follow the policy's permission requirements when rewriting pushed history.
+   file conventions, review ownership, and labeling rules. Follow its logical
+   commit-slice rules: one commit per feature or independent fix; related fixes
+   may share a multi-commit PR. Explain the commit-to-issue mapping and check
+   that each retained commit is independently releasable. Follow the policy's
+   permission requirements when rewriting history.
    Apply its **Issue references versus closing keywords** rules when writing or
    reviewing PRs, including the pre-merge closure check for contributor PRs.
 5. Report validation, version decisions, and the PR URL when created.

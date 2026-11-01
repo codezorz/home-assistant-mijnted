@@ -43,7 +43,11 @@ The beta publisher identifies the PR's merge commit into `main` and reconstructs
 its labels from GitHub issue events up to that merge. Labels on open PRs have no
 effect, and label changes after merge do not alter the release intent. Direct
 pushes and intermediate branch commits default to patch; a PR's label applies
-at its merge commit. Prefer squash merges so the labelled change gets one beta.
+at its merge commit. A squash merge produces one beta candidate; preserving
+multiple logical commits produces a candidate for each newly reachable commit,
+including the merge commit when present. Choose the merge strategy under the
+[logical-commit policy](../.github/instructions/git-workflow.instructions.md#commits-and-pull-requests)
+and account for this per-commit publication behavior.
 
 The highest bump accumulates **since the latest published stable**, not from the
 current beta version. With latest stable `v1.0.23`:

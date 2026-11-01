@@ -69,15 +69,26 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   tooling commits still receive normal betas; omitting a label does not skip
   publication. An explicit patch label records reviewed integration intent but
   does not lower or restart an active minor/major beta cycle.
-- Keep each PR focused on its task. Note an explicit target-version decision
-  in the PR description when applicable.
+- Keep each PR focused on a feature or coherent set of related fixes. Note an
+  explicit target-version decision in the PR description when applicable.
 
 ## Commits and pull requests
 
-- Prefer a single commit per PR, including follow-up adjustments during review.
-  If separate commits would improve review or isolate independent concerns,
-  ask the user before using multiple commits unless they already requested them.
-  Combining already-pushed commits still requires explicit permission for any
+- Organize commits as logical, independently reviewable slices: one feature is
+  one commit; each independent issue/root-cause fix is one commit, including its
+  necessary tests and documentation. Do not split one feature into commits by
+  file, implementation layer, or tests versus code.
+- A PR may contain multiple related fixes, with one commit per independent
+  issue/root cause. Multiple commits following this rule do not require a
+  separate approval. Explain the commit-to-issue mapping in the PR body and
+  identify which issues are fully fixed versus only referenced.
+- Each retained commit must pass its appropriate checks and be independently
+  releasable: the beta publisher validates every commit reaching `main`.
+  Preserve logical slices when merging a multi-fix PR; use squash merges to
+  consolidate unfinished review history for a single feature/fix. Review
+  adjustments belong with their logical slice, subject to the history-editing
+  permissions below.
+- Combining already-pushed commits still requires explicit permission for any
   history rewrite and force-push; use `--force-with-lease` when authorized.
 - Before committing, inspect status, diff, and `git log --oneline -10`.
   Stage only intended files; never stage credentials or unrelated work.
@@ -119,6 +130,11 @@ pull requests, labels, and releases. Apply publishing steps only when requested.
   completes the issue's entire agreed scope. Read the issue and its relevant
   discussion first. If completion is unclear, use a reference and ask about
   closure; do not infer completion from a related feature or a passing test suite.
+- For security remediation, a PR that completes the remediation scope and required
+  pre-merge checks should close the issue on merge. Post-merge scanner verification
+  is follow-up triage; reopen the existing issue if a fresh check confirms an
+  unresolved finding with the same root cause. Follow the
+  [security follow-up policy](security-triage.instructions.md#pr-closure-and-post-merge-follow-up).
 - GitHub closes the whole issue when a closing PR merges into the default branch
   (`main`). There is no partial-close syntax: `Closes #123 (partially)` still
   closes #123. A later sentence saying that work remains does not prevent closure.

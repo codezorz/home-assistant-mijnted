@@ -164,11 +164,25 @@ The marker format is region/repository/finding-specific:
 <!-- aikido:app.aikido.dev:repo:123:issue:457 -->
 ```
 
-One focused fixing PR normally completes the actionable root-cause issue.
-Follow the generic issue-closing rules for full versus partial fixes, and
-verify all related Aikido findings after the applicable scan/reassessment.
-GitHub issue closure at merge does not automatically prove those findings
-resolved in Aikido.
+Related root-cause issues may share a fixing PR under the generic security and
+Git policies, with one logical commit per independent issue rather than per
+Aikido finding ID. Use closing keywords for each fully remediated issue; follow the
+[generic post-merge triage policy](../../../../.github/instructions/security-triage.instructions.md#pr-closure-and-post-merge-follow-up)
+for scan freshness, verification, and reopening the same issue. Match every
+finding marker and the technical cause against closed records as well as open
+ones, including when a later scan assigns a new ID. Aikido's open status alone
+does not establish whether the merged fix has been scanned.
+
+When a fresh scan/reassessment confirms an unresolved actionable finding with
+the same cause, reopen its existing GitHub issue with sanitized evidence:
+
+```bash
+gh issue reopen ISSUE_NUMBER --repo OWNER/REPOSITORY --comment "Post-merge verification: FINDING_IDS remain actionable on FIXED_COMMIT after SCAN_OR_REASSESSMENT_DATE. Previous fix: PR_URL. Remaining work: EVIDENCE_AND_REMEDIATION."
+```
+
+The maintainer/agent performs this triage explicitly; the helper does not
+automatically reopen GitHub issues. Retain the existing tracking link in Aikido
+and add any new finding IDs/markers to the same root-cause record.
 
 ### GitHub labels
 
@@ -181,7 +195,7 @@ labels rather than assuming this repository's labels are present.
 
 | Generic disposition | Aikido operation |
 |---|---|
-| Valid and actionable | Add tracking links; keep open until verified after merge |
+| Valid and actionable | Add tracking links; leave the Aikido finding open until verified after merge, even when the remediation PR has closed GitHub tracking |
 | False positive or demonstrably unaffected | Ignore the individual finding with the evidence and tracking reference |
 | Accepted risk / won't fix | Ignore every applicable individual finding with the rationale and root-cause reference, verify its ignored status/reason, then close GitHub as not planned with `wontfix` |
 | Deferred | Snooze until the review date, with a reason |
