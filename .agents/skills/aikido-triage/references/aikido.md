@@ -126,6 +126,12 @@ record and choose its visibility under the generic triage/disclosure policy.
 Authentication material is redacted from command output, and error messages
 omit response bodies, HTTP headers, and underlying request-library text.
 
+For AI-review findings, `show` and `draft` fill missing rule/file context from
+the matching repository-checked export record. The verified detail response
+still owns identity, state, and severity. Its `type` is retained; `export_type`
+reports a differing export classification explicitly. This display enrichment
+does not change the detail checks used for writes.
+
 Defaults are repository `codezorz/home-assistant-mijnted`, branch `main`, EU
 region, and the credential target above. Global overrides go before the command:
 
