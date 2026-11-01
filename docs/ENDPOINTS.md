@@ -55,7 +55,9 @@ Home Assistant reauthentication flow.
 The methods with a `delivery_type` argument default to the first delivery type
 selected by `get_delivery_types()`. The coordinator passes the other returned
 delivery types explicitly to read additional meters, such as water in `m³`
-(for example `[1, 2, 3]` for heat, warm water, and cold water). Response shapes
+(for example `[1, 2, 3]` for heat, warm water, and cold water). Water sensors also
+read the existing primary payload when it reports `m³`, including water-only
+accounts; this does not add API requests for the primary type. Response shapes
 are the same for every delivery type; only the units differ.
 
 Optional-year methods default to the current calendar year. Latest-status,

@@ -16,7 +16,9 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
    Buttons belong in `sensors/button.py` and are registered in `button.py`.
    The integration's `__init__.py` forwards platforms, not entity lists.
 3. Entities read `coordinator.data`; do not add direct API calls to sensors.
-   Dynamic devices are created at platform setup, not on every refresh.
+   Primary device sensors are created at platform setup. Water discovery also
+   runs after successful coordinator refreshes, adding only unseen delivery-type/
+   device-number pairs and removing its listener on config-entry unload.
 4. Follow `conventions.instructions.md` for entity identity compatibility and
    `documentation.instructions.md` for required documentation updates.
 

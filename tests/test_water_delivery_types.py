@@ -1,4 +1,4 @@
-"""Tests for additional (water) delivery types: fetching, entity creation, and values."""
+"""Tests for water delivery types: fetching, discovery recovery, identity, and values."""
 
 from datetime import date
 from types import SimpleNamespace
@@ -47,6 +47,7 @@ def _coordinator(extra):
         },
         last_update_success=True,
         hass=None,
+        async_add_listener=MagicMock(),
     )
 
 
@@ -71,7 +72,7 @@ class TestWaterKind:
 
 
 class TestWaterDeliveries:
-    """Selection of m³ delivery types from the extra payload."""
+    """Selection of m³ delivery types from primary and additional payloads."""
 
     def test_only_m3_deliveries_are_selected(self):
         """Non-m³ delivery types are ignored; devices are deduplicated."""
@@ -96,6 +97,21 @@ class TestWaterDeliveries:
         delivery["filter_status"] = []
         assert get_water_deliveries({"extra_delivery_data": {"2": delivery}}) == {"2": []}
 
+    @pytest.mark.parametrize("delivery_types", [[2], [2, 3]])
+    def test_primary_water_delivery_is_selected(self, delivery_types):
+        """Water-first accounts expose the primary meter as well as any extras."""
+        data = _water_delivery(2, "WWZF-AP", "20808052", 376.2)
+        data["delivery_types"] = delivery_types
+        data["extra_delivery_data"] = (
+            {"3": _water_delivery(3, "KWZF-AP", "30808052", 708.2)}
+            if 3 in delivery_types else {}
+        )
+
+        expected = {"2": ["20808052"]}
+        if 3 in delivery_types:
+            expected["3"] = ["30808052"]
+        assert get_water_deliveries(data) == expected
+
 
 class TestWaterSensorSetup:
     """Entity creation in sensor.async_setup_entry."""
@@ -112,7 +128,8 @@ class TestWaterSensorSetup:
         hass.data = {DOMAIN: {"entry_one": coordinator}}
         add = MagicMock()
 
-        await async_setup_sensors(hass, SimpleNamespace(entry_id="entry_one", data={}), add)
+        entry = SimpleNamespace(entry_id="entry_one", data={}, async_on_unload=MagicMock())
+        await async_setup_sensors(hass, entry, add)
 
         unique_ids = [entity._attr_unique_id for entity in add.call_args.args[0]]
         assert len(unique_ids) == len(set(unique_ids))
@@ -128,10 +145,160 @@ class TestWaterSensorSetup:
         hass.data = {DOMAIN: {"entry_one": coordinator}}
         add = MagicMock()
 
-        await async_setup_sensors(hass, SimpleNamespace(entry_id="entry_one", data={}), add)
+        entry = SimpleNamespace(entry_id="entry_one", data={}, async_on_unload=MagicMock())
+        await async_setup_sensors(hass, entry, add)
 
         unique_ids = [entity._attr_unique_id for entity in add.call_args.args[0]]
         assert not any("water" in unique_id for unique_id in unique_ids)
+
+    @pytest.mark.parametrize("initial_extra", [
+        {},
+        {"2": {"unit_of_measures": [{"value": "m³"}], "filter_status": []}},
+        {"2": {"filter_status": [{"deviceNumber": "20808052"}]}},
+    ])
+    async def test_water_discovery_recovers_after_partial_startup(self, initial_extra):
+        """A later successful poll adds missing water entities exactly once."""
+        coordinator = _coordinator(initial_extra)
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_one": coordinator}}
+        entry = SimpleNamespace(entry_id="entry_one", data={}, async_on_unload=MagicMock())
+        add = MagicMock()
+        await async_setup_sensors(hass, entry, add)
+        assert not any(isinstance(entity, MijnTedWaterMeterSensor) for entity in add.call_args.args[0])
+        add.reset_mock()
+
+        coordinator.data["extra_delivery_data"] = {
+            "2": _water_delivery(2, "WWZF-AP", "20808052", 376.2)
+        }
+        listener = coordinator.async_add_listener.call_args.args[0]
+        listener()
+        added = add.call_args.args[0]
+        assert len(added) == 1
+        assert added[0]._attr_unique_id == "mijnted_entry_one_water_2_device_20808052"
+        assert added[0].native_value == 376.2
+
+        listener()
+        add.assert_called_once()
+        entry.async_on_unload.assert_called_once_with(coordinator.async_add_listener.return_value)
+
+    async def test_new_devices_are_scoped_and_existing_entities_survive_failures(self):
+        """New pairs are added; missing data and room changes do not replace known entities."""
+        coordinator = _coordinator({"2": _water_delivery(2, "WWZF-AP", "1001", 376.2)})
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_one": coordinator}}
+        entry = SimpleNamespace(entry_id="entry_one", data={}, async_on_unload=MagicMock())
+        add = MagicMock()
+        await async_setup_sensors(hass, entry, add)
+        water = next(entity for entity in add.call_args.args[0] if isinstance(entity, MijnTedWaterMeterSensor))
+        assert water.native_value == 376.2
+        add.reset_mock()
+        listener = coordinator.async_add_listener.call_args.args[0]
+
+        coordinator.data["extra_delivery_data"] = {}
+        listener()
+        assert water.native_value == 376.2
+        add.assert_not_called()
+
+        warm = _water_delivery(2, "WWZF-AP", "1001", 377.0)
+        warm["filter_status"][0]["room"] = "W"
+        warm["filter_status"].append({
+            "deviceNumber": "1002", "currentReadingValue": 5.0, "unitOfMeasure": "m³",
+        })
+        coordinator.data["extra_delivery_data"] = {
+            "2": warm, "3": _water_delivery(3, "KWZF-AP", "1001", 708.2),
+        }
+        coordinator.last_update_success = False
+        listener()
+        add.assert_not_called()
+        coordinator.last_update_success = True
+        listener()
+        assert {entity._attr_unique_id for entity in add.call_args.args[0]} == {
+            "mijnted_entry_one_water_2_device_1002", "mijnted_entry_one_water_3_device_1001",
+        }
+        assert water.native_value == 377.0
+        listener()
+        add.assert_called_once()
+
+    async def test_primary_water_meter_is_created_with_existing_water_identity(self):
+        """Primary water uses the same scoped ID format and legacy entities remain intact."""
+        coordinator = _coordinator({})
+        coordinator.data.update(_water_delivery(2, "WWZF-AP", "20808052", 376.2))
+        coordinator.data["delivery_types"] = [2]
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_one": coordinator}}
+        entry = SimpleNamespace(entry_id="entry_one", data={}, async_on_unload=MagicMock())
+        add = MagicMock()
+
+        await async_setup_sensors(hass, entry, add)
+
+        entities = add.call_args.args[0]
+        unique_ids = {entity._attr_unique_id for entity in entities}
+        assert "mijnted_entry_one_device_20808052" in unique_ids
+        assert "mijnted_entry_one_monthly_usage" in unique_ids
+        water = [entity for entity in entities if isinstance(entity, MijnTedWaterMeterSensor)]
+        assert len(water) == 1
+        assert water[0]._attr_unique_id == "mijnted_entry_one_water_2_device_20808052"
+        assert water[0].native_value == 376.2
+
+    async def test_unload_removes_discovery_and_reload_preserves_identity(self):
+        """Unloading stops discovery; reloading registers each known meter with the same ID."""
+        coordinator = _coordinator({})
+        listeners = []
+
+        def subscribe(listener):
+            """Model coordinator subscription and removal without a real HA runtime."""
+            listeners.append(listener)
+            return lambda: listeners.remove(listener)
+
+        coordinator.async_add_listener.side_effect = subscribe
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_one": coordinator}}
+        entry = SimpleNamespace(entry_id="entry_one", data={}, async_on_unload=MagicMock())
+        add = MagicMock()
+        await async_setup_sensors(hass, entry, add)
+        entry.async_on_unload.call_args.args[0]()
+        add.reset_mock()
+
+        coordinator.data["extra_delivery_data"] = {
+            "2": _water_delivery(2, "WWZF-AP", "20808052", 376.2)
+        }
+        for listener in list(listeners):
+            listener()
+        add.assert_not_called()
+
+        await async_setup_sensors(hass, entry, add)
+        water = [entity for entity in add.call_args.args[0] if isinstance(entity, MijnTedWaterMeterSensor)]
+        assert [entity._attr_unique_id for entity in water] == [
+            "mijnted_entry_one_water_2_device_20808052"
+        ]
+        add.reset_mock()
+        for listener in list(listeners):
+            listener()
+        add.assert_not_called()
+
+    async def test_two_entries_discover_same_meter_independently(self):
+        """Identical meters in different config entries recover with disjoint scoped IDs."""
+        hass = MagicMock()
+        coordinators = {entry_id: _coordinator({}) for entry_id in ("entry_one", "entry_two")}
+        hass.data = {DOMAIN: coordinators}
+        unique_ids = set()
+        for entry_id, coordinator in coordinators.items():
+            entry = SimpleNamespace(entry_id=entry_id, data={}, async_on_unload=MagicMock())
+            add = MagicMock()
+            await async_setup_sensors(hass, entry, add)
+            add.reset_mock()
+            coordinator.data["extra_delivery_data"] = {
+                "2": _water_delivery(2, "WWZF-AP", "20808052", 376.2)
+            }
+            coordinator.async_add_listener.call_args.args[0]()
+            water = add.call_args.args[0]
+            assert len(water) == 1
+            unique_ids.add(water[0]._attr_unique_id)
+
+        assert unique_ids == {
+            "mijnted_entry_one_water_2_device_20808052",
+            "mijnted_entry_two_water_2_device_20808052",
+        }
 
 
 class TestWaterMeterSensor:
@@ -191,6 +358,20 @@ class TestWaterMeterSensor:
         """A first reading of 0 -> unknown, not 0."""
         sensor = self._sensor({"2": _water_delivery(2, "WWZF-AP", "20808052", 0.0)})
         assert sensor.native_value is None
+
+    def test_reading_survives_primary_delivery_reordering(self):
+        """A known water sensor keeps its identity when its payload moves to the primary slot."""
+        delivery = _water_delivery(2, "WWZF-AP", "20808052", 376.2)
+        sensor = self._sensor({"2": delivery})
+        assert sensor.native_value == 376.2
+
+        sensor.coordinator.data.update(delivery)
+        sensor.coordinator.data["delivery_types"] = [2, 1]
+        sensor.coordinator.data["extra_delivery_data"] = {}
+        sensor.coordinator.data["filter_status"][0]["currentReadingValue"] = 377.0
+
+        assert sensor.native_value == 377.0
+        assert sensor._attr_unique_id == "mijnted_entry_one_water_2_device_20808052"
 
 
 def init_mod_sensor_class(member, state=False):
