@@ -28,10 +28,12 @@ commands, scopes, credential setup, tracking markers, and status mappings.
    GitHub and Aikido explanations aligned. For won't-fix cases, verify each
    finding is ignored with its reason, then close the root-cause issue as not
    planned with `wontfix`. Handle partial updates explicitly.
-5. Use one focused fixing PR per actionable root cause under the repository
-   Git/validation policy. Close only the fully completed tracking scope and
-   verify each related finding after the appropriate scan/reassessment; merging
-   a PR does not itself prove that Aikido has resolved its findings.
+5. Follow the repository Git/validation and generic security policies for PR
+   grouping and logical commits. Related root-cause fixes may share one PR,
+   with one commit per independent issue. Close each fully remediated issue on
+   merge; leave partially addressed issues open. Follow the generic post-merge
+   triage policy to verify related findings and reopen the same issue if a fresh
+   check confirms an unresolved actionable finding with the same root cause.
 
 This is a local, on-demand workflow. Generic dispositions and verification
 requirements are owned by the tool-agnostic policy, not by Aikido.

@@ -37,20 +37,23 @@ policy. [SECURITY.md](../../SECURITY.md) owns vulnerability disclosure.
 5. **Record the disposition.** Keep the same explanation in the tracker and
    finding source where supported. If one system updates and another fails,
    retry only the missing step; do not describe separate writes as atomic.
-6. **Implement and verify.** For actionable root causes, normally use one focused
-   fixing PR per tracking issue, following the normal
+6. **Implement and close the remediation.** Related actionable root causes may
+   share a fixing PR, with one logical commit per independent root-cause issue,
+   following the normal
    [Git/PR policy](git-workflow.instructions.md) and
-   [development checks](development.instructions.md). Reference the tracking
-   record and link the PR from all related findings where supported. Cover the
-   whole agreed root-cause scope before using closing keywords. Verify every
-   linked finding with the relevant post-merge scan, reassessment, or equivalent
-   reproduction before claiming it resolved.
+   [development checks](development.instructions.md). Multiple scanner findings
+   for one root cause remain one issue/fix commit, not one commit per finding ID.
+   Reference every tracking record and link the PR from all related findings
+   where supported. Use a closing keyword for each issue whose whole remediation
+   scope and required pre-merge checks are complete; use plain references for
+   partial work. Post-merge finding verification is follow-up triage under the
+   process below; it does not block issue closure.
 
 ## Dispositions
 
 | Decision | Tracking record | Finding source, where supported |
 |---|---|---|
-| Valid and actionable | Open a fix issue/private report and a focused PR | Add tracking links; keep open until the fix is verified |
+| Valid and actionable | Open a fix issue/private report; close it through a complete remediation PR | Add tracking links; keep the source finding open until the fix is verified |
 | False positive or demonstrably unaffected | Record technical evidence and close with the appropriate existing closure label | Suppress the individual finding with evidence and the tracking reference |
 | Accepted risk / won't fix | Record the acceptance rationale; close as not planned with `wontfix` after source statuses are verified | Suppress each affected individual finding with the same rationale and tracking reference; read back its status and reason |
 | Deferred | Keep open with a review date | Snooze until that date, with a reason |
@@ -71,17 +74,43 @@ issue as **not planned** with `wontfix`. No fixing PR is needed for this path.
 
 If a source write succeeds but tracker closure fails, retry only tracker
 closure; if source status/reason cannot be verified, keep tracking open and
-report the incomplete step. A mixed root cause stays open until every linked
-finding is either verified fixed or has a documented, verified non-fix
-disposition. Do not suppress valid actionable findings merely to close a group.
+report the incomplete step. For a mixed root cause, the closing PR must complete
+all actionable remediation, and any non-fix dispositions must be documented and
+verified in the source. Do not suppress valid actionable findings merely to
+close a group.
+
+### PR closure and post-merge follow-up
 
 For PR-body references and automatic issue closure, follow the
 [issue-closing rules](git-workflow.instructions.md#issue-references-versus-closing-keywords).
-A source finding's verification state and a GitHub tracking issue's closure are
-distinct; document any outstanding verification explicitly.
-If post-merge verification is part of the issue's agreed completion scope, use
-a plain reference and close after verification rather than prematurely using a
-closing keyword. A partial PR must leave the root-cause issue open.
+A complete remediation PR should close the root-cause issue on merge. A partial
+PR must leave it open. A source finding's verification state and a GitHub issue's
+closure are distinct: record post-merge verification as pending without keeping
+an otherwise completed remediation issue open.
+
+During subsequent triage:
+
+1. Check every linked finding against a scan covering the merged fix, a fresh
+   reassessment, or an equivalent reproduction against the fixed code. Do not
+   infer resolution from merge alone. An open finding from a pre-fix scan is not
+   evidence that the fix failed; if scan coverage is unclear, check the current
+   code and record the verification gap instead of reopening solely on status.
+2. If the finding is resolved, record the verification and leave the issue closed.
+   If a fresh result is a false positive or accepted risk, apply the reasoned
+   disposition above rather than treating it as an incomplete fix.
+3. If a fresh check confirms that an actionable finding remains unresolved or
+   recurs with the same root cause, **reopen the existing issue**, including when
+   the scanner assigns a new finding ID. Search closed records by the stable IDs
+   and technical cause before creating anything new; append any new IDs and
+   tracking markers to that record.
+4. Comment with the fixing PR/commit, affected finding IDs, scan/reassessment
+   date and scanned/reassessed commit or branch, evidence of the remaining
+   problem, and remaining remediation. Preserve the issue's type/security labels
+   and update source tracking links where supported. Use a new issue only for an
+   independent cause.
+
+These are maintainer/agent triage actions, not a claim that the scanner or helper
+automatically reopens GitHub issues.
 
 ## Labels and severity
 
