@@ -15,6 +15,7 @@ dev = [
     "packaging",
     "pytest",
     "pytest-asyncio",
+    "PyYAML",
     "voluptuous",
 ]
 

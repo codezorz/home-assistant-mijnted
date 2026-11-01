@@ -17,6 +17,13 @@ runs this job without path filters. After the check has appeared on a PR,
 select **Validate code** in the branch rules' required status checks to require
 syntax checking and the complete integration/release-tooling test suite.
 
+The test job has read-only repository access and disables checkout credential
+persistence. It uploads JUnit results even when tests fail. A separate fresh
+runner publishes **Pytest Results** with `checks: write` using only the uploaded
+report and a pinned reporter action; it does not check out or execute PR code.
+This reporting job is skipped for fork PRs, whose tokens remain read-only;
+their **Validate code** result and downloadable test artifact remain available.
+
 Follow [the development guide](DEVELOPMENT.md) to reproduce checks locally and
 [testing instructions](../.github/instructions/testing.instructions.md) for test design.
 

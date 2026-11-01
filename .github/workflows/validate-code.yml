@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  checks: write
 
 jobs:
   test:
@@ -17,7 +16,9 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -54,10 +55,31 @@ jobs:
       - name: Run test suite
         run: python -m pytest -q --junitxml=pytest-results.xml
 
+      - name: Upload test results
+        if: success() || failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pytest-results
+          path: pytest-results.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  report:
+    name: Publish test report
+    needs: test
+    if: always() && needs.test.result != 'skipped' && needs.test.result != 'cancelled' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+    steps:
+      # This fresh runner only parses the report artifact; it never checks out PR code.
       - name: Publish test report
-        if: (success() || failure()) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
         uses: dorny/test-reporter@b94dfe179d7ff66342276f4bd6b82c3c0f659f52 # v1
         with:
           name: Pytest Results
+          artifact: pytest-results
           path: pytest-results.xml
           reporter: java-junit
+          fail-on-empty: false
