@@ -1,6 +1,7 @@
 """Publish validated beta packages and promote their exact contents to stable."""
 
 import argparse
+import base64
 import io
 import json
 import os
@@ -17,6 +18,7 @@ ASSET_NAME = "mijnted.zip"
 INTEGRATION = "custom_components/mijnted/"
 VERSION_BUMPS = ("patch", "minor", "major")
 RELEASE_LABELS = {f"release:{bump}": bump for bump in VERSION_BUMPS}
+COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 
 
 def run(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> str:
@@ -144,26 +146,71 @@ def source_archive(commit: str) -> bytes:
     return subprocess.check_output(["git", "archive", "--format=zip", commit])
 
 
+def validation_environment() -> dict[str, str]:
+    """Pass basic process settings, never workflow credentials, to candidate code."""
+    allowed = {
+        "PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR",
+        "COMSPEC", "PATHEXT", "APPDATA", "LOCALAPPDATA", "HOMEDRIVE", "HOMEPATH",
+        "TMP", "TEMP", "TMPDIR", "LANG", "LC_ALL", "TZ", "VIRTUAL_ENV",
+        "PYTHONUTF8", "PYTHONIOENCODING",
+    }
+    env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
+    env.update(PYTHONNOUSERSITE="1", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+    return env
+
+
 def validate_commit(commit: str, directory: Path) -> None:
-    """Run syntax checks and the existing suite against each candidate commit."""
+    """Run candidate code only in the workflow's separate, unprivileged job."""
+    env = validation_environment()
     # Repository-discovery tests need Git metadata, which an archive export omits.
     run("git", "clone", "--quiet", "--no-hardlinks", "--no-checkout",
-        str(Path.cwd()), str(directory))
-    run("git", "checkout", "--quiet", "--detach", commit, cwd=directory)
+        str(Path.cwd()), str(directory), env=env)
+    run("git", "checkout", "--quiet", "--detach", commit, cwd=directory, env=env)
     if (directory / "uv.lock").is_file():
         subprocess.run(
             [sys.executable, "-m", "uv", "export", "--locked", "--no-hashes", "--no-emit-project",
              "--format", "requirements-txt", "--output-file", "requirements_test.txt"],
-            cwd=directory, check=True,
+            cwd=directory, check=True, env=env,
         )
     subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements_test.txt"],
-                   cwd=directory, check=True)
+                   cwd=directory, check=True, env=env)
     manifest = json.loads((directory / INTEGRATION / "manifest.json").read_text(encoding="utf-8"))
     if manifest["requirements"]:
         subprocess.run([sys.executable, "-m", "pip", "install", *manifest["requirements"]],
-                       cwd=directory, check=True)
-    subprocess.run([sys.executable, "-m", "compileall", INTEGRATION], cwd=directory, check=True)
-    subprocess.run([sys.executable, "-m", "pytest", "-q"], cwd=directory, check=True)
+                       cwd=directory, check=True, env=env)
+    subprocess.run([sys.executable, "-m", "compileall", INTEGRATION], cwd=directory, check=True, env=env)
+    subprocess.run([sys.executable, "-m", "pytest", "-q"], cwd=directory, check=True, env=env)
+
+
+def parse_commits(value: str) -> list[str]:
+    """Accept only a JSON list of unique full commit IDs from the planning job."""
+    commits = json.loads(value)
+    if (not isinstance(commits, list)
+            or any(not isinstance(commit, str) or not COMMIT_PATTERN.fullmatch(commit) for commit in commits)
+            or len(set(commits)) != len(commits)):
+        raise ValueError("Expected a JSON list of unique full commit IDs")
+    return commits
+
+
+def prepare_snapshot(snapshot: str | None = None) -> str:
+    """Freeze reconciliation to the checked-out workflow commit after verifying main ancestry."""
+    run("git", "fetch", "origin", "main", "--tags")
+    head = run("git", "rev-parse", "HEAD")
+    snapshot = snapshot or head
+    if not COMMIT_PATTERN.fullmatch(snapshot) or snapshot != head:
+        raise ValueError("Release snapshot must match the full checked-out commit ID")
+    require_on_main(snapshot)
+    run("git", "update-ref", "refs/remotes/origin/main", snapshot)
+    return snapshot
+
+
+def validate_commits(commits: list[str]) -> None:
+    """Validate every planned historical commit without performing publication."""
+    for commit in commits:
+        require_on_main(commit)
+    for commit in commits:
+        with tempfile.TemporaryDirectory() as temporary:
+            validate_commit(commit, Path(temporary) / "source")
 
 
 def write_package(files: dict[str, bytes], tag: str, destination: Path) -> None:
@@ -239,25 +286,38 @@ def reserve_tag(tag: str, commit: str, tags: dict[str, str]) -> None:
             raise ValueError(f"{tag} already points to a different commit")
         return
     # A draft release need not create its tag until publication. Reserve it explicitly.
-    run("git", "push", "origin", f"{commit}:refs/tags/{tag}")
+    token = os.environ.get("GH_TOKEN")
+    if not token:
+        raise ValueError("GH_TOKEN is required for authenticated tag publication")
+    encoded = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_CONFIG_")}
+    env.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.https://github.com/.extraheader",
+               GIT_CONFIG_VALUE_0=f"AUTHORIZATION: basic {encoded}")
+    run("git", "push", "origin", f"{commit}:refs/tags/{tag}", env=env)
 
 
-def publish_betas() -> None:
-    """Reconcile the complete post-bootstrap main history with beta releases."""
+def beta_candidates(tags: dict[str, str], releases: dict[str, dict]) -> list[str]:
+    """Find unpublished candidates, retaining draft/tag reservations for retries."""
     config = json.loads(Path(".github/release-config.json").read_text(encoding="utf-8"))
+    return [commit for commit in pending_commits(config["start_commit"])
+            if not any(target == commit and parse_tag(tag)[1] is not None
+                       and tag in releases and not releases[tag]["draft"] for tag, target in tags.items())]
+
+
+def publish_betas(validated_commits: list[str]) -> None:
+    """Publish only prevalidated candidates; never execute candidate/dependency code here."""
     tags, releases = get_tags(), get_releases()
+    candidates_to_publish = beta_candidates(tags, releases)
+    if not set(candidates_to_publish).issubset(validated_commits):
+        raise ValueError("Every pending candidate must have passed the separate validation job")
     stable = latest_stable(releases)
-    for commit in pending_commits(config["start_commit"]):
+    for commit in candidates_to_publish:
         candidates = [tag for tag, target in tags.items()
                       if target == commit and parse_tag(tag)[1] is not None]
-        if any(tag in releases and not releases[tag]["draft"] for tag in candidates):
-            continue
         tag = candidates[0] if candidates else next_beta(tags, stable, commit_bump(commit))
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             source = source_archive(commit)
-            checkout = directory / "source"
-            validate_commit(commit, checkout)
             asset = directory / ASSET_NAME
             package_source(source, tag, asset)
             reserve_tag(tag, commit, tags)
@@ -339,18 +399,31 @@ def promote(beta_tag: str = "") -> None:
 
 
 def main() -> None:
-    """Dispatch the two publishing operations with fresh main and tag refs."""
+    """Keep read-only planning/validation distinct from credentialed publication."""
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("beta")
+    commands.add_parser("plan")
+    validation = commands.add_parser("validate")
+    validation.add_argument("--commits", required=True)
+    validation.add_argument("--snapshot", required=True)
+    beta = commands.add_parser("beta")
+    beta.add_argument("--validated-commits", required=True)
+    beta.add_argument("--snapshot", required=True)
     promotion = commands.add_parser("promote")
     promotion.add_argument("beta_tag", nargs="?", default="")
     args = parser.parse_args()
-    run("git", "fetch", "origin", "main", "--tags")
-    if args.command == "beta":
-        publish_betas()
-    else:
+    if args.command == "promote":
+        run("git", "fetch", "origin", "main", "--tags")
         promote(args.beta_tag)
+        return
+    snapshot = prepare_snapshot(getattr(args, "snapshot", None))
+    if args.command == "plan":
+        print(f"snapshot={snapshot}")
+        print(f"commits={json.dumps(beta_candidates(get_tags(), get_releases()), separators=(',', ':'))}")
+    elif args.command == "validate":
+        validate_commits(parse_commits(args.commits))
+    else:
+        publish_betas(parse_commits(args.validated_commits))
 
 
 if __name__ == "__main__":

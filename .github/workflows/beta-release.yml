@@ -21,10 +21,91 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.verify_only)
+  plan:
+    if: github.ref == 'refs/heads/main' && !inputs.verify_only
+    runs-on: ubuntu-latest
+    outputs:
+      commits: ${{ steps.plan.outputs.commits }}
+      snapshot: ${{ steps.plan.outputs.snapshot }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.x"
+          check-latest: true
+      - name: Plan unpublished commits at this snapshot
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: python .github/scripts/release.py plan >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: plan
+    if: needs.plan.outputs.commits != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.x"
+          check-latest: true
+      - name: Install dependency export tool
+        run: python -m pip install uv
+      - name: Validate exact historical candidates without release credentials
+        env:
+          CANDIDATE_COMMITS: ${{ needs.plan.outputs.commits }}
+          RELEASE_SNAPSHOT: ${{ needs.plan.outputs.snapshot }}
+        run: python .github/scripts/release.py validate --commits "$CANDIDATE_COMMITS" --snapshot "$RELEASE_SNAPSHOT"
+
+  publish:
+    needs: [plan, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.x"
+          check-latest: true
+      - name: Create release App token after validation
+        id: release-app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-workflows: write
+      - name: Publish prevalidated commits from the clean snapshot
+        env:
+          GH_TOKEN: ${{ steps.release-app.outputs.token }}
+          GH_READ_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VALIDATED_COMMITS: ${{ needs.plan.outputs.commits }}
+          RELEASE_SNAPSHOT: ${{ needs.plan.outputs.snapshot }}
+        run: python .github/scripts/release.py beta --validated-commits "$VALIDATED_COMMITS" --snapshot "$RELEASE_SNAPSHOT"
+
+  verify:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check release App configuration
         env:
@@ -45,18 +126,17 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
           permission-workflows: write
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ steps.release-app.outputs.token }}
       - name: Verify release App access
         env:
           GH_TOKEN: ${{ steps.release-app.outputs.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           gh api "repos/$GH_REPO" --silent
-          git ls-remote --exit-code origin refs/heads/main
+          AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::$AUTH"
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH" \
+            git ls-remote --exit-code "https://github.com/$GH_REPO.git" refs/heads/main
       - name: Verify release-label metadata access
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,17 +144,3 @@ jobs:
         run: |
           gh api "repos/$GH_REPO/pulls?per_page=1" --silent
           gh api "repos/$GH_REPO/issues/events?per_page=1" --silent
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
-        with:
-          python-version: "3.x"
-          check-latest: true
-      - name: Install dependency export tool
-        if: github.ref == 'refs/heads/main' && !inputs.verify_only
-        run: python -m pip install uv
-      - name: Validate and publish all pending commits
-        if: github.ref == 'refs/heads/main' && !inputs.verify_only
-        env:
-          GH_TOKEN: ${{ steps.release-app.outputs.token }}
-          GH_READ_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: python .github/scripts/release.py beta
