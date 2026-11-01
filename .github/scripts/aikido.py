@@ -309,6 +309,24 @@ class AikidoClient:
             raise AikidoError("Aikido returned an unexpected finding.")
         return self._check_issue(payload)
 
+    def display_issue(self, issue_id: int) -> dict:
+        """Enrich AI-review display fields without replacing verified detail identity."""
+        issue = self.issue(issue_id)
+        if issue.get("type") not in {"ai_pentest", "agentic_review"}:
+            return issue
+        if issue.get("rule") and issue.get("affected_file"):
+            return issue
+        exported = next((item for item in self.issues("all") if item["id"] == issue_id), None)
+        if exported is None:
+            return issue
+        issue = dict(issue)
+        for field in ("rule", "affected_file"):
+            if not issue.get(field) and exported.get(field):
+                issue[field] = exported[field]
+        if exported.get("type") and exported["type"] != issue.get("type"):
+            issue["export_type"] = exported["type"]
+        return issue
+
     def mutate(self, issue_id: int, operation: str, **payload) -> dict:
         """Apply only an explicit, repository-checked individual finding operation."""
         issue = self.issue(issue_id)
@@ -330,7 +348,7 @@ class AikidoClient:
 
 def issue_view(issue: dict) -> dict:
     """Select useful finding metadata without dumping secret evidence or arbitrary payloads."""
-    fields = ("id", "group_id", "type", "rule", "status", "severity", "severity_score", "cve_id",
+    fields = ("id", "group_id", "type", "export_type", "rule", "status", "severity", "severity_score", "cve_id",
               "affected_package", "affected_file", "code_repo_branch_name", "installed_version",
               "patched_versions", "start_line", "end_line", "reachability_status", "snooze_until")
     selected = {key: issue[key] for key in fields if key in issue}
@@ -414,7 +432,7 @@ def execute(client: AikidoClient, args):
                 "issues": [issue_view(issue) for issue in client.issues(args.status)]}
     issue_id = positive_id(args.issue_id)
     if args.operation in {"show", "draft"}:
-        issue = client.issue(issue_id)
+        issue = client.display_issue(issue_id)
         return finding_draft(client, issue) if args.operation == "draft" else issue_view(issue)
     payload = {}
     if args.operation in {"ignore", "snooze"}:

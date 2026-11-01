@@ -260,6 +260,67 @@ class TestRepositoryScope:
             client.issues()
 
 
+class TestAIReviewContext:
+    """Combine the two sanitized endpoint shapes without widening finding scope."""
+
+    @pytest.mark.parametrize("operation", ["show", "draft"])
+    def test_missing_context_is_enriched_and_endpoint_types_remain_explicit(self, operation):
+        """Show and draft retain AI-review context and the authoritative detail state."""
+        detail = {**ISSUE, "type": "ai_pentest", "rule": None, "affected_file": None,
+                  "status": "ignored"}
+        exported = {**ISSUE, "type": "agentic_review", "rule": "Review title",
+                    "affected_file": ".github/workflows/example.yml", "group_id": 999,
+                    "issue_type_metadata": {"secret": "private-evidence"}}
+        client, session = client_for(response([REPOSITORY]), response(detail), response([exported]))
+        args = aikido.parser().parse_args(["issues", operation, "21"])
+        output = aikido.execute(client, args)
+        rendered = json.dumps(output) if isinstance(output, dict) else output
+        assert "Review title" in rendered and ".github/workflows/example.yml" in rendered
+        assert '"type": "ai_pentest"' in rendered.replace('\\"', '"')
+        assert '"export_type": "agentic_review"' in rendered.replace('\\"', '"')
+        assert "ignored" in rendered and "private-evidence" not in rendered
+        assert session.request.call_args_list[-1].kwargs["params"]["filter_status"] == "all"
+        if operation == "show":
+            assert output["group_id"] == 31
+        else:
+            assert "<!-- aikido:app.aikido.dev:repo:12:issue:21 -->" in output
+
+    def test_detail_fields_are_not_overwritten_by_export(self):
+        """Only missing display fields are filled; export status and identity never win."""
+        detail = {**ISSUE, "type": "ai_pentest", "affected_file": None}
+        exported = {**ISSUE, "type": "agentic_review", "rule": "Old title",
+                    "affected_file": "path.py", "status": "ignored", "severity": "low"}
+        client, _ = client_for(response([REPOSITORY]), response(detail), response([exported]))
+        result = client.display_issue(21)
+        assert result["rule"] == ISSUE["rule"]
+        assert result["affected_file"] == "path.py"
+        assert result["status"] == "open" and result["severity"] == "medium"
+
+    def test_another_finding_cannot_supply_missing_context(self):
+        """A missing matching export leaves context unavailable rather than borrowing it."""
+        detail = {**ISSUE, "type": "ai_pentest", "rule": None, "affected_file": None}
+        client, _ = client_for(response([REPOSITORY]), response(detail),
+                               response([{**ISSUE, "id": 22, "rule": "Other finding"}]))
+        assert client.display_issue(21) == detail
+
+    @pytest.mark.parametrize("change", [{"code_repo_id": 99}, {"code_repo_branch_name": "feature"}])
+    def test_foreign_detail_is_rejected_before_enrichment(self, change):
+        """Fallback context cannot legitimize an out-of-scope detail response."""
+        detail = {**ISSUE, "type": "ai_pentest", "rule": None, **change}
+        client, session = client_for(response([REPOSITORY]), response(detail))
+        with pytest.raises(aikido.AikidoError, match="selected"):
+            client.display_issue(21)
+        assert session.request.call_count == 3
+
+    def test_foreign_export_is_rejected(self):
+        """Enrichment retains export repository validation even for a matching ID."""
+        detail = {**ISSUE, "type": "ai_pentest", "rule": None}
+        client, _ = client_for(response([REPOSITORY]), response(detail),
+                               response([{**ISSUE, "code_repo_id": 99}]))
+        with pytest.raises(aikido.AikidoError, match="selected"):
+            client.display_issue(21)
+
+
 class TestPagination:
     """Read all pages and retain stable finding IDs."""
 
