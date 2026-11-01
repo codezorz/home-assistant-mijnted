@@ -20,3 +20,9 @@ Use GitHub private vulnerability reporting for this repository:
 3. Provide details to reproduce the issue, expected impact, and any relevant logs.
 
 You will receive an acknowledgment as soon as practical. After validation, we will coordinate a fix and release.
+
+## Maintainer triage
+
+The local Aikido setup and finding-to-tracking process are documented in
+[SECURITY_TRIAGE.md](doc/SECURITY_TRIAGE.md). That process follows the private
+reporting policy above.

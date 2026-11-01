@@ -223,6 +223,12 @@ inkscape icon.svg --export-width=512 --export-height=512 --export-filename=custo
 - Keep personal Claude preferences in ignored `CLAUDE.local.md` or
   `.claude/settings.local.json`.
 
+## Local security triage
+
+For local Aikido credentials, finding inspection, and GitHub triage, follow
+[the security triage guide](SECURITY_TRIAGE.md). Its helper is run on demand;
+unit tests use mocks and do not require a live credential.
+
 ## Publishing
 
 Follow the [Git/GitHub policy](../.github/instructions/git-workflow.instructions.md)

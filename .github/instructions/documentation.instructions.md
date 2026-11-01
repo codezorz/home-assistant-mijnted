@@ -20,6 +20,7 @@ change. Verify claims against code; distinguish existing behavior from proposals
 | Branches, version policy, publishing, labels | `.github/instructions/git-workflow.instructions.md` | Skills should reference this policy |
 | Worktree placement and naming | `.agents/skills/git-worktrees/SKILL.md` | Keep generic and repository-relative |
 | Issue reporting / private vulnerability reporting | `doc/ISSUE_REPORTING.md` / `SECURITY.md` | GitHub issue forms when report fields change |
+| Local Aikido credentials and finding triage | `doc/SECURITY_TRIAGE.md` | Aikido triage skill/instructions; `SECURITY.md` owns disclosure |
 
 ## Keep guidance DRY
 
