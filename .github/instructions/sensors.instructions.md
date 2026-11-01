@@ -37,7 +37,8 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
   for usage units and zero suggested display precision where appropriate;
   display precision does not round underlying values.
 - Recorder injection helpers live in `sensors/base.py`. Preserve deduplication
-  and late-correction reinjection behavior; average statistics are state-only.
+  and late-correction reinjection behavior. Keep external building-average
+  series isolated from live states; average sensors do not auto-collect statistics.
   Apply the `docs/SENSORS.md` missing-data contract consistently to live values
   and recorder imports.
 - Reuse `_build_device_info` for sensor/button device association.

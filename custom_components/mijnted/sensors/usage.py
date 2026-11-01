@@ -216,9 +216,6 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
             Average monthly usage value, or None if not available
         """
         history = self._build_history_data()
-        current = self._build_current_data()
-        
-        current_month_id = current.month_id if current else None
         
         for entry in history:
             avg_usage = entry.average_usage
@@ -239,21 +236,13 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
         return UNIT_MIJNTED
     
     @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class.
-        
-        Returns:
-            SensorStateClass.TOTAL for historical tracking
-        """
-        return SensorStateClass.TOTAL
+    def state_class(self) -> None:
+        """Disable automatic statistics for this retrospective live value."""
+        return None
 
     async def _async_inject_statistics(self) -> None:
-        """Inject average usage statistics into recorder from history."""
-        await self._build_statistics_from_history(
-            "average_usage",
-            StatisticMeanType.NONE,
-            include_current=False
-        )
+        """Backfill and correct monthly averages in their external series."""
+        await self._async_inject_average_statistics()
     
     
     @property
@@ -261,13 +250,15 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
         """Return entity specific state attributes.
         
         Returns:
-            Dictionary containing month_id, start_date, end_date, days from first history entry with average
+            Monthly graph statistic ID and attributes of the latest average period
         """
+        attributes = {"monthly_statistic_id": self._get_average_statistic_id()}
         history = self._build_history_data()
         for entry in history:
             if entry.average_usage is not None:
-                return entry.to_attributes_dict()
-        return {}
+                attributes.update(entry.to_attributes_dict())
+                break
+        return attributes
 
 
 class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
@@ -319,17 +310,13 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
         return UNIT_MIJNTED
     
     @property
-    def state_class(self) -> SensorStateClass:
-        """Return the state class.
-        
-        Returns:
-            SensorStateClass.TOTAL for historical tracking
-        """
-        return SensorStateClass.TOTAL
+    def state_class(self) -> None:
+        """Disable automatic statistics for this retrospective live value."""
+        return None
 
     async def _async_inject_statistics(self) -> None:
-        """Inject last year average statistics into recorder."""
-        await self._async_inject_last_year_statistics("average_usage", "last_year_average_usage", StatisticMeanType.NONE)
+        """Backfill and correct last-year averages in their external series."""
+        await self._async_inject_average_statistics(year_offset=1)
     
 
     @property
@@ -337,9 +324,12 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
         """Return entity specific state attributes.
         
         Returns:
-            Dictionary containing month_id and last_year_month_id attributes
+            Monthly graph statistic ID, month_id and last_year_month_id attributes
         """
-        return self._build_month_id_attributes()
+        return {
+            **self._build_month_id_attributes(),
+            "monthly_statistic_id": self._get_average_statistic_id(),
+        }
 
 
 class MijnTedTotalUsageSensor(MijnTedSensor):

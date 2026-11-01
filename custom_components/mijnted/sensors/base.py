@@ -1,12 +1,14 @@
 import logging
+import math
 from datetime import date, datetime, time, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple, NamedTuple
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData, StatisticMeanType
-from homeassistant.components.recorder.statistics import async_import_statistics
+from homeassistant.components.recorder.statistics import async_add_external_statistics, async_import_statistics
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from ..const import (
     API_DATE_FORMAT,
@@ -271,8 +273,6 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         mapping = {
             "monthly_usage": "monthly_usage",
             "last_year_monthly_usage": "last_year_monthly_usage",
-            "average_monthly_usage": "average_monthly_usage",
-            "last_year_average_monthly_usage": "last_year_average_monthly_usage",
             "total_usage": "total_usage"
         }
         return mapping.get(sensor_type.lower())
@@ -387,8 +387,8 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         
         return self._compare_month_keys(month_key, last_injected)
     
-    def _create_statistics_metadata(self, mean_type: StatisticMeanType, has_sum: bool = False) -> StatisticMetaData:
-        """Create statistics metadata for recorder."""
+    def _create_statistics_metadata(self, mean_type: StatisticMeanType, has_sum: bool = True) -> StatisticMetaData:
+        """Create state-capable metadata for recorder's total usage entities."""
         return StatisticMetaData(
             has_mean=False,
             has_sum=has_sum,
@@ -410,31 +410,90 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     async def _async_safe_import_statistics(
         self,
         metadata: StatisticMetaData,
-        statistics: List[StatisticData]
+        statistics: List[StatisticData],
+        *,
+        external: bool = False,
     ) -> bool:
         """Import statistics into recorder, logging success or catching exceptions."""
         if not statistics:
             return False
         
         try:
-            result = async_import_statistics(self.hass, metadata, statistics)
+            import_statistics = async_add_external_statistics if external else async_import_statistics
+            result = import_statistics(self.hass, metadata, statistics)
             
             if result is not None:
                 await result
             
             _LOGGER.info(
                 "Successfully injected statistics for %s: %d entries",
-                self.entity_id,
+                metadata["statistic_id"],
                 len(statistics)
             )
             return True
         except Exception as err:
             _LOGGER.warning(
                 "Failed to inject statistics for %s: %s (stat may not be available yet, will retry next time)",
-                self.entity_id,
+                metadata["statistic_id"],
                 err
             )
             return False
+
+    def _get_average_statistic_id(self) -> str:
+        """Return the import-only average series ID, independent of entity renames."""
+        return f"{DOMAIN}:{self._entry_id.lower()}_{self.sensor_type}"
+
+    def _collect_average_statistics(self, year_offset: int) -> List[StatisticData]:
+        """Build monthly means from cache, shifting last-year comparison periods."""
+        cache = self.coordinator.data.get("monthly_history_cache", {})
+        if not isinstance(cache, dict):
+            return []
+
+        now = dt_util.now()
+        current_month = (now.year, now.month)
+        statistics: List[StatisticData] = []
+        for month_key, entry in cache.items():
+            parsed = DateUtil.parse_month_key(month_key) if isinstance(month_key, str) else None
+            if not parsed:
+                continue
+            source_year, month = parsed
+            target_year = source_year + year_offset
+            target_month = (target_year, month)
+            if target_month > current_month or (year_offset == 0 and target_month == current_month):
+                continue
+
+            value = DataUtil.safe_float(self._extract_value_from_cache_entry(entry, "average_usage"))
+            if value is None or not math.isfinite(value):
+                continue
+            try:
+                # The consumption month is local to HA, not a UTC calendar month.
+                start = datetime(target_year, month, 1, tzinfo=dt_util.get_default_time_zone())
+            except ValueError:
+                continue
+            statistics.append(StatisticData(start=start, mean=value))
+
+        return sorted(statistics, key=lambda statistic: statistic["start"])
+
+    async def _async_inject_average_statistics(self, year_offset: int = 0) -> None:
+        """Reimport cached monthly means into a series without live collection."""
+        if not self._validate_statistics_injection() or not self.coordinator.data:
+            return
+        statistics = self._collect_average_statistics(year_offset)
+        if not statistics:
+            return
+
+        metadata = StatisticMetaData(
+            mean_type=StatisticMeanType.ARITHMETIC,
+            has_sum=False,
+            name=f"{self._config_name} {self.name} (monthly)",
+            source=DOMAIN,
+            statistic_id=self._get_average_statistic_id(),
+            unit_of_measurement=UNIT_MIJNTED,
+            unit_class=None,
+        )
+        # Reimport cached periods so backfill and late corrections do not depend
+        # on a high-water mark that would skip older updated months.
+        await self._async_safe_import_statistics(metadata, statistics, external=True)
     
     async def _setup_statistics_injection(self) -> None:
         """Register coordinator listener for injection and trigger initial injection if data exists."""
@@ -495,13 +554,15 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         statistics: List[StatisticData],
         mean_type: StatisticMeanType,
         max_month_key: Optional[str],
-        has_sum: bool = False,
+        has_sum: bool = True,
         consumed_reinject_months: Optional[set[str]] = None,
     ) -> None:
         """Import statistics and update tracking with max_month_key."""
         if not statistics:
             return
         
+        # HA also gates state queries on has_sum. Keep this consistent with the
+        # entities' TOTAL classes, even when backfill supplies only state values.
         metadata = self._create_statistics_metadata(mean_type, has_sum=has_sum)
         import_succeeded = await self._async_safe_import_statistics(metadata, statistics)
 

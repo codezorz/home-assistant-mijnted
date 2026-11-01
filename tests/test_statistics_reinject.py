@@ -7,7 +7,6 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.components.recorder.models import StatisticMeanType
 import custom_components.mijnted.__init__ as init_mod
 from custom_components.mijnted.sensors.base import MijnTedSensor
 from custom_components.mijnted.sensors.models import (
@@ -17,8 +16,6 @@ from custom_components.mijnted.sensors.models import (
     StatisticsTracking,
 )
 from custom_components.mijnted.sensors.usage import (
-    MijnTedAverageMonthlyUsageSensor,
-    MijnTedLastYearAverageMonthlyUsageSensor,
     MijnTedMonthlyUsageSensor,
 )
 from custom_components.mijnted.utils import DateUtil
@@ -83,7 +80,11 @@ class TestEnsureMonthlyHistoryCacheStatisticsReinject:
         entry.entry_id = "test_entry"
         existing_coordinator = MagicMock()
         existing_coordinator.data = {
-            "statistics_reinject": {"monthly_usage": ["1.2026"]}
+            "statistics_reinject": {
+                "monthly_usage": ["1.2026"],
+                "average_monthly_usage": ["1.2026"],
+                "last_year_average_monthly_usage": ["1.2026"],
+            }
         }
         hass = MagicMock()
         hass.data = {
@@ -116,8 +117,8 @@ class TestEnsureMonthlyHistoryCacheStatisticsReinject:
 
         assert statistics_reinject == {"monthly_usage": ["1.2026", "2.2026"]}
 
-    async def test_previous_month_average_change_sets_average_reinject_hint(self):
-        """Historical average None->value -> average_monthly_usage hint contains corrected month."""
+    async def test_average_change_updates_cache_without_legacy_reinject_hint(self):
+        """Late average -> updated cache, without obsolete entity-statistics hints."""
         api = AsyncMock()
         hass = MagicMock()
         hass.data = {}
@@ -137,7 +138,7 @@ class TestEnsureMonthlyHistoryCacheStatisticsReinject:
             patch.object(init_mod, "_save_persisted_cache", new_callable=AsyncMock),
             patch.object(init_mod, "_get_or_create_statistics_tracking", return_value=StatisticsTracking()),
         ):
-            _, _, _, statistics_reinject = await init_mod._ensure_monthly_history_cache(
+            updated_cache, _, _, statistics_reinject = await init_mod._ensure_monthly_history_cache(
                 api,
                 hass,
                 entry,
@@ -146,7 +147,8 @@ class TestEnsureMonthlyHistoryCacheStatisticsReinject:
                 filter_status=[],
             )
 
-        assert statistics_reinject == {"average_monthly_usage": ["2.2026"]}
+        assert updated_cache["2026-02"].average_usage == 12.5
+        assert statistics_reinject == {}
 
 
 class TestStatisticsReinjectDedupBypass:
@@ -227,27 +229,15 @@ class TestStatisticsReinjectDedupBypass:
         assert sensor.coordinator.data["statistics_reinject"] == {"monthly_usage": ["1.2026"]}
         assert tracking.monthly_usage == "3.2026"
 
-    async def test_average_reinject_hint_bypasses_already_injected_guard(self):
-        """Average reinject hint for a period -> _has_already_injected_period returns False."""
-        sensor = self._make_sensor("average_monthly_usage")
-        sensor.coordinator.data = {
-            "statistics_tracking": StatisticsTracking(average_monthly_usage="3.2026"),
-            "statistics_reinject": {"average_monthly_usage": ["2.2026"]},
-        }
-
-        result = await sensor._has_already_injected_period(datetime(2026, 2, 1))
-
-        assert result is False
-
     async def test_consumption_is_scoped_to_sensor_type(self):
-        """Average finalize consumes only average hints and keeps monthly_usage hints."""
-        sensor = self._make_sensor("average_monthly_usage")
-        tracking = StatisticsTracking(average_monthly_usage="2.2026")
+        """Monthly finalize consumes its own hints and keeps last-year hints."""
+        sensor = self._make_sensor()
+        tracking = StatisticsTracking(monthly_usage="2.2026")
         sensor.coordinator.data = {
             "statistics_tracking": tracking,
             "statistics_reinject": {
-                "monthly_usage": ["1.2026"],
-                "average_monthly_usage": ["1.2026", "2.2026"],
+                "last_year_monthly_usage": ["1.2026"],
+                "monthly_usage": ["1.2026", "2.2026"],
             },
         }
         consumed_reinject_months = {"2.2026"}
@@ -264,89 +254,10 @@ class TestStatisticsReinjectDedupBypass:
             )
 
         assert sensor.coordinator.data["statistics_reinject"] == {
+            "last_year_monthly_usage": ["1.2026"],
             "monthly_usage": ["1.2026"],
-            "average_monthly_usage": ["1.2026"],
         }
-        assert tracking.average_monthly_usage == "3.2026"
-
-
-class TestAverageMonthlyUsageSensorInjection:
-    """Verify average sensor statistics backfill for reinjected finalized month periods."""
-
-    async def test_reinjects_february_average_period_with_month_start_timestamp(self):
-        """Average reinject hint for February -> inject StatisticData at 2026-02-01."""
-        coordinator = MagicMock()
-        coordinator.data = {
-            "monthly_history_cache": {
-                "2026-02": _make_cache_entry(2, 2026, total_usage=250.0, average_usage=12.5),
-            },
-            "statistics_tracking": StatisticsTracking(average_monthly_usage="3.2026"),
-            "statistics_reinject": {"average_monthly_usage": ["2.2026"]},
-        }
-        sensor = object.__new__(MijnTedAverageMonthlyUsageSensor)
-        sensor.coordinator = coordinator
-        sensor.sensor_type = "average_monthly_usage"
-        sensor._name = "average monthly usage"
-        sensor._attr_unique_id = "mijnted_average_monthly_usage"
-        sensor._last_known_value = None
-        sensor.entity_id = "sensor.mijnted_average_monthly_usage"
-
-        hass = MagicMock()
-        hass.config.components = {"recorder"}
-        sensor.hass = hass
-
-        captured: dict = {}
-
-        def _capture_import(*args, **kwargs):
-            captured["statistics"] = args[2]
-            return None
-
-        with patch(
-            "custom_components.mijnted.sensors.base.async_import_statistics",
-            side_effect=_capture_import,
-        ), patch(
-            "custom_components.mijnted.sensors.base.StatisticData",
-            side_effect=lambda start, state: {"start": start, "state": state},
-        ):
-            await sensor._async_inject_statistics()
-
-        statistics = captured.get("statistics")
-        assert statistics is not None
-        assert len(statistics) == 1
-        assert statistics[0]["state"] == 12.5
-        assert statistics[0]["start"].year == 2026
-        assert statistics[0]["start"].month == 2
-        assert statistics[0]["start"].day == 1
-
-
-class TestAverageStatisticsMeanType:
-    """Verify average sensors inject state-only statistics metadata."""
-
-    async def test_average_monthly_usage_injection_uses_mean_type_none(self):
-        """Average monthly usage should inject with StatisticMeanType.NONE."""
-        sensor = object.__new__(MijnTedAverageMonthlyUsageSensor)
-        sensor._build_statistics_from_history = AsyncMock()
-
-        await sensor._async_inject_statistics()
-
-        sensor._build_statistics_from_history.assert_awaited_once_with(
-            "average_usage",
-            StatisticMeanType.NONE,
-            include_current=False,
-        )
-
-    async def test_last_year_average_injection_uses_mean_type_none(self):
-        """Last year average monthly usage should inject with StatisticMeanType.NONE."""
-        sensor = object.__new__(MijnTedLastYearAverageMonthlyUsageSensor)
-        sensor._async_inject_last_year_statistics = AsyncMock()
-
-        await sensor._async_inject_statistics()
-
-        sensor._async_inject_last_year_statistics.assert_awaited_once_with(
-            "average_usage",
-            "last_year_average_usage",
-            StatisticMeanType.NONE,
-        )
+        assert tracking.monthly_usage == "3.2026"
 
 
 class TestMonthlyUsagePartialResponse:
