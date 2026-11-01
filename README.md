@@ -167,11 +167,9 @@ logger:
 
 ## Reporting issues
 
-When opening a GitHub issue, include reproducible steps, expected vs actual behavior, logs, and environment details.
-
-- See [issue reporting](docs/ISSUE_REPORTING.md) for a full checklist and copy/paste bug report template.
-- Use the default GitHub issue forms (`Bug report`, `Feature request`, `Question`) to start with the right structure.
-- For security vulnerabilities, follow the [private reporting policy](SECURITY.md) instead of opening a public issue.
+Use [issue reporting](docs/ISSUE_REPORTING.md) for the issue forms, diagnostic
+information, and pre-submission checks. Report vulnerabilities through the
+[private reporting policy](SECURITY.md).
 
 ## Contributing
 

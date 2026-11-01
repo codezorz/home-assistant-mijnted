@@ -5,8 +5,10 @@ policies for contributors and coding agents. Start with
 [AGENTS.md](../../AGENTS.md) for the guidance map.
 
 - Use `*.instructions.md` files with `applyTo` and `description` frontmatter.
-- Keep Git/GitHub policy, including PR issue references and closure, in
+- Keep Git/PR mechanics, including closing keywords and issue links, in
   [git-workflow.instructions.md](git-workflow.instructions.md).
+- Keep issue creation, triage, and lifecycle policy in
+  [issues.instructions.md](issues.instructions.md).
 - Put on-demand workflows and tool-specific references in
   [`.agents/skills/`](../../.agents/skills/README.md). Keep integration reference
   and detailed contributor/maintainer guides in [`docs/`](../../docs/README.md).
@@ -18,6 +20,7 @@ policies for contributors and coding agents. Start with
 - [Development setup and checks](development.instructions.md)
 - [Testing](testing.instructions.md) and [CI](ci.instructions.md)
 - [Git/GitHub policy](git-workflow.instructions.md) and [release operations](../../docs/RELEASING.md)
+- [Issue creation and lifecycle](issues.instructions.md)
 - [Security triage, independent of scanner](security-triage.instructions.md)
 - [Agent tooling](agent-tooling.instructions.md)
 

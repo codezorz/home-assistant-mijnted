@@ -11,8 +11,8 @@ It processes every commit newly reachable from `main` after `start_commit` in
 [release-config.json](../.github/release-config.json), oldest dependencies first.
 The bootstrap anchor excludes historical commits; leave it unchanged after
 enabling publication. Multiple commits in one push each receive a beta, including
-branch commits introduced by a merge. Squash merges avoid publishing unfinished
-intermediate branch commits.
+branch commits introduced by a merge. Prepare retained commits under the
+[logical-commit and review-update policy](../.github/instructions/git-workflow.instructions.md#commits-and-pull-requests).
 
 The workflow uses three separate jobs: read-only planning, candidate validation,
 and trusted publication. Planning freezes the checked-out workflow commit as the

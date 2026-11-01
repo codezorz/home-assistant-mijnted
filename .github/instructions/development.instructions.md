@@ -18,7 +18,9 @@ description: Development environment policy, dependency maintenance, and change-
   behavior changes; do not add application tests for documentation-only edits.
 - Treat syntax errors and failed behavioral assertions as blocking. Resolve
   missing dependencies in the documented environment. Report genuine HA-only
-  verification gaps rather than treating them as passing tests.
+  verification gaps rather than treating them as passing tests; follow the
+  [issue lifecycle policy](issues.instructions.md#completion-and-beta-feedback)
+  for closure and post-merge beta feedback.
 - [Testing instructions](testing.instructions.md) own test design and mocks;
   [CI instructions](ci.instructions.md) own workflow constraints. Keep detailed
   setup and troubleshooting in their linked guides rather than duplicating them.

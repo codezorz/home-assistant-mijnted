@@ -21,6 +21,7 @@ Runtime code lives in `custom_components/mijnted/`; there is no separate build.
 | Task | Authoritative guidance |
 |---|---|
 | Branches, versions, commits, PRs, labels, releases | `.github/instructions/git-workflow.instructions.md` |
+| Issue creation, triage, completion, beta feedback | `.github/instructions/issues.instructions.md` |
 | Environment, validation commands, Home Assistant smoke testing | `.github/instructions/development.instructions.md` |
 | Test design and Home Assistant mocks | `.github/instructions/testing.instructions.md` |
 | CI checks, CodeQL, fork approvals | `.github/instructions/ci.instructions.md` |

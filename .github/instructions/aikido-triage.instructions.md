@@ -22,6 +22,7 @@ description: Aikido helper implementation rules for credentials, scoped API oper
   between opening a fix PR and verifying that a scan has resolved a finding.
   A root-cause issue may contain multiple individual markers; link and verify
   every affected finding without broadening API suppression to its display group.
-  For won't-fix cases, verify ignored states/reasons before closing GitHub.
+  Follow the [disposition verification policy](security-triage.instructions.md#wont-fix-closure-in-both-systems)
+  for source-state read-back requirements.
 - Mock HTTP and native APIs in unit tests. Live smoke tests are read-only;
   applying finding dispositions is a separate explicit operation.
