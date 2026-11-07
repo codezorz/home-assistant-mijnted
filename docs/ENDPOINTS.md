@@ -17,6 +17,11 @@ Setup and Home Assistant reauthentication use the Azure B2C authorization-code
 flow with PKCE, implemented by `OAuthUtil` and called by `MijntedAuth` through
 HA's executor. This is a simulated browser login, not a password-grant request.
 
+The OAuth client ID used for API access is public and shared across accounts.
+The standalone [retrieval scripts](../README.md#retrieve-with-a-script) read it
+from MijnTed's public JavaScript. The user enters that value
+during setup; the integration stores it with the configuration.
+
 | Step | Endpoint / request |
 |---|---|
 | Initialize login | `GET` to `AUTH_AUTHORIZE_URL` with client ID, redirect URI, scope, nonce, response mode, and S256 PKCE challenge; extract CSRF/transaction values from HTML |
