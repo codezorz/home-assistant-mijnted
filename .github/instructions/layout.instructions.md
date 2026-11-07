@@ -13,7 +13,8 @@ custom_components/mijnted/
 ├── config_flow.py       # Config flow UI and validation
 ├── const.py             # Domain, URLs, timeouts, platforms, all constants
 ├── exceptions.py        # MijntedApiError, MijntedAuthenticationError, etc.
-├── reconciliation.py    # Published monthly totals and pending boundary repair
+├── reconciliation.py    # Revisable published-month boundaries and retry state
+├── daily.py             # Persisted forward-only dated reading checkpoints
 ├── manifest.json        # Metadata, version, requirements
 ├── sensor.py            # Sensor platform: creates sensor entities from coordinator
 ├── button.py            # Button platform
@@ -22,13 +23,16 @@ custom_components/mijnted/
 │   ├── base.py          # MijnTedSensor base; statistics injection; device_info
 │   ├── models.py        # StatisticsTracking, MonthCacheEntry, DeviceReading, etc.
 │   ├── usage.py         # Usage sensors (monthly, total, average, last year)
+│   ├── daily.py         # Published-report daily attributes and graph import helpers
 │   ├── device.py        # Per-device/room sensors
 │   ├── water.py         # Water (m³) meter and monthly usage sensors for extra delivery types
 │   ├── diagnostics.py   # Last update, active model, delivery types, etc.
 │   └── button.py        # Reset statistics button
 ├── utils/               # Helpers, including OAuthUtil's synchronous credential flow
 └── translations/
-    └── en.json          # UI strings for config flow
+    ├── en.json          # Config-flow strings and supported entity labels
+    ├── nl.json          # Published usage entity label
+    └── de.json          # Published usage entity label
 ```
 
 **Where to change what:**
@@ -39,6 +43,7 @@ custom_components/mijnted/
 | New data API call | `api.py`; shared URLs/constants in `const.py` |
 | Credential login or token handling | `auth.py`, `utils/oauth_util.py`, `config_flow.py`; callbacks in `__init__.py` |
 | Cache lifecycle or month calculations | `__init__.py`, `reconciliation.py`, `sensors/base.py`, `sensors/models.py`, `utils/date_util.py` |
+| Forward daily observations | `daily.py`, `sensors/daily.py`; shared validation in `utils/readings.py` |
 | New constant | `const.py` |
 | Config flow | `config_flow.py`, `translations/en.json` |
 | Version | `manifest.json` |

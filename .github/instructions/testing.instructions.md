@@ -72,6 +72,14 @@ Python logic, not compatibility with a real HA API.
 | Persistence | Prefer patching `_load_persisted_cache` / `_save_persisted_cache`; otherwise mock `Store.async_load` / `async_save` as async methods. |
 | Recorder | The import is mocked by conftest; assert payload/metadata when injection is the behavior under test. |
 
+Monthly ownership/aggregation regressions also exercise the pinned pure HA
+2026.11.0 reducer in `tests/fixtures/ha_statistics_2026_11.py`; its upstream source
+and license are recorded in that fixture. This is real reducer behavior without
+a recorder database, not a full HA runtime test. Keep delayed publication,
+already-locked corrections, local month boundaries/DST, and forward daily
+checkpoint/gap/restart behavior covered when changing these paths. `tzdata` is a
+development dependency so named-zone checks work on Windows as well as Linux.
+
 Build domain objects with small factory helpers (`DeviceReading`,
 `MonthCacheEntry`). Keep month IDs, cache keys, and lifecycle states realistic.
 Extract repeated patch groups only when it makes a test's intent easier to see.

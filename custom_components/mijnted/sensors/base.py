@@ -16,9 +16,11 @@ from ..const import (
     DEFAULT_NAME,
     DEFAULT_START_VALUE,
     DOMAIN,
+    MONTHLY_STATISTIC_NAMES,
     UNIT_MIJNTED,
 )
 from ..utils import DateUtil, DataUtil
+from ..utils.readings import finite_usage
 from .models import (
     CurrentData,
     DeviceReading,
@@ -91,6 +93,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         self._config_name = config_name
         self._attr_unique_id = self._build_unique_id(entry_id, sensor_type)
         self._last_known_value = None
+        self._last_comparison_period: Optional[Tuple[int, int]] = None
 
     @staticmethod
     def _build_unique_id(entry_id: str, entity_key: str) -> str:
@@ -127,12 +130,14 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         return self._build_device_info(self.coordinator.data, self._config_name)
 
     @property
-    def name(self) -> str:
+    def name(self) -> Optional[str]:
         """Return the name of the sensor.
         
         Returns:
             Capitalized sensor name (device prefix handled by has_entity_name)
         """
+        if getattr(self, "_attr_translation_key", None):
+            return super().name
         return self._name.capitalize()
     
     @property
@@ -196,26 +201,26 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             self._last_known_value = value
     
     def _build_month_id_attributes(self) -> Dict[str, str]:
-        attributes: Dict[str, str] = {}
-        
-        current = self._build_current_data()
-        if current:
-            current_attributes = current.to_attributes_dict()
-            if "month_id" in current_attributes:
-                attributes["month_id"] = current_attributes["month_id"]
-        
-        if "month_id" not in attributes:
-            now = datetime.now()
-            attributes["month_id"] = f"{now.month}.{now.year}"
-        
-        current_month_id = attributes.get("month_id", "")
-        if current_month_id:
-            parsed = DataUtil.parse_month_year(current_month_id)
-            if parsed:
-                current_month, current_year = parsed
-                attributes["last_year_month_id"] = f"{current_month}.{current_year - 1}"
-        
-        return attributes
+        """Identify the comparison period independently of current meter responses."""
+        now = dt_util.now()
+        return {
+            "month_id": DateUtil.format_month_year_key(now.month, now.year),
+            "last_year_month_id": DateUtil.format_month_year_key(now.month, now.year - 1),
+        }
+
+    def _read_comparison_value(self, field_name: str) -> Optional[float]:
+        """Read a last-year cache metric with fallback scoped to its own period."""
+        now = dt_util.now()
+        period = (now.year, now.month)
+        if self._last_comparison_period != period:
+            self._last_known_value = None
+            self._last_comparison_period = period
+        key = DateUtil.format_month_key(now.year - 1, now.month)
+        cache = (self.coordinator.data or {}).get("monthly_history_cache", {})
+        value = finite_usage(self._extract_value_from_cache_entry(cache.get(key), field_name))
+        if value is not None:
+            self._update_last_known_value(value)
+        return self._last_known_value
     
     def _calculate_usage_from_start_end(
         self,
@@ -224,8 +229,8 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         month_id: Optional[str]
     ) -> Optional[float]:
         """Calculate usage from start and end meter readings."""
-        start = DataUtil.safe_float(total_usage_start, DEFAULT_START_VALUE)
-        end = DataUtil.safe_float(total_usage_end, DEFAULT_START_VALUE)
+        start = DataUtil.safe_float(total_usage_start)
+        end = DataUtil.safe_float(total_usage_end)
         
         if start is None or end is None:
             return None
@@ -439,9 +444,60 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             )
             return False
 
-    def _get_average_statistic_id(self) -> str:
+    def _get_average_statistic_id(self, series_key: Optional[str] = None) -> str:
         """Return the import-only average series ID, independent of entity renames."""
-        return f"{DOMAIN}:{self._entry_id.lower()}_{self.sensor_type}"
+        return f"{DOMAIN}:{self._entry_id.lower()}_{series_key or self.sensor_type}"
+
+    def _get_monthly_statistic_id(self, series_key: Optional[str] = None) -> str:
+        """Return the canonical monthly usage series shared with the published entity."""
+        series = series_key or ("monthly_usage" if self.sensor_type == "published_usage" else self.sensor_type)
+        return f"{DOMAIN}:{self._entry_id.lower()}_{series}"
+
+    def _current_month_statistic_value(self) -> Optional[float]:
+        """Read the complete dated aggregate for the current reporting month."""
+        data = self.coordinator.data or {}
+        now = dt_util.now()
+        report = data.get("reading_report") or {}
+        if report.get("month_id") == DateUtil.format_month_year_key(now.month, now.year):
+            return DataUtil.safe_float(report.get("value"))
+        return None
+
+    async def _async_inject_monthly_usage_statistics(
+        self, year_offset: int = 0, *, include_current: bool = True,
+        series_key: Optional[str] = None,
+    ) -> None:
+        """Upsert monthly aggregate samples without mixing observation-time states."""
+        if not self._validate_statistics_injection() or not self.coordinator.data:
+            return
+        now = dt_util.now()
+        statistics: List[StatisticData] = []
+        for entry in self._build_history_data():
+            value = DataUtil.safe_float(entry.total_usage)
+            if value is None or not math.isfinite(value) or value < 0:
+                continue
+            target_year = entry.year + year_offset
+            if (target_year, entry.month) > (now.year, now.month):
+                continue
+            start = datetime(target_year, entry.month, 1, tzinfo=dt_util.get_default_time_zone())
+            statistics.append(StatisticData(start=start, mean=value))
+        if year_offset == 0 and include_current:
+            # A partial live response must not replace a complete dated report.
+            value = self._current_month_statistic_value()
+            if value is not None and math.isfinite(value) and value >= 0:
+                statistics.append(StatisticData(
+                    start=datetime(now.year, now.month, 1, tzinfo=dt_util.get_default_time_zone()), mean=value,
+                ))
+        if not statistics:
+            return
+        metadata = StatisticMetaData(
+            mean_type=StatisticMeanType.ARITHMETIC, has_sum=False,
+            name=MONTHLY_STATISTIC_NAMES[
+                series_key or ("monthly_usage" if self.sensor_type == "published_usage" else self.sensor_type)
+            ].capitalize(),
+            source=DOMAIN, statistic_id=self._get_monthly_statistic_id(series_key),
+            unit_of_measurement=UNIT_MIJNTED, unit_class=None,
+        )
+        await self._async_safe_import_statistics(metadata, sorted(statistics, key=lambda row: row["start"]), external=True)
 
     def _collect_average_statistics(self, year_offset: int) -> List[StatisticData]:
         """Build monthly means from cache, shifting last-year comparison periods."""
@@ -474,7 +530,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
 
         return sorted(statistics, key=lambda statistic: statistic["start"])
 
-    async def _async_inject_average_statistics(self, year_offset: int = 0) -> None:
+    async def _async_inject_average_statistics(self, year_offset: int = 0, *, series_key: Optional[str] = None) -> None:
         """Reimport cached monthly means into a series without live collection."""
         if not self._validate_statistics_injection() or not self.coordinator.data:
             return
@@ -485,9 +541,9 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         metadata = StatisticMetaData(
             mean_type=StatisticMeanType.ARITHMETIC,
             has_sum=False,
-            name=self.name,
+            name=MONTHLY_STATISTIC_NAMES[series_key].capitalize() if series_key else self.name,
             source=DOMAIN,
-            statistic_id=self._get_average_statistic_id(),
+            statistic_id=self._get_average_statistic_id(series_key),
             unit_of_measurement=UNIT_MIJNTED,
             unit_class=None,
         )
@@ -927,7 +983,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
                             return converted
                     break
         
-        return DEFAULT_START_VALUE
+        return None
     
     def _calculate_total_usage(
         self,
@@ -1082,7 +1138,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         if not last_sync_date_obj:
             return None
 
-        reference_date = date.today()
+        reference_date = dt_util.now().date()
         month_context = self._get_month_context(reference_date)
         monthly_history_cache = data.get("monthly_history_cache", {})
         if not isinstance(monthly_history_cache, dict):
@@ -1196,7 +1252,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         monthly_history_cache = data.get("monthly_history_cache", {})
         if not isinstance(monthly_history_cache, dict) or not monthly_history_cache:
             return []
-        reference_date = date.today()
+        reference_date = dt_util.now().date()
         month_context = self._get_month_context(reference_date)
         current_month_key = month_context["current_month_key"]
         month_keys = list(monthly_history_cache.keys())

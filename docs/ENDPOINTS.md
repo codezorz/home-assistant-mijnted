@@ -169,6 +169,14 @@ All data endpoints require authentication via Bearer token in the `Authorization
 **Notes**:
 - The `monthlyEnergyUsages` array contains monthly data for the specified year
 - Total usage can be calculated by summing `totalEnergyUsage` values from all months
+- For historical monthly reporting, a finite nonnegative `totalEnergyUsage`
+  together with a usable non-null `averageEnergyUseForBillingUnit` is used as a
+  publication proxy. The API exposes no explicit immutable/final flag. A zero
+  total with null average is treated as an unpublished placeholder; a zero with
+  publication evidence is valid. Published own totals and averages can be revised.
+- Published own totals take precedence over provisional meter differences in the
+  monthly cache. Compatible per-device anchors are required to repair the next
+  baseline; an aggregate difference is never allocated to fabricated device values.
 
 ---
 
@@ -203,6 +211,21 @@ All data endpoints require authentication via Bearer token in the `Authorization
 - `delivery_type` (path): The delivery type ID
 - `year` (path): The year
 - `fromDate` (query, optional): Date in format `YYYY-MM-DD` (e.g., `2026-01-03`). When provided, returns device readings for the specified date or older. The date must be equal to or older than the last update date. If not provided, returns the latest device statuses.
+
+Monthly boundary reconciliation uses targeted date anchors, including retries
+after an initially accepted boundary. Published usage's forward daily reporting uses
+newly received latest statuses and `getLastSyncDate` as the reading date; it adds
+no daily historical endpoint scan. Consecutive compatible checkpoints are required
+for a daily consumption difference. Repeated latest-date observations can revise
+that daily result; older daily dates are not actively revisited.
+
+The latest complete received checkpoint also feeds the coordinator's reading-month
+own-usage report immediately, using cached opening baselines; it does not need to
+wait for a completed monthly insight or a second day to display month-to-date
+usage. Date-only API responses do not prove 00:00/23:59 measurement times. Monthly
+and daily aggregate sample timestamps identify report periods, not such invented
+observations. Complete-month official totals remain a separate source for late
+historical reconciliation.
 
 **Response**: JSON array of device status objects
 ```json
@@ -409,12 +432,3 @@ The client first parses JSON according to content type. For other content types
 it attempts JSON decoding of the response text (including quoted strings);
 unparseable text becomes `{"value": "..."}`. Coordinator normalization extracts
 text values where required. Do not assume every plain-text response is a dict.
-
-## Historical monthly publication
-
-The coordinator recognizes a historical monthly publication when
-`totalEnergyUsage` and `averageEnergyUseForBillingUnit` are finite nonnegative
-values. The average must be non-null. Published zero is valid; a zero total with
-a null average is a placeholder. The API provides no immutable/final flag.
-Yearly responses can revise published own usage and averages. Compatible dated
-device anchors provide the per-device boundaries used to reconcile baselines.

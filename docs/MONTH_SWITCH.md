@@ -28,8 +28,15 @@ This document defines expected behavior when calendar month boundaries and API d
     - `history`: historical months (current month excluded).
 - `Monthly usage`:
   - monthly total for current calendar month.
-  - resets on first day of each calendar month.
+  - resets to zero at the HA-local start of each calendar month using a local
+    callback, independently of hourly API polling. Availability still follows the
+    coordinator; a full failure can make the sensor unavailable.
   - increases during the month as new readings become available.
+- `Published usage`: a reading-month own-usage view. It stays on October while
+  available readings still describe October, then switches to November's actual
+  total when November readings arrive, even if the first value is nonzero. There
+  is no synthetic midnight reset in this entity. Dated daily attributes and the separate daily series use forward observations,
+  without a historical scan; see [daily reporting](SENSORS.md#reported-daily-usage-report-attributes-and-statistics).
 
 ## Invariants
 
@@ -43,7 +50,8 @@ This document defines expected behavior when calendar month boundaries and API d
 Each month in cache has an explicit lifecycle state:
 
 - `OPEN`: month is still in progress or boundary is not complete yet.
-- `COMPLETE_READINGS`: month last-day readings are complete and stable.
+- `COMPLETE_READINGS`: month last-day readings are available; later revisions
+  remain possible until and after publication.
 - `FINALIZED`: month has insight average and is closed.
 
 Boundary rule for the next month:
@@ -51,7 +59,16 @@ Boundary rule for the next month:
 - When previous month reaches `COMPLETE_READINGS`, current month `start` readings are recalculated from previous-month `end` readings and marked as locked (`start_locked = true`).
 - The integration prefers the previous month's last-day API anchor. Empty or incompatible anchor responses use the cached device set as a temporary baseline but leave it unlocked so a later complete anchor can correct it.
 - An anchor that contains all cached devices can repair an incomplete historical cache. Missing month-start readings are restored from the preceding month's cache or last-day anchor; correction remains unlocked for retry if a required start is unavailable.
-- `start_locked = true` protects an accepted baseline from incomplete responses. Verified closing anchors can reconcile that baseline when upstream values change.
+- `start_locked = true` protects an accepted baseline from incomplete responses.
+  Verified reconciliation can still replace it when late readings correct a
+  historical boundary. Ordinary finalization alone does not invent a new baseline.
+- `FINALIZED` identifies a published historical month, not an immutable cache row.
+  A usable non-null building average plus a finite nonnegative own total is the
+  current publication proxy; a zero with null average is an unpublished placeholder.
+  A valid published zero is retained, and subsequent published revisions are accepted.
+- Opening and closing anchors are validated together. An inconsistent opening
+  baseline is refreshed from the preceding dated anchor while verification is
+  pending, including months whose insight has not been published.
 
 ## Month Switch Timeline
 
@@ -113,8 +130,42 @@ Expected behavior:
 
 - February cache entry receives average insight fields.
 - February transitions `COMPLETE_READINGS -> FINALIZED`.
-- February is marked as published and remains correctable.
-- March remains `OPEN`. Its baseline follows verified per-device closing readings, including corrections to an accepted boundary.
+- February is marked as published.
+- February's published own total and average are reconciled even if its cached
+  state was already complete/finalized. It remains correctable after publication.
+- March remains `OPEN`. Its baseline shifts only when compatible per-device
+  boundary evidence supports a correction, not from distributing an aggregate
+  difference across devices.
+
+### Phase E: A previously accepted boundary is revised
+
+If a cached October end of 868 later becomes 870, with September end 829:
+
+- October's published usage becomes 41, even when the corrected anchor is not
+  available yet. `boundary_reconciled` remains false until anchor repair succeeds.
+- Compatible October-end readings repair November's start from 868 to 870. With
+  latest readings totaling 888, November usage is 18.
+- Pending repairs use persisted retry backoff (one hour, up to six hours after
+  repeated failures). Provisional boundaries remain revisable before publication.
+- Published totals are reconsidered throughout the retained history. A later
+  revision reopens an already reconciled boundary. January retains its annual zero
+  baseline when December is revised.
+- External monthly statistics upsert October's 41 in October, independent of when
+  HA receives it. If the latest received reading date is October 31, Published
+  usage shows 41 with `month_id = 10.2026`; if it is November 6, the sensor shows
+  November's corrected 18 with `reading_date = 2026-11-06`.
+
+### Dated switch versus receipt time
+
+- November 1 calendar boundary: Monthly usage becomes zero; Published usage can
+  still report October 30's provisional 39.
+- October 31 readings received November 2: Published usage reports October's 41;
+  October's monthly statistic is corrected in October.
+- November 1 readings received November 3: Published usage switches to November's
+  available usage, for example 3. Monthly and daily statistics use the November 1
+  reporting bucket/date; ordinary entity state history records November 3 receipt.
+- A real zero is supported, but no extra zero is injected at 00:00 followed by an
+  invented 23:59 observation. API date-only data cannot establish those times.
 
 ## Quick Checks for Validation
 
@@ -128,25 +179,13 @@ Expected behavior:
 - After February insight finalization:
   - February averages are populated.
   - March start alignment remains consistent with February end.
-- If February monthly totals are corrected after March already started, recorder statistics for February are re-injected once so history reflects the corrected value.
+- If February monthly totals are corrected after March already started, the
+  canonical external monthly series is upserted and March's verified baseline is
+  repaired. Later automatic live states cannot override that external series.
+- Restore a cache with pending boundaries and verify reconciliation. Exercise
+  publication and anchor arrival in both orders.
 
 ## Manual Recovery
 
 - In rare edge cases where month-boundary cache values look stale or incorrect, use button `button.mijnted_reset_statistics` to rebuild cache/statistics from fresh data.
 - This resets integration cache/injection tracking, not recorder data. See the [reset behavior](SENSORS.md#related-button). Entity IDs are examples; use your registry's actual ID.
-
-## Published totals and pending boundaries
-
-Yearly API data reconciles historical own totals and building averages. A finite
-nonnegative own total and usable non-null building average identify a published
-monthly result. Published zero is valid; zero with a null average is a placeholder.
-
-The cache retains 16 historical months plus the current month. It persists
-`published_usage`, `boundary_reconciled`, `boundary_retry_at`, and
-`boundary_retry_count`. Provisional months and pending repairs survive restarts.
-Pending boundaries use compatible real device anchors and bounded one-hour-to-six-hour
-retry backoff. Verified closing readings repair the following opening baseline;
-January retains its annual zero baseline. A revised published result reopens
-verification of that boundary.
-Opening and closing anchors are validated together; an inconsistent cached
-opening baseline is refreshed from the preceding dated anchor while pending.

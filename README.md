@@ -130,6 +130,7 @@ Once configured, the integration will create several sensors in Home Assistant:
 Detailed references: [sensor catalog](docs/SENSORS.md), [month-switch timeline](docs/MONTH_SWITCH.md), and [API/authentication](docs/ENDPOINTS.md).
 
 - **Monthly usage** - Current calendar month's energy usage, calculated from start/end readings with annual-reset handling in January. Attributes include `start_date`, `end_date`, `days`, and `month_id`. Use the **Last update** sensor to see the date through which API readings are available.
+- **Published usage** - A lagging month-to-date own-usage report following the date/month of available MijnTed readings. It advances to the next month when that month's readings arrive, using their actual value without a synthetic zero. Own-period metadata and optional dated daily consumption are attributes. It exports all four monthly graph series plus forward daily statistics, including monthly backfill and late corrections. Average/comparison sensors remain selectable views with their own period metadata.
 - **Last year monthly usage** - Last year's monthly usage for the corresponding month (prefers API-provided value from previous year's data)
 - **Average monthly usage** - Average usage extracted from historical monthly usage data
 - **Last year average monthly usage** - Last year's average monthly usage for the corresponding month (prefers API-provided value from previous year's data)
@@ -149,13 +150,36 @@ Usage sensors request zero decimal places for display; underlying values retain 
 
 ### History and Statistics
 
-With recorder enabled, usage sensors import historical long-term statistics.
-This does not backfill ordinary sensor state history. For historical building
-averages, select the dedicated monthly statistics and use **Month + Mean**;
-see [monthly-average graphs](docs/SENSORS.md#monthly-building-average-graphs).
+With recorder enabled, usage sensors import long-term statistics. Ordinary sensor
+state history records receipt time. For monthly own usage, last-year usage, and
+the two building-average lines, select the external statistics from source
+**mijnted** and use **Month + Mean**. The IDs are also exposed in the sensors'
+statistic attributes. See
+[monthly graph setup](docs/SENSORS.md#monthly-usage-and-building-average-graphs).
 
-Late month corrections can trigger reinjection. The reset button rebuilds the
-integration cache and injection tracking; it does not delete recorder data.
+Monthly usage resets to zero at HA-local month start even while readings lag.
+Late published totals and compatible meter anchors repair historical totals and
+the following month's baseline.
+Published usage follows the reading month: a November 1 result received
+on November 3 is dated November 1 in statistics. Its state history still records
+receipt time. Available readings are revisable; no artificial 00:00/23:59 samples
+are introduced to force a zero into the lagging report.
+
+Published usage exports the four monthly statistics even if the standalone
+average/comparison entities are disabled. In the Statistics graph, select the
+entries from source **mijnted** directly; attributes are not required for selection.
+The [four-line graph example](docs/SENSORS.md#monthly-usage-and-building-average-graphs)
+shows the exact YAML structure.
+
+For newly observed daily consumption, use Published usage's external
+`daily_statistic_id` with **Day + Mean**. Samples belong to their reading date,
+even if received later. Daily readings have no monthly-style finality marker;
+missing daily checkpoints stay gaps rather than being spread across days.
+Daily attributes appear after consecutive compatible readings have been observed;
+there is no separate daily sensor entity and no historical daily scan/backfill.
+
+Late month corrections upsert the affected monthly aggregate. The reset button
+rebuilds monthly cache/tracking; it preserves daily checkpoints and recorder data.
 See [statistics behavior](docs/SENSORS.md#statistics-injection-behavior) for the
 full contract and [month-switch behavior](docs/MONTH_SWITCH.md) for boundary cases.
 

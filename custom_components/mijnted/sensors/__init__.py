@@ -2,6 +2,7 @@ from .base import MijnTedSensor
 from .device import MijnTedDeviceSensor
 from .usage import (
     MijnTedMonthlyUsageSensor,
+    MijnTedPublishedUsageSensor,
     MijnTedTotalUsageSensor,
     MijnTedAverageMonthlyUsageSensor,
     MijnTedLastYearAverageMonthlyUsageSensor,
@@ -23,6 +24,7 @@ __all__ = [
     "MijnTedSensor",
     "MijnTedDeviceSensor",
     "MijnTedMonthlyUsageSensor",
+    "MijnTedPublishedUsageSensor",
     "MijnTedTotalUsageSensor",
     "MijnTedAverageMonthlyUsageSensor",
     "MijnTedLastYearAverageMonthlyUsageSensor",
@@ -37,4 +39,3 @@ __all__ = [
     "MijnTedWaterMeterSensor",
     "MijnTedResetStatisticsButton"
 ]
-

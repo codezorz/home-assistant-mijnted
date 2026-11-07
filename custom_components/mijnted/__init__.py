@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import MijntedApi
+from .daily import DailyUsageTracker
 from .const import (
     CACHE_HISTORY_MONTHS,
     CONF_PASSWORD,
@@ -30,6 +31,7 @@ from .exceptions import (
     MijntedGrantExpiredError,
 )
 from .utils import ApiUtil, DataUtil, DateUtil, TimestampUtil
+from .utils.readings import build_reading_report
 from .reconciliation import async_reconcile_boundaries, finite_usage, published_usage
 from .sensors.base import MijnTedSensor
 from .sensors.models import (
@@ -2249,6 +2251,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         True if setup was successful, False otherwise
     """
     
+    daily_tracker = DailyUsageTracker(hass, entry.entry_id)
+
     async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str], refresh_token_expires_at: Optional[datetime] = None) -> None:
         """Callback to persist updated tokens to config entry."""
         refresh_token_expires_at_str = None
@@ -2327,7 +2331,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         api, hass, entry, last_update, energy_usage_data, filter_status
                     )
                 )
-                return _build_coordinator_return_dict(
+                payload = _build_coordinator_return_dict(
                     api,
                     energy_usage_data,
                     energy_usage_total,
@@ -2351,6 +2355,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     statistics_reinject,
                     data["extra_delivery_data"],
                 )
+                source_date = DateUtil.parse_last_sync_date(last_update)
+                source_month = DateUtil.format_month_key(source_date.year, source_date.month) if source_date else ""
+                source_entry = monthly_history_cache.get(source_month)
+                expected_devices = {device.id for device in source_entry.devices} if source_entry else set()
+                payload["daily_usage"] = await daily_tracker.async_update(
+                    last_update, filter_status, dt_util.now(), expected_devices,
+                )
+                snapshot = daily_tracker.reading_snapshot
+                report_date = DateUtil.parse_last_sync_date(snapshot.get("date"))
+                report_key = DateUtil.format_month_key(report_date.year, report_date.month) if report_date else ""
+                report_month = monthly_history_cache.get(report_key)
+                payload["reading_report"] = build_reading_report(
+                    snapshot, report_month.to_dict() if report_month else {},
+                )
+                return payload
         except MijntedGrantExpiredError as err:
             _handle_grant_expired(hass, entry, err)
         except MijntedAuthenticationError as err:

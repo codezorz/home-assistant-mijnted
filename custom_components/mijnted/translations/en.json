@@ -53,6 +53,9 @@
   },
   "entity": {
     "sensor": {
+      "published_usage": {
+        "name": "Published usage"
+      },
       "energy_usage": {
         "name": "Energy usage"
       },
