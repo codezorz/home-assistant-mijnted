@@ -9,6 +9,8 @@ description: Required CI checks, CodeQL event and permission constraints, and fo
   setup, fork approvals, and troubleshooting.
 - Keep **Validate code** running for every PR to `main`, without path filters,
   and keep it required alongside the **CodeQL** code-scanning check.
+- Do not require **Aikido Security: check code** on the free Developer plan;
+  paid PR gating is outside the [Aikido setup](aikido-triage.instructions.md).
 - Use the latest stable Python 3 (`3.x` with `check-latest: true`) for CI parity.
 - Keep advanced CodeQL scanning on normal `pull_request` merge checkouts with
   the built-in token and no repository secrets. Default CodeQL setup must remain

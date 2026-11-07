@@ -28,7 +28,7 @@ change. Verify claims against code; distinguish existing behavior from proposals
 | Worktree placement and naming | `.agents/skills/git-worktrees/SKILL.md` | Keep generic and repository-relative |
 | Issue reporting / private vulnerability reporting | `docs/ISSUE_REPORTING.md` / `SECURITY.md` | GitHub issue forms when report fields change |
 | Tool-agnostic security finding triage | `.github/instructions/security-triage.instructions.md` | `SECURITY.md` owns disclosure |
-| Aikido commands, credentials, API details | `.agents/skills/aikido-triage/references/aikido.md` | Skill links the generic triage policy; scoped instructions own helper implementation rules |
+| Aikido Developer-plan setup, dashboard triage, tracking | `.agents/skills/aikido-triage/references/aikido.md` | Skill links generic triage policy; scoped Aikido instructions own agent constraints |
 
 ## Keep guidance DRY
 

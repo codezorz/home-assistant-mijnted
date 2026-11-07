@@ -1,265 +1,147 @@
-# Aikido tool reference
+# Aikido dashboard reference
 
-This is an on-demand maintainer process, run locally from Git Bash or
-PowerShell. It is not a scheduled GitHub Actions workflow. The helper at
-[`aikido.py`](../../../../.github/scripts/aikido.py) reads and updates Aikido; the
-maintainer or agent uses `gh` for the associated GitHub tracking and fixing PRs.
+This repository uses Aikido's free Developer plan. The local REST API helper
+has been removed; use the dashboard for Aikido and `gh` for GitHub tracking.
 
-Follow the [tool-agnostic triage policy](../../../../.github/instructions/security-triage.instructions.md)
-and [disclosure policy](../../../../SECURITY.md). This reference supplies Aikido
-commands, credentials, identifiers, and status mappings; it does not define the
-generic finding-to-tracking process. The tooling itself does not create finding
-tickets or suppress findings in bulk.
+Follow [security triage policy](../../../../.github/instructions/security-triage.instructions.md)
+and [SECURITY.md](../../../../SECURITY.md). These own root-cause grouping,
+disclosure, dispositions, and verification requirements.
 
-## Prerequisites and credential setup
+## Developer plan and GitHub Apps
 
-Use Windows Python under the same Windows account that stores the credential.
-Git Bash can launch Windows Python and access the Windows credential store
-through this helper. Linux Python in WSL cannot read it directly; invoke
-Windows Python instead. Install the locked development dependencies following
-[development guide](../../../../docs/DEVELOPMENT.md#local-environment);
-the helper uses the existing `requests` dependency and Python's standard-library
-Windows bindings.
+The following published entitlements were checked on **2026-11-07**. Check the
+[current pricing](https://www.aikido.dev/pricing) before relying on a changed
+allowance or enabling another integration.
 
-Store **one Windows Generic Credential**:
-
-| Field | Value |
+| Capability | Developer-plan setup |
 |---|---|
-| Target | `aikido:home-assistant-mijnted` |
-| Username | Aikido API client ID |
-| Password | Aikido API client secret |
+| Repository scans | Up to 10 repositories; scheduled rescans every 3 days. Dependency/license scanning, SAST, secrets, IaC, and outdated software checks are included. `uv.lock` supplies exact development dependency versions. |
+| AutoFix | Includes 10 AI AutoFixes per month. Can create remediation PRs independently of incoming-PR scanning. |
+| IDE integration | Included; optional local feedback between scheduled scans. |
+| Incoming-PR security review / gating | Paid Basic feature; leave disconnected. |
+| GitHub issue creation / sync | Paid feature; use manual GitHub tracking. |
+| Public REST API / webhooks | Upgrade required; do not request local API credentials. |
+| Manual repository rescans | Unavailable on the free plan; wait for a scheduled scan. |
+| Aikido Libraries replacements | Paid Basic feature; use ordinary dependency upgrades for the free-plan workflow. |
 
-The client ID is the OAuth client identifier and is visible in credential
-listings. The secret is stored in the password field. The helper prints
-neither value, keeps access tokens in memory, and never needs secret arguments
-or a credentials file. The Windows account is the storage boundary: processes
-running as that account can retrieve its credentials.
+The GitHub Apps are separate connections:
 
-### PowerShell setup (one-line commands)
+| GitHub App | Purpose | Developer-plan action |
+|---|---|---|
+| **Aikido Security** | Reads source repositories for scheduled scans. | Keep installed with access to `codezorz/home-assistant-mijnted`. |
+| **Aikido Autofix** | Creates remediation PRs from findings. | Keep if using the included AutoFix allowance. |
+| **Aikido Issues** | Creates and synchronizes GitHub issues. | Can uninstall while staying on Developer. |
+| **Aikido PR Checks** | Scans incoming PRs and publishes gating results. | Leave uninstalled/disconnected while staying on Developer. |
 
-Replace `YOUR_AIKIDO_CLIENT_ID` and enter the client secret at the hidden
-password prompt; do not put the secret after `/pass` in the command:
+The **GitHub** tile under **PR Quality Gating** in
+[integration settings](https://app.aikido.dev/settings/integrations) configures
+the PR Checks app. Reconnecting it reinstalls PR gating, not source scanning.
+Keep source access through **Aikido Security** and check the repository's active
+status, scanned branch, and last completed scan. A retained listing or installed
+app alone is not proof of current scan coverage.
 
-```powershell
-cmdkey.exe /generic:aikido:home-assistant-mijnted /user:YOUR_AIKIDO_CLIENT_ID /pass
-cmdkey.exe /list:aikido:home-assistant-mijnted
-```
+### AutoFix setup
 
-The list command displays the client ID, not the password. The same commands
-replace an existing entry when rotating the pair. The Credential Manager UI
-under **Windows Credentials → Add a generic credential** can also store it.
+In [AutoFix settings](https://app.aikido.dev/issues/fix/settings), verify write
+access, selected repositories, automatic PR categories, and PR metadata. Review
+generated PRs through normal CI and Git/PR policy; keep auto-merge disabled
+unless the maintainer explicitly chooses otherwise.
 
-### Git Bash setup (one-line commands)
+A saved category is not proof of plan entitlement: some need additional assets,
+credits, or a paid feature. In particular, **Aikido library for majors** relies
+on the paid Libraries feature; choose ordinary dependency upgrades for a
+free-only configuration. Do not use **Test Autocreation** for a read-only audit,
+because it can create real PRs.
 
-Prevent MSYS path rewriting of `/generic`, `/user`, and `/pass`. `winpty`
-provides the Windows console used by the interactive password prompt:
+### Optional local feedback
 
-```bash
-MSYS_NO_PATHCONV=1 winpty cmdkey.exe /generic:aikido:home-assistant-mijnted /user:YOUR_AIKIDO_CLIENT_ID /pass
-MSYS_NO_PATHCONV=1 cmdkey.exe /list:aikido:home-assistant-mijnted
-```
+[IDE plugins](https://help.aikido.dev/ai-and-dev-tools/ide-plugins-overview) provide
+local SAST, IaC, secrets, and dependency feedback. The
+[secrets pre-commit hook](https://help.aikido.dev/ai-and-dev-tools/aikido-secrets-pre-commit-hook)
+can check staged files. Inspect existing hooks and ask before installing or
+changing global Git/editor configuration.
 
-`cmdkey` manages entries but does not reveal saved passwords. The helper reads
-the entry with `CredReadW`, decodes its UTF-16 password blob, and releases the
-native buffer with `CredFree`. Do not paste credentials into chat or issue
-bodies. To delete this local credential when retiring the tool:
+[Aikido MCP](https://help.aikido.dev/ai-and-dev-tools/aikido-mcp) is a separate
+optional coding-tool connection. Verify workspace availability and
+[permissions](https://help.aikido.dev/ai-and-dev-tools/aikido-mcp/mcp-permissions)
+before relying on local scans or finding access. This repository does not
+configure an MCP connection or require the retired REST credentials.
 
-```powershell
-cmdkey.exe /delete:aikido:home-assistant-mijnted
-```
+## Inspecting findings
 
-## Aikido API scopes
+1. Open [Repositories](https://app.aikido.dev/repositories) and select
+   `codezorz/home-assistant-mijnted`. Confirm it is active, its scanned branch,
+   and its last scan. A visible repository or installed app alone does not prove
+   a recent scan completed.
+2. Open the relevant finding in the repository or feed. Record its dashboard
+   URL, available finding/repository IDs, severity, rule/advisory, affected
+   package/path/version, and scan coverage. Keep raw secret evidence private.
+3. Compare the finding against the current code and dependency graph. An older
+   scan can remain open after a fix; check coverage before treating that as a
+   failed remediation. The free plan has scheduled scans, not manual rescans.
 
-Create a private API client for the client-credentials flow. Request:
+If dashboard access or scan metadata is unavailable, record what could and
+could not be verified. Do not request API credentials as a fallback.
 
-| Scope | Used for |
-|---|---|
-| `repositories:read` | Resolve the exact GitHub repository and scanned branch |
-| `issues:read` | Read repository findings and individual details |
-| `issues:write` | Explicit notes, ignore/snooze, and reversing those dispositions |
+## Finding identity and GitHub tracking
 
-The first two scopes support the read-only checks. Write commands require
-`issues:write`. GitHub tracking uses the existing `gh` login. No Aikido
-task-tracking, repository-write, or administration scopes are required by this
-helper. Separate code-quality endpoints are outside this helper's scope.
+Search existing GitHub records, including closed issues, by stable finding IDs,
+advisories, dashboard URLs, and technical root cause before creating another.
+Use `gh` and the [issue policy](../../../../.github/instructions/issues.instructions.md)
+for authorized GitHub updates. GitHub issue synchronization is not included in
+this plan; tracking updates are manual.
 
-The credential target identifies a local profile; it does not restrict the
-client's server-side permissions. The helper resolves the exact GitHub
-owner/name and branch to one Aikido repository ID, filters exports by that ID,
-and checks each individual finding again before writing. It does not offer
-group-wide ignores: a group can span multiple repositories.
-
-## Local commands
-
-Run these one-line commands from the active checkout root, using the activated
-Windows development environment:
-
-```bash
-python .github/scripts/aikido.py credentials check
-python .github/scripts/aikido.py auth check
-python .github/scripts/aikido.py issues list
-python .github/scripts/aikido.py issues list --status all
-python .github/scripts/aikido.py issues show 123
-python .github/scripts/aikido.py issues draft 123
-```
-
-They work in PowerShell as well when `python` is the Windows environment's
-interpreter. For example, without activating the shared environment:
-
-```powershell
-& "$HOME/.venv-home-assistant/Scripts/python.exe" .github/scripts/aikido.py auth check
-```
-
-`credentials check` reads only the local entry and reports presence, without
-contacting Aikido. `auth check` verifies authentication and read access, reports
-the selected repository/branch and open-finding count, and includes lockfile
-configuration flags when supplied by Aikido. It also reports token-declared
-scopes and any missing permissions for the full triage workflow. Scope metadata
-is informational, not used to authorize a write locally; Aikido enforces the
-actual permissions. `write_scope_declared` is distinct from `live_write_tested`:
-the read-only check does not modify a real finding to probe write access.
-
-`issues list` and `issues show` return selected JSON metadata, excluding raw
-secret evidence and arbitrary type-specific payloads. `issues draft` prints a
-local per-finding input for a root-cause record. Review/sanitize the combined
-record and choose its visibility under the generic triage/disclosure policy.
-Authentication material is redacted from command output, and error messages
-omit response bodies, HTTP headers, and underlying request-library text.
-
-For AI-review findings, `show` and `draft` fill missing rule/file context from
-the matching repository-checked export record. The verified detail response
-still owns identity, state, and severity. Its `type` is retained; `export_type`
-reports a differing export classification explicitly. This display enrichment
-does not change the detail checks used for writes.
-
-Defaults are repository `codezorz/home-assistant-mijnted`, branch `main`, EU
-region, and the credential target above. Global overrides go before the command:
-
-```bash
-python .github/scripts/aikido.py --repo owner/name --branch main --region us --credential-target aikido:another-profile auth check
-```
-
-Regions are `eu`, `us`, `au`, and `me`. Authentication and API requests use that
-region's fixed Aikido origin and refuse redirects. Reads follow zero-based
-pagination, including empty filtered pages with `X-Has-Next-Page=true`. The
-helper refreshes an expired/rejected bearer token once; other errors, including
-rate limiting, stop with a status message rather than automatically repeating
-state-changing operations.
-
-## Aikido tracking identity
-
-Apply the [root-cause tracking process](../../../../.github/instructions/security-triage.instructions.md#finding-to-root-cause-tracking-process)
-using `auth check`, `issues list`, and `issues show`. Use each complete stable
-marker from `issues draft` for tracker searches and paginate results when needed.
-
-Place all related per-finding markers in the root-cause issue body, alongside
-a table of Aikido finding/group IDs, original severities, affected components,
-and the common disposition/acceptance criteria. This lets later runs find the
-same issue from any of its source findings. Add the root-cause issue link to
-each finding with an explicit note; do not create a ticket per occurrence or
-silently discard IDs when consolidating. Notes use the group-note API but are
-prefixed with the repository and individual finding ID.
-
-The marker format is region/repository/finding-specific:
+Keep existing region/repository/finding-specific markers unchanged so earlier
+records remain discoverable. When the dashboard exposes both numeric IDs, the
+existing format is:
 
 ```text
 <!-- aikido:app.aikido.dev:repo:123:issue:456 -->
 <!-- aikido:app.aikido.dev:repo:123:issue:457 -->
 ```
 
-The [post-merge triage policy](../../../../.github/instructions/security-triage.instructions.md#pr-closure-and-post-merge-follow-up)
-determines when to reopen existing tracking. Use the following GitHub command
-when that policy calls for reopening:
+Use actual IDs only; do not substitute a display-group ID for an individual
+finding ID. If the UI does not expose those identifiers, retain the exact
+dashboard URL and technical context instead of inventing a marker.
 
-```bash
-gh issue reopen ISSUE_NUMBER --repo OWNER/REPOSITORY --comment "Post-merge verification: FINDING_IDS remain actionable on FIXED_COMMIT after SCAN_OR_REASSESSMENT_DATE. Previous fix: PR_URL. Remaining work: EVIDENCE_AND_REMEDIATION."
-```
+One root-cause record can contain multiple finding markers. Retain each
+finding's severity, affected component, and repository/branch. Follow the
+[label policy](../../../../.github/instructions/git-workflow.instructions.md#labels-and-issue-closure)
+and reuse the existing `aikido` source label where available.
 
-The helper does not update GitHub tracking automatically.
+## Dashboard dispositions
 
-### GitHub labels
+Use individual-finding controls scoped to this repository. A display group may
+contain findings from other projects; do not apply a group-wide ignore merely
+to complete this repository's triage.
 
-Follow the generic triage policy's labels and severity rules. This repository
-also has the source label `aikido`; add it where available in the approved
-tracker. If tracking elsewhere, query and map that tracker's existing
-labels rather than assuming this repository's labels are present.
-
-### Dispositions
-
-| Generic disposition | Aikido operation |
+| Disposition | Aikido action and verification |
 |---|---|
-| Valid and actionable | Add tracking notes; leave the Aikido finding open pending verification |
-| False positive or demonstrably unaffected | Ignore the individual finding with the evidence and tracking reference |
-| Accepted risk / won't fix | Ignore applicable individual findings with the rationale and tracking reference; perform the API read-back checks below |
-| Deferred | Snooze until the review date, with a reason |
-| Already tracked | Add or retain the existing tracking link |
+| Valid and actionable | Leave open, add a tracking reference where supported, and remediate through a reviewed PR. |
+| False positive / unaffected | Ignore the individual finding with technical evidence and its root-cause tracking reference; verify the state and explanation. |
+| Accepted risk / won't fix | Ignore each applicable individual finding with rationale and tracking; verify all states and explanations before closing GitHub tracking as not planned. |
+| Deferred | Snooze until a future review date with a reason and tracking reference; verify the date and state. |
+| Already tracked | Reuse the existing root-cause record and retain its finding links. |
 
-Explicit Aikido writes, using the **individual finding ID**, are:
+Reopen the finding after an action and read back its state and rationale. Use
+an available note/history entry to preserve the full explanation if the UI's
+status label is generic. **Ignored** is different from **solved**. If an
+individual disposition, note, or verification is unavailable, report the
+remaining step instead of claiming both systems are synchronized.
 
-```bash
-python .github/scripts/aikido.py issues note 123 --message "Root-cause tracking: TRACKING_ISSUE_OR_ADVISORY_URL; disposition: investigating"
-python .github/scripts/aikido.py issues ignore 123 --reason "False positive: EVIDENCE; root-cause tracking: TRACKING_ISSUE_OR_ADVISORY_URL"
-python .github/scripts/aikido.py issues ignore 123 --reason "Accepted risk / won't fix: RATIONALE; root-cause tracking: TRACKING_ISSUE_OR_ADVISORY_URL"
-python .github/scripts/aikido.py issues snooze 123 --until 2027-01-15 --reason "Deferred until REVIEW_REASON; root-cause tracking: TRACKING_ISSUE_OR_ADVISORY_URL"
-python .github/scripts/aikido.py issues unignore 123
-python .github/scripts/aikido.py issues unsnooze 123
-```
+After a remediation merges, wait for a scheduled scan covering the fix or
+perform an equivalent reassessment against the fixed code. Record the evidence
+and follow [post-merge policy](../../../../.github/instructions/security-triage.instructions.md#pr-closure-and-post-merge-follow-up).
+Neither merging an AutoFix PR nor an old open finding proves the new code's
+scan result.
 
-Snooze dates use `YYYY-MM-DD` at midnight UTC and must be in the future. Notes
-are attached through Aikido's group-note API and automatically identify this
-repository and the individual finding ID. No command marks a finding solved
-merely because a PR has been opened.
+## References
 
-For won't-fix tracking, apply `issues ignore` to each listed finding ID, using
-the accepted-risk rationale and root-cause link. Read back the individual
-finding's `status` and `ignore_reasons` through `GET /issues/{issue_id}` to
-verify the ignore and its explanation. Some finding types return only the
-generic `api_ignore` reason "Ignored via API" even when the ignore request
-included a custom reason. That generic text does not verify the explanation:
-add the full rationale and tracking link as a repository/finding-prefixed
-group note, then verify it through `GET /issues/groups/{group_id}/notes`.
-The Aikido state is **ignored**, not **closed/solved**. After satisfying the
-[won't-fix closure policy](../../../../.github/instructions/security-triage.instructions.md#wont-fix-closure-in-both-systems),
-use the following GitHub command:
-
-```bash
-gh issue close ISSUE_NUMBER --repo OWNER/REPOSITORY --reason "not planned" --comment "Won't fix: RATIONALE. Every related Aikido finding was ignored via API and its status/reason read back."
-```
-
-The helper's `issues show` output intentionally omits arbitrary raw metadata;
-it does not currently expose `ignore_reasons`. Do not infer verification from
-`completed: true` alone. Keep any unfinished cross-system step visible and
-retry only that step. Do not ignore unrelated findings in the same Aikido
-display group.
-
-### API pacing
-
-Aikido's standard public API limit is **20 calls per minute per workspace**
-(50 only when enabled by Aikido). Pace multi-finding triage accordingly and
-honor `Retry-After` on HTTP 429. Reuse authentication/repository resolution
-where possible, and read existing notes before repeating a link operation
-after a partial failure. Retry throttled reads after the indicated delay;
-do not blindly repeat a state-changing request that may already have succeeded.
-
-## Validation and references
-
-Unit tests use simulated native credential buffers and mocked HTTP, never
-maintainer credentials or live Aikido mutations:
-
-```bash
-python -m pytest .github/scripts/aikido.test.py -q
-```
-
-For live verification, use `credentials check` and `auth check`, then inspect
-the selected repository's metadata with read-only list/show commands. Actual
-dispositions are applied only as explicit triage operations.
-
-- [Aikido authorization](https://apidocs.aikido.dev/reference/authorization.md)
-- [Repository listing](https://apidocs.aikido.dev/reference/listcoderepos.md)
-- [Individual finding export](https://apidocs.aikido.dev/reference/exportissues.md)
-- [Finding details](https://apidocs.aikido.dev/reference/getissuedetail.md)
-- [Ignore a finding](https://apidocs.aikido.dev/reference/ignoreissue.md)
-- [Snooze a finding](https://apidocs.aikido.dev/reference/snoozeissue.md)
-- [Group notes](https://apidocs.aikido.dev/reference/addnotetoissuegroup.md)
-- [Rate limiting](https://apidocs.aikido.dev/reference/rate-limiting.md)
-- [Windows cmdkey](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmdkey)
+- [Scheduled scan frequencies and free-plan restrictions](https://help.aikido.dev/code-scanning/miscellaneous/scanning-frequencies)
+- [Source-code GitHub connection](https://help.aikido.dev/code-scanning/connect-your-source-code/connect-github-account-to-aikido)
+- [GitHub Issues integration and plan availability](https://integrations.aikido.dev/integrations/github-issues)
+- [AutoFix overview](https://help.aikido.dev/autofix-and-remediation/overview-aikido-autofix)
+- [Aikido feed](https://app.aikido.dev/issues)
+- [AutoFix settings](https://app.aikido.dev/issues/fix/settings)
+- [Ignore findings](https://help.aikido.dev/getting-started/core-functionalities/ignore-issues-to-remove-issues-from-main-feed)
+- [Snooze findings](https://help.aikido.dev/getting-started/core-functionalities/snooze-issues-for-later)

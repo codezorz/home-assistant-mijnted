@@ -95,8 +95,3 @@ runtime-specific checks belong in the real-HA verification step.
 Session-hook tests run the shell script in temporary Git repositories to verify
 worktree-root discovery, metadata-only output, and missing-directory handling.
 Keep these tests independent of HA and production network access.
-
-Aikido helper tests use mocked HTTP and simulated Windows credential buffers.
-They must not read the maintainer's credential store or mutate live findings;
-see the [Aikido tool reference](../../.agents/skills/aikido-triage/references/aikido.md#validation-and-references)
-for the separate read-only smoke test.
