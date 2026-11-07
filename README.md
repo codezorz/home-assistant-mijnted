@@ -16,22 +16,14 @@ references live in [`docs/`](docs/README.md):
 
 ## Installation
 
-### Installation via Marketplace
-
-The [Marketplace](https://www.home-assistant.io/integrations/marketplace/) is built
-into Home Assistant 2026.11 and newer, under **Settings > Marketplace**. No
-separate store installation is needed.
+### Install through Marketplace
 
 1. Open **Settings > Marketplace** as an administrator.
 2. Select **Add from link** in the upper-right corner.
-3. Enter `https://github.com/codezorz/home-assistant-mijnted` under **GitHub link** and select **Add**. Connect GitHub when prompted; custom repositories need this connection for installation and updates.
+3. Enter `https://github.com/codezorz/home-assistant-mijnted` under **GitHub link** and select **Add**. Connect GitHub if prompted.
 4. If prompted for a content type, select **Integration** and select **Add** again.
 5. Open **MijnTed**, select **Install**, review the version, and confirm **Install**.
 6. Follow the integration setup flow that opens after installation. If Marketplace requests a restart, restart Home Assistant first, then add **MijnTed** under **Settings > Devices & services > Add integration**.
-
-If MijnTed was already managed by the community store before upgrading to Home
-Assistant 2026.11, Marketplace takes over automatically. Your installed integration,
-custom repository, and update entity carry over; no reinstallation is needed.
 
 ### Manual installation
 
@@ -50,8 +42,7 @@ checkouts intentionally report `0.0.0-dev.0`. Older releases without a
 
 ### Updates and beta versions
 
-Marketplace installs the versioned `mijnted.zip` release asset. Historical
-releases without this asset are available through manual installation.
+Marketplace installs the versioned `mijnted.zip` release asset.
 
 Updates appear under **Settings > Updates**. Restart Home Assistant after updating
 the integration to load the new code; Marketplace creates a repair reminder when
@@ -63,18 +54,11 @@ Stable releases are offered by default. To test numbered betas such as
 entity, then turn on the switch. To select a specific available release, open the
 MijnTed Marketplace page's three-dot menu and select **Install another version**.
 
-### Integration icon
-
-Home Assistant 2026.3 and newer display the bundled MijnTed icon from
-`custom_components/mijnted/brand/`. The images are included in the release ZIP
-and installed by Marketplace; no separate branding configuration is needed. Older
-Home Assistant versions do not support these local brand images.
-
 ## Configuration
 
 To set up the MijnTed integration, you'll need:
 
-1. Your MijnTed client ID
+1. The MijnTed client ID (see [retrieval options below](#obtaining-your-client-id))
 2. Your MijnTed username (email address)
 3. Your MijnTed password
 
@@ -85,28 +69,51 @@ options.
 
 ### Obtaining Your Client ID
 
-The **Client ID** can be extracted from a browser network request:
+Retrieve the client ID using either method below, then paste the result into the
+**client-id** field during integration setup.
 
-1. Log in to the [MijnTed website](https://mijnted.nl)
-2. Open your browser's developer console (F12)
-3. Go to the Network tab
-4. Look for a POST request to `https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token`
-5. Click on the request and go to the "Payload" or "Request" tab (depending on your browser)
-6. In the form parameters, you'll find:
-   - **Client ID**: The value of the `client_id` parameter (typically a UUID format)
+#### Retrieve with a script
 
-The request will look something like this:
-```
-POST https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/oauth2/v2.0/token
+Download [get_client_id.ps1](scripts/get_client_id.ps1) for PowerShell or
+[get_client_id.sh](scripts/get_client_id.sh) for Bash. Save the linked file's raw
+contents, then run it from the directory where you saved it:
 
-Form Data:
-- client_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-- refresh_token: ...
-- grant_type: refresh_token
-- scope: openid offline_access ...
+**PowerShell (Windows PowerShell 5.1 or PowerShell 7):**
+
+```powershell
+.\get_client_id.ps1
 ```
 
-**Note:** The client ID is typically a UUID format (e.g., `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
+**Bash (requires curl and standard Unix tools: grep, sed, sort, and tr):**
+
+```bash
+bash ./get_client_id.sh
+```
+
+Both scripts download the public MijnTed page and its JavaScript, then print the
+client ID. Copy the printed value into the integration's **client-id** field.
+If the script cannot identify a single ID, use the browser method.
+
+#### Retrieve manually in a browser
+
+To retrieve the client ID in your browser:
+
+1. Open the [MijnTed website](https://mijnted.nl).
+2. Open your browser's developer tools (F12) and select **Network**.
+3. Filter by **JS**, then reload the page.
+4. Select the application JavaScript file whose path starts with `/assets/index-`
+   and ends in `.js`, then open its **Response** tab.
+5. Search the response for `MyTedprod`. Look for a function call with a UUID
+   immediately before `MyTedprod`, as in the example below. The function name and
+   quotation marks may differ.
+6. Copy that UUID into the integration's **client-id** field.
+
+```javascript
+someFunction("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", "MyTedprod")
+```
+
+The first argument is the client ID; `MyTedprod` identifies the authentication
+tenant. The `x` characters above are placeholders, not a value to enter.
 
 **Polling Interval (Optional):**
 - Default: 3600 seconds (1 hour)
@@ -114,7 +121,7 @@ Form Data:
 - You can configure this during setup or leave it at the default
 - To change it later, open the integration's options/configure dialog in Settings > Devices & services. Saving the interval reloads the integration.
 
-During setup, enter your client ID, username, and password. The integration handles OAuth 2.0 and retains credentials and tokens in the Home Assistant config entry for automatic reauthentication. See the [authentication reference](docs/ENDPOINTS.md#authentication-lifecycle) for details.
+During setup, enter your client ID, username, and password. The integration handles OAuth 2.0 and retains credentials, the client ID, and tokens in the Home Assistant config entry for automatic reauthentication. See the [authentication reference](docs/ENDPOINTS.md#authentication-lifecycle) for details.
 
 ## Usage
 
