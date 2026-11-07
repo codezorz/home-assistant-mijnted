@@ -5,6 +5,7 @@ without installing the full Home Assistant runtime.  Every ``homeassistant.*``
 submodule that the integration touches at import time must be registered here.
 """
 import sys
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 _ha = MagicMock()
@@ -89,3 +90,6 @@ class _ButtonEntity:
 _ha.helpers.update_coordinator.CoordinatorEntity = _CoordinatorEntity
 _ha.components.sensor.SensorEntity = _SensorEntity
 _ha.components.button.ButtonEntity = _ButtonEntity
+
+_ha.util.dt.now.side_effect = lambda: datetime.now(timezone.utc)
+_ha.util.dt.get_default_time_zone.return_value = timezone.utc

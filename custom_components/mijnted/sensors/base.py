@@ -844,6 +844,8 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             total_usage_end=total_usage_end,
             total_usage=total_usage,
             status=month_status,
+            published_usage=month_data.get("published_usage"),
+            boundary_reconciled=bool(month_data.get("boundary_reconciled", False)),
         )
 
     def _get_month_context(self, last_sync_date_obj: date) -> Dict[str, Any]:

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -8,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import MijntedApi
 from .const import (
@@ -28,6 +30,7 @@ from .exceptions import (
     MijntedGrantExpiredError,
 )
 from .utils import ApiUtil, DataUtil, DateUtil, TimestampUtil
+from .reconciliation import async_reconcile_boundaries, finite_usage, published_usage
 from .sensors.base import MijnTedSensor
 from .sensors.models import (
     DeviceReading,
@@ -87,11 +90,11 @@ async def _load_persisted_cache(hass: HomeAssistant, entry_id: str) -> Optional[
                         continue
                     
                     cache_entry_dict_check = cache_entry.to_dict()
-                    if _is_month_cache_complete(cache_entry_dict_check, DateUtil.is_current_month_from_key(month_key)):
+                    if _is_month_cache_persistable(cache_entry_dict_check):
                         validated_cache[month_key] = cache_entry
                 
                 if validated_cache:
-                    _LOGGER.debug("Loaded %d complete months from persistent storage", len(validated_cache))
+                    _LOGGER.debug("Loaded %d months from persistent storage", len(validated_cache))
                     return validated_cache
     except Exception as err:
         _LOGGER.warning("Failed to load persisted cache: %s", err)
@@ -117,17 +120,17 @@ async def _save_persisted_cache(
                 continue
         
         cache_entry_dict = cache_entry.to_dict()
-        if _is_month_cache_complete(cache_entry_dict, DateUtil.is_current_month_from_key(month_key)):
+        if _is_month_cache_persistable(cache_entry_dict):
             complete_cache[month_key] = cache_entry_dict
     
     if not complete_cache:
-        _LOGGER.debug("No complete months to persist")
+        _LOGGER.debug("No usable months to persist")
         return
     
     store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}")
     try:
         await store.async_save({"monthly_history_cache": complete_cache})
-        _LOGGER.debug("Saved %d complete months to persistent storage", len(complete_cache))
+        _LOGGER.debug("Saved %d months to persistent storage", len(complete_cache))
     except Exception as err:
         _LOGGER.warning("Failed to save persisted cache: %s", err)
 
@@ -212,6 +215,11 @@ def _is_month_cache_complete(
     return True
 
 
+def _is_month_cache_persistable(entry: Dict[str, Any]) -> bool:
+    """Retain provisional/pending months as well as published-only results."""
+    return bool(entry.get("devices")) or finite_usage(entry.get("published_usage")) is not None
+
+
 def _is_previous_month_readings_complete(last_update: Any, now: datetime) -> bool:
     """Return True when last_update has reached previous month last day."""
     first_day_current = DateUtil.get_first_day_of_month(now.month, now.year)
@@ -242,13 +250,9 @@ def _build_updated_month_cache_entry(
     start_locked: bool
 ) -> MonthCacheEntry:
     """Build updated MonthCacheEntry while preserving date and id fields."""
-    return MonthCacheEntry(
-        month_id=cache_entry.month_id,
-        year=cache_entry.year,
-        month=cache_entry.month,
-        start_date=cache_entry.start_date,
-        end_date=cache_entry.end_date,
-        total_usage=total_usage,
+    return replace(
+        cache_entry,
+        total_usage=cache_entry.published_usage if cache_entry.published_usage is not None else total_usage,
         average_usage=average_usage,
         devices=devices,
         finalized=finalized,
@@ -705,7 +709,7 @@ async def _build_month_cache_entry(
 
 
 def _should_skip_existing_entry(existing_entry: Any, month_num: int, year: int) -> bool:
-    """Return True if the existing cache entry is already complete and can be skipped."""
+    """Preserve usable/pending entries; the reconciler owns historical revisions."""
     if not existing_entry:
         return False
     if isinstance(existing_entry, MonthCacheEntry):
@@ -714,7 +718,7 @@ def _should_skip_existing_entry(existing_entry: Any, month_num: int, year: int) 
         entry_dict = existing_entry
     else:
         return False
-    return _is_month_cache_complete(entry_dict, DateUtil.is_current_month(month_num, year))
+    return _is_month_cache_persistable(entry_dict)
 
 
 async def _build_initial_monthly_history_cache(
@@ -761,7 +765,9 @@ async def _build_initial_monthly_history_cache(
             )
             monthly_history_cache[month_key] = _empty_month_cache_entry(month_num, year)
     
-    return monthly_history_cache
+    retained_keys = {DateUtil.format_month_key(year, month) for month, year in months_to_build}
+    retained_keys.add(DateUtil.format_month_key(now.year, now.month))
+    return {key: value for key, value in monthly_history_cache.items() if key in retained_keys}
 
 
 async def _resolve_current_month_devices(
@@ -957,6 +963,9 @@ async def _lock_current_month_starts_when_previous_complete(
     modified = False
 
     prev_month_data = _normalize_cache_entry_state(monthly_history_cache.get(prev_month_key))
+    if isinstance(prev_month_data, MonthCacheEntry) and prev_month_data.published_usage is not None:
+        # Published boundaries belong to the reconciler, including locked ones.
+        return False
     if isinstance(prev_month_data, MonthCacheEntry):
         monthly_history_cache[prev_month_key] = prev_month_data
     if not prev_month_data:
@@ -1248,6 +1257,8 @@ async def _recalculate_current_month_starts_if_previous_finalized(
     prev_month_data = monthly_history_cache.get(prev_month_key)
     if not prev_month_data:
         return False
+    if isinstance(prev_month_data, MonthCacheEntry) and prev_month_data.published_usage is not None:
+        return False
 
     prev_finalized = False
     if isinstance(prev_month_data, MonthCacheEntry):
@@ -1366,8 +1377,10 @@ async def _fetch_missing_years_data(
 def _apply_enrichment_to_cache_entries(
     monthly_history_cache: Dict[str, MonthCacheEntry],
     years_with_data: Dict[int, Dict[str, Any]],
+    now: Optional[datetime] = None,
 ) -> None:
-    """Update cache entries with average usage and finalized flag from API data."""
+    """Reconcile published historical totals/averages without freezing revisions."""
+    now = now or dt_util.now()
     for usage_data in years_with_data.values():
         if not isinstance(usage_data, dict):
             continue
@@ -1387,18 +1400,25 @@ def _apply_enrichment_to_cache_entries(
             avg = month.get("averageEnergyUseForBillingUnit")
             if avg is None:
                 continue
-            average_usage = DataUtil.safe_float(avg)
+            average_usage = finite_usage(avg)
             if average_usage is None:
                 continue
             cache_entry = monthly_history_cache[month_key]
+            if isinstance(cache_entry, dict):
+                cache_entry = MonthCacheEntry.from_dict(cache_entry)
+                monthly_history_cache[month_key] = cache_entry
             if isinstance(cache_entry, MonthCacheEntry):
-                if not cache_entry.finalized or cache_entry.average_usage is None:
-                    monthly_history_cache[month_key] = _mark_month_finalized(cache_entry, average_usage)
-                    _LOGGER.debug("Enriched month %s with average: %s", month_key, average_usage)
-            elif isinstance(cache_entry, dict):
-                if not cache_entry.get("finalized", False) or cache_entry.get("average_usage") is None:
-                    _mark_month_finalized(cache_entry, average_usage)
-                    _LOGGER.debug("Enriched month %s with average: %s", month_key, average_usage)
+                cache_entry.average_usage = average_usage
+                cache_entry.finalized = True
+                cache_entry.state = MONTH_STATE_FINALIZED
+                value = published_usage(month)
+                if value is not None and (month_year, month_num) < (now.year, now.month):
+                    if cache_entry.published_usage != value:
+                        cache_entry.boundary_reconciled = False
+                        cache_entry.boundary_retry_at = None
+                        cache_entry.boundary_retry_count = 0
+                    cache_entry.published_usage = value
+                    cache_entry.total_usage = value
 
 
 async def _enrich_cache_with_api_data(
@@ -1410,7 +1430,7 @@ async def _enrich_cache_with_api_data(
     """Enrich cache entries with average usage from API data for each required year."""
     years_needed = _collect_years_from_cache(monthly_history_cache)
     years_with_data = await _fetch_missing_years_data(api, years_needed, energy_usage_data, now.year)
-    _apply_enrichment_to_cache_entries(monthly_history_cache, years_with_data)
+    _apply_enrichment_to_cache_entries(monthly_history_cache, years_with_data, now)
 
 
 def _parse_refresh_token_expires_at(entry: ConfigEntry) -> Optional[datetime]:
@@ -1913,11 +1933,11 @@ async def _load_or_build_cache(
         )
         return (cache, True)
 
-    cache_before = len(monthly_history_cache)
+    cache_before = {key: value.to_dict() for key, value in monthly_history_cache.items()}
     monthly_history_cache = await _build_initial_monthly_history_cache(
         api, last_update, energy_usage_data, now, existing_cache=monthly_history_cache
     )
-    was_modified = len(monthly_history_cache) > cache_before
+    was_modified = {key: value.to_dict() for key, value in monthly_history_cache.items()} != cache_before
     return (monthly_history_cache, was_modified)
 
 
@@ -1937,6 +1957,7 @@ async def _update_and_enrich_cache(
     """
     modified = False
     current_month_refresh_skipped = False
+    cache_before_update = {key: value.to_dict() for key, value in monthly_history_cache.items()}
 
     if last_update_date_changed:
         try:
@@ -1986,6 +2007,10 @@ async def _update_and_enrich_cache(
             err, extra={"error_type": type(err).__name__}, exc_info=True,
         )
 
+    if await async_reconcile_boundaries(api, monthly_history_cache, last_update, now):
+        modified = True
+    if cache_before_update != {key: value.to_dict() for key, value in monthly_history_cache.items()}:
+        modified = True
     return modified, current_month_refresh_skipped
 
 
@@ -1998,7 +2023,7 @@ async def _ensure_monthly_history_cache(
     filter_status: List[Dict[str, Any]],
 ) -> Tuple[Dict[str, MonthCacheEntry], Optional[str], StatisticsTracking, Dict[str, List[str]]]:
     """Load/build/update/enrich/persist monthly history cache."""
-    now = datetime.now()
+    now = dt_util.now()
     current_last_update_date = _extract_last_update_date(last_update)
     _, cached_last_update_date = _load_cache_from_coordinator(hass, entry)
     last_update_date_changed = current_last_update_date != cached_last_update_date

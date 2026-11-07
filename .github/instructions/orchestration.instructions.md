@@ -14,3 +14,9 @@ description: Coordinator ownership, platform setup, monthly cache persistence, a
 - **Month identity**: Cache dictionary keys use `YYYY-MM`; API/display month IDs use `M.YYYY`. Use the appropriate `DateUtil` formatter/parser rather than interchanging formats. Lifecycle and baseline-locking invariants are in `docs/MONTH_SWITCH.md`.
 
 When adding or changing behavior, keep this flow: config entry → coordinator → platforms → entities reading from `coordinator.data`.
+
+- **Reconciliation**: `reconciliation.py` rechecks pending historical boundaries,
+  including finalized results. Published own totals remain revisable. Persist
+  provenance and bounded retry state; repair adjacent baselines from compatible
+  real device anchors. Accepted starts protect against incomplete responses while
+  allowing verified corrections. Retain provisional and pending month entries.
