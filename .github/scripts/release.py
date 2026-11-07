@@ -214,7 +214,7 @@ def validate_commits(commits: list[str]) -> None:
 
 
 def write_package(files: dict[str, bytes], tag: str, destination: Path) -> None:
-    """Write a reproducible flat HACS ZIP with only the version metadata changed."""
+    """Write a reproducible flat Marketplace ZIP with only the version metadata changed."""
     parse_tag(tag)
     manifest = json.loads(files["manifest.json"])
     if manifest["domain"] != "mijnted":
@@ -233,7 +233,7 @@ def write_package(files: dict[str, bytes], tag: str, destination: Path) -> None:
 
 
 def package_source(source: bytes, tag: str, destination: Path) -> None:
-    """Package the integration at the ZIP root, as required by HACS."""
+    """Package the integration at the ZIP root, as required by Marketplace."""
     with zipfile.ZipFile(io.BytesIO(source)) as archive:
         files = {name[len(INTEGRATION):]: archive.read(name) for name in archive.namelist()
                  if name.startswith(INTEGRATION) and not name.endswith("/")

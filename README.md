@@ -16,6 +16,25 @@ references live in [`docs/`](docs/README.md):
 
 ## Installation
 
+### Installation via Marketplace
+
+The [Marketplace](https://www.home-assistant.io/integrations/marketplace/) is built
+into Home Assistant 2026.11 and newer, under **Settings > Marketplace**. No
+separate store installation is needed.
+
+1. Open **Settings > Marketplace** as an administrator.
+2. Select **Add from link** in the upper-right corner.
+3. Enter `https://github.com/codezorz/home-assistant-mijnted` under **GitHub link** and select **Add**. Connect GitHub when prompted; custom repositories need this connection for installation and updates.
+4. If prompted for a content type, select **Integration** and select **Add** again.
+5. Open **MijnTed**, select **Install**, review the version, and confirm **Install**.
+6. Follow the integration setup flow that opens after installation. If Marketplace requests a restart, restart Home Assistant first, then add **MijnTed** under **Settings > Devices & services > Add integration**.
+
+If MijnTed was already managed by the community store before upgrading to Home
+Assistant 2026.11, Marketplace takes over automatically. Your installed integration,
+custom repository, and update entity carry over; no reinstallation is needed.
+
+### Manual installation
+
 1. Download **`mijnted.zip`** from the desired [GitHub release](https://github.com/codezorz/home-assistant-mijnted/releases).
 2. Extract its contents into your Home Assistant's `custom_components/mijnted` directory. The ZIP contains `manifest.json` and the integration files directly at its root.
 3. Restart Home Assistant.
@@ -29,31 +48,26 @@ checkouts intentionally report `0.0.0-dev.0`. Older releases without a
 `mijnted.zip` asset can still be installed manually by copying their tagged
 `custom_components/mijnted` directory.
 
-## Installation via HACS
+### Updates and beta versions
 
-1. Ensure that [HACS](https://hacs.xyz/) is installed.
-2. In Home Assistant, go to HACS > Integrations.
-3. Click on the three dots in the top right corner and select "Custom repositories".
-4. Enter the following information:
-   - URL: `https://github.com/codezorz/home-assistant-mijnted`
-   - Category: Integration
-5. Click "Add".
-6. Search for "MijnTed" in HACS and install it.
-7. Restart Home Assistant.
-8. Go to Settings > Devices & services > Integrations.
-9. Click the "+ ADD INTEGRATION" button and search for "MijnTed".
-10. Follow the configuration steps.
+Marketplace installs the versioned `mijnted.zip` release asset. Historical
+releases without this asset are available through manual installation.
 
-HACS installs the versioned `mijnted.zip` release asset. Stable releases are the
-normal choice; enable prerelease versions in HACS to test numbered betas such as
-`v1.0.26-beta.1`. Direct downloads of `main` are hidden in HACS. Historical
-releases without the ZIP asset are available through manual installation.
+Updates appear under **Settings > Updates**. Restart Home Assistant after updating
+the integration to load the new code; Marketplace creates a repair reminder when
+a restart is needed.
+
+Stable releases are offered by default. To test numbered betas such as
+`v1.0.26-beta.1`, open the MijnTed repository's device page under
+**Settings > Devices & services > Marketplace**. Enable its disabled **Pre-release**
+entity, then turn on the switch. To select a specific available release, open the
+MijnTed Marketplace page's three-dot menu and select **Install another version**.
 
 ### Integration icon
 
 Home Assistant 2026.3 and newer display the bundled MijnTed icon from
 `custom_components/mijnted/brand/`. The images are included in the release ZIP
-and installed by HACS; no separate branding configuration is needed. Older
+and installed by Marketplace; no separate branding configuration is needed. Older
 Home Assistant versions do not support these local brand images.
 
 ## Configuration
