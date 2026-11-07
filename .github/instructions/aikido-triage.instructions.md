@@ -1,28 +1,20 @@
 ---
-applyTo: ".github/scripts/aikido.py,.github/scripts/aikido.test.py,.agents/skills/aikido-triage/**,.github/instructions/aikido-triage.instructions.md"
-description: Aikido helper implementation rules for credentials, scoped API operations, and mocked validation.
+applyTo: ".agents/skills/aikido-triage/**,.github/instructions/aikido-triage.instructions.md"
+description: Aikido Developer-plan boundaries and dashboard-based, repository-scoped security triage.
 ---
 
-# Local Aikido triage tooling
+# Aikido Developer-plan triage
 
-- [Security triage instructions](security-triage.instructions.md) own the generic
-  process; [SECURITY.md](../../SECURITY.md) owns disclosure. The
-  [Aikido skill](../../.agents/skills/aikido-triage/SKILL.md) and its
-  [tool reference](../../.agents/skills/aikido-triage/references/aikido.md)
-  own Aikido setup and commands. This tooling runs locally on demand.
-- Read one Windows Generic Credential through the native API. Do not add
-  credential files, environment fallbacks, token-printing commands, or logging
-  of authentication values/response bodies. Release native buffers on errors.
-- Authenticate only to a documented regional Aikido origin. Keep tokens in
-  memory and refuse redirects. Preserve explicit repository/branch checks,
-  individual finding IDs, pagination, and credential-safe failures.
-- Group-wide suppression can affect other repositories; use individual finding
-  writes. Prefix shared-group notes with the source repository/finding.
-- Preserve stable tracking markers, reasoned dispositions, and the distinction
-  between opening a fix PR and verifying that a scan has resolved a finding.
-  A root-cause issue may contain multiple individual markers; link and verify
-  every affected finding without broadening API suppression to its display group.
-  Follow the [disposition verification policy](security-triage.instructions.md#wont-fix-closure-in-both-systems)
-  for source-state read-back requirements.
-- Mock HTTP and native APIs in unit tests. Live smoke tests are read-only;
-  applying finding dispositions is a separate explicit operation.
+- Use the free Developer-plan setup in the [Aikido reference](../../.agents/skills/aikido-triage/references/aikido.md#developer-plan-and-github-apps).
+  The public REST API, GitHub issue sync, and PR security review require an
+  upgrade. Do not request API credentials or re-enable paid PR checks as part of
+  routine triage. The retired local REST helper is no longer supported.
+- Use the [Aikido skill](../../.agents/skills/aikido-triage/SKILL.md) and its
+  [dashboard reference](../../.agents/skills/aikido-triage/references/aikido.md)
+  for finding identity, manual tracking, and disposition verification.
+- Follow [security triage policy](security-triage.instructions.md) and
+  [SECURITY.md](../../SECURITY.md). Scope every finding and disposition to this
+  repository and the scanned branch; scanner groups can span repositories.
+- Verify scan coverage and dashboard state before claiming a finding is solved
+  or ignored. If UI access or individual-finding controls are unavailable,
+  report the verification gap rather than assuming a write or scan succeeded.
