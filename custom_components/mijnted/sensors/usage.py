@@ -1,11 +1,17 @@
 from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
+import math
 from homeassistant.components.sensor import SensorStateClass
+from homeassistant.core import callback
+from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.components.recorder.models import StatisticData, StatisticMeanType
+from homeassistant.util import dt as dt_util
 from .base import MijnTedSensor
-from ..utils import DataUtil
-from ..const import DEFAULT_NAME, UNIT_MIJNTED, DEFAULT_START_VALUE
-from .models import CurrentData
+from .daily import async_import_daily_statistics, daily_statistic_id, reported_daily_values
+from ..utils import DataUtil, DateUtil
+from ..utils.readings import finite_usage
+from ..const import DEFAULT_NAME, UNIT_MIJNTED, DEFAULT_START_VALUE, MONTHLY_USAGE_NAME, MONTHLY_STATISTIC_NAMES, PUBLISHED_USAGE_NAME
 
 
 class MijnTedMonthlyUsageSensor(MijnTedSensor):
@@ -25,9 +31,40 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "monthly_usage", "monthly usage", entry_id, config_name=config_name)
+        super().__init__(coordinator, "monthly_usage", MONTHLY_USAGE_NAME, entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
+        self._last_known_month: Optional[str] = None
+        self._cancel_month_timer = None
+
+    async def async_added_to_hass(self) -> None:
+        """Refresh the calendar projection at local midnight without an API poll."""
+        await super().async_added_to_hass()
+        self._schedule_month_rollover()
+        self.async_on_remove(self._remove_month_timer)
+
+    def _remove_month_timer(self) -> None:
+        """Cancel the outstanding local calendar callback on unload."""
+        if self._cancel_month_timer:
+            self._cancel_month_timer()
+            self._cancel_month_timer = None
+
+    def _schedule_month_rollover(self) -> None:
+        """Schedule exactly the next HA-local month boundary."""
+        self._remove_month_timer()
+        now = dt_util.now()
+        next_month = (now.replace(day=28) + timedelta(days=4)).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0,
+        )
+        self._cancel_month_timer = async_track_point_in_time(self.hass, self._month_rollover, next_month)
+
+    @callback
+    def _month_rollover(self, now: datetime) -> None:
+        """Write the new month's zero and import its provisional graph sample."""
+        self._cancel_month_timer = None
+        self.async_write_ha_state()
+        self.hass.async_create_task(self._async_inject_statistics())
+        self._schedule_month_rollover()
 
     @property
     def state(self) -> Optional[float]:
@@ -36,8 +73,27 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
         Returns:
             Monthly usage value, or last known value if unavailable
         """
+        now = dt_util.now()
+        month_key = DateUtil.format_month_key(now.year, now.month)
+        changed_month = self._last_known_month is not None and self._last_known_month != month_key
+        if self._last_known_month != month_key:
+            self._last_known_value = 0.0 if changed_month else None
+            self._last_known_month = month_key
+        data = self.coordinator.data or {}
+        source_date = DateUtil.parse_last_sync_date(data.get("last_update"))
+        if source_date and (source_date.year, source_date.month) < (now.year, now.month):
+            self._update_last_known_value(0.0)
+            return 0.0
         current = self._build_current_data()
         if not current:
+            cached = data.get("monthly_history_cache", {}).get(month_key)
+            cached_date = DateUtil.parse_last_sync_date(self._extract_value_from_cache_entry(cached, "end_date"))
+            if cached_date and (cached_date.year, cached_date.month) < (now.year, now.month):
+                self._update_last_known_value(0.0)
+                return 0.0
+            value = DataUtil.safe_float(self._extract_value_from_cache_entry(cached, "total_usage"))
+            if (self._last_known_value is None or changed_month) and cached_date and cached_date <= now.date() and value is not None and math.isfinite(value) and value >= 0:
+                self._update_last_known_value(value)
             return self._last_known_value
         
         if not current.last_update_date:
@@ -85,20 +141,11 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
         return SensorStateClass.TOTAL
 
     async def _async_inject_statistics(self) -> None:
-        """Inject statistics for monthly usage into Home Assistant recorder."""
-        def calculate_current_value(current: CurrentData) -> Optional[float]:
-            """Compute current month usage from start/end totals."""
-            return self._calculate_usage_from_start_end(
-                current.total_usage_start,
-                current.total_usage_end,
-                current.month_id
-            )
-        
+        """Import entity statistics and upsert consumption-month aggregates."""
+        await self._async_inject_monthly_usage_statistics()
         await self._build_statistics_from_history(
-            "total_usage",
-            StatisticMeanType.NONE,
-            include_current=True,
-            current_value_calculator=calculate_current_value
+            "total_usage", StatisticMeanType.NONE, include_current=True,
+            current_value_calculator=lambda current: self.state,
         )
     
 
@@ -110,9 +157,68 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
             Dictionary containing current data attributes
         """
         current = self._build_current_data()
+        attributes = {"monthly_statistic_id": self._get_monthly_statistic_id()}
         if current:
-            return current.to_attributes_dict()
-        return {}
+            attributes.update(current.to_attributes_dict())
+        else:
+            now = dt_util.now()
+            attributes["month_id"] = DateUtil.format_month_year_key(now.month, now.year)
+        return attributes
+
+
+class MijnTedPublishedUsageSensor(MijnTedSensor):
+    """Show the latest available reading month's own usage and export report series."""
+
+    _attr_translation_key = "published_usage"
+
+    def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str,
+                 config_name: str = DEFAULT_NAME) -> None:
+        """Create the retrospective entity without automatic statistics collection."""
+        super().__init__(coordinator, "published_usage", PUBLISHED_USAGE_NAME, entry_id, config_name=config_name)
+        self._attr_icon = "mdi:calendar-check"
+        self._attr_suggested_display_precision = 0
+
+    @property
+    def state_class(self) -> None:
+        """Keep publication-time observations outside monthly graph statistics."""
+        return None
+
+    async def _async_inject_statistics(self) -> None:
+        """Export all reporting series independently of standalone view entities."""
+        await self._async_inject_monthly_usage_statistics()
+        await self._async_inject_monthly_usage_statistics(year_offset=1, series_key="last_year_monthly_usage")
+        await self._async_inject_average_statistics(series_key="average_monthly_usage")
+        await self._async_inject_average_statistics(year_offset=1, series_key="last_year_average_monthly_usage")
+        await async_import_daily_statistics(self)
+
+    @property
+    def state(self) -> Optional[float]:
+        """Return the coordinator's reading-month total without a calendar reset."""
+        report = (self.coordinator.data or {}).get("reading_report") or {}
+        return finite_usage(report.get("value"))
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the same units as the current-month usage entity."""
+        return UNIT_MIJNTED
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Expose own reading-period metadata and route independently selectable graphs."""
+        attributes = {
+            "monthly_statistic_id": self._get_monthly_statistic_id(),
+            "daily_statistic_id": daily_statistic_id(self._entry_id),
+        }
+        report = (self.coordinator.data or {}).get("reading_report") or {}
+        own_metadata = ("month_id", "reading_date", "start_date", "end_date",
+                        "value_source", "start_locked", "boundary_reconciled")
+        attributes.update({key: report[key] for key in own_metadata if key in report})
+        daily = reported_daily_values(self.coordinator.data or {})
+        if daily:
+            latest = max(daily)
+            attributes["reported_daily_date"] = latest
+            attributes["reported_daily_usage"] = daily[latest]
+        return attributes
 
 
 class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
@@ -132,7 +238,7 @@ class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_year_monthly_usage", "last year monthly usage", entry_id, config_name=config_name)
+        super().__init__(coordinator, "last_year_monthly_usage", MONTHLY_STATISTIC_NAMES["last_year_monthly_usage"], entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
 
@@ -143,16 +249,7 @@ class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
         Returns:
             Last year's monthly usage value, or last known value if unavailable
         """
-        current = self._build_current_data()
-        if current:
-            last_year_usage = current.last_year_usage
-            if last_year_usage is not None:
-                value = DataUtil.safe_float(last_year_usage)
-                if value is not None:
-                    self._update_last_known_value(value)
-                    return value
-        
-        return self._last_known_value
+        return self._read_comparison_value("total_usage")
 
     @property
     def unit_of_measurement(self) -> str:
@@ -173,7 +270,8 @@ class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
         return SensorStateClass.TOTAL
 
     async def _async_inject_statistics(self) -> None:
-        """Inject last year statistics for monthly usage into recorder."""
+        """Import entity comparison states and external monthly comparison totals."""
+        await self._async_inject_monthly_usage_statistics(year_offset=1)
         await self._async_inject_last_year_statistics("total_usage", "last_year_usage", StatisticMeanType.NONE)
     
 
@@ -184,7 +282,7 @@ class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
         Returns:
             Dictionary containing month_id and last_year_month_id attributes
         """
-        return self._build_month_id_attributes()
+        return {**self._build_month_id_attributes(), "monthly_statistic_id": self._get_monthly_statistic_id()}
 
 
 class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
@@ -204,7 +302,7 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "average_monthly_usage", "average monthly usage", entry_id, config_name=config_name)
+        super().__init__(coordinator, "average_monthly_usage", MONTHLY_STATISTIC_NAMES["average_monthly_usage"], entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-line"
         self._attr_suggested_display_precision = 0
 
@@ -278,7 +376,7 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_year_average_monthly_usage", "last year average monthly usage", entry_id, config_name=config_name)
+        super().__init__(coordinator, "last_year_average_monthly_usage", MONTHLY_STATISTIC_NAMES["last_year_average_monthly_usage"], entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-line-variant"
         self._attr_suggested_display_precision = 0
 
@@ -289,16 +387,7 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
         Returns:
             Last year's average monthly usage value, or last known value if unavailable
         """
-        current = self._build_current_data()
-        if current:
-            last_year_average_usage = current.last_year_average_usage
-            if last_year_average_usage is not None:
-                value = DataUtil.safe_float(last_year_average_usage)
-                if value is not None:
-                    self._update_last_known_value(value)
-                    return value
-        
-        return self._last_known_value
+        return self._read_comparison_value("average_usage")
 
     @property
     def unit_of_measurement(self) -> str:

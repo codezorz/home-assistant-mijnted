@@ -25,8 +25,7 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - Entity names use the configured device name as their prefix through Home
   Assistant's `has_entity_name` behavior.
 - Unique IDs use `mijnted_<configEntryId>_<entityKey>` so multiple config
-  entries remain independent. Existing registry entities are migrated without
-  changing their entity IDs.
+  entries remain independent. Entity IDs are managed by Home Assistant's registry.
 
 ## Sensor Catalog
 
@@ -50,6 +49,89 @@ This document describes all MijnTed sensors, what they represent, and how they b
   - `start_date` (`YYYY-MM-DD`)
   - `end_date` (`YYYY-MM-DD`)
   - `days` (inclusive day count)
+  - `monthly_statistic_id` (canonical consumption-month graph series)
+- A local month-boundary callback resets the projection to zero even between API
+  polls. Cached last-known values are scoped to their calendar month. Normal
+  coordinator failures still make the entity unavailable.
+- Verified closing-reading corrections can revise the following month's baseline
+  and lower its provisional usage; a start lock does not prevent reconciliation.
+
+### Published usage
+
+- Class: `MijnTedPublishedUsageSensor`
+- Unique ID: `mijnted_<configEntryId>_published_usage`
+- English name: `<configured device name> Published usage`
+- Unit: `Units`; state class: none.
+- Purpose: a lagging month-to-date own-usage report following the API's reading
+  month, not the calendar month. October 31's 41 can arrive on November 2; when
+  November 1's readings arrive on November 3, the report switches to November's
+  actual available usage. That first value may already be nonzero.
+- "Published" in the entity name means available from MijnTed, not permanently
+  final. Its coordinator-owned `reading_report` uses the latest complete received
+  dated observation and that month's cached opening baseline. A final-day report
+  uses a valid official monthly total when available; otherwise it uses the dated
+  meter difference. Historical publication recognition still uses a finite
+  nonnegative own total plus usable non-null building average, independently of
+  whether current-month readings are available. Placeholder zero is not a
+  published monthly result; actual observed/official zero is valid.
+- No calendar reset or synthetic midnight/end-of-day zero is inserted into this
+  entity. API dates do not prove a precise 23:59 observation time. Ordinary state
+  history records receipt time; external statistics identify reporting periods.
+- Missing data: unknown until a usable reading snapshot/baseline exists. Partial
+  endpoints keep the last complete dated observation; restart restores its
+  checkpoint. Shared coordinator failures make the entity unavailable.
+- Own-period attributes: `month_id`, `reading_date`, `start_date`, `end_date`,
+  `value_source` (`reported` or `published`), `start_locked`, and
+  `boundary_reconciled`. Calculations belong to the coordinator. Average/comparison
+  values and their period metadata remain in their own standalone views; they are
+  not copied into this sensor with the reading month's date.
+- Daily attributes: `reported_daily_usage` and `reported_daily_date`, when a day
+  can be calculated. These have their own reading date and do not change the
+  monthly main state. There is no additional daily sensor entity.
+- Own graph IDs: `monthly_statistic_id` and `daily_statistic_id`.
+  Each average/comparison view exposes its own `monthly_statistic_id`.
+  All series are independently selectable from source **mijnted**.
+- It shares the canonical own-usage monthly series with Monthly usage. Existing
+  retained historical months are backfilled into that series, including late
+  corrections. Ordinary state history begins when the entity is created.
+- `boundary_reconciled: false` means the published total is usable but repair of
+  the associated per-device boundary is still pending for a completed month;
+  an open month simply has no verified closing boundary yet.
+- It exports all four monthly reporting series and the forward daily series.
+  Average/comparison entities provide selectable views for ordinary entity
+  cards; the report's graph imports do not depend on them
+  being enabled. Canonical current-month graph totals use the last complete dated
+  report. The month receives a sample when its readings are available, including
+  an actual reported zero. The calendar Monthly usage entity owns the calendar
+  zero projection and its entity-based statistics independently.
+
+### Reported daily usage (report attributes and statistics)
+
+- Available through Published usage's `reported_daily_usage` and
+  `reported_daily_date` attributes and external **Reported daily usage** statistic.
+  This is a date-aligned daily series, not a separate entity.
+- Unit: `Units`. Daily information describes the latest computable reported date,
+  often behind today, and does not reset at midnight.
+- Source: newly received primary-meter readings with the API's readings-available
+  date. The first complete observation seeds a checkpoint. A result requires two
+  consecutive dates with compatible device sets; January 1 uses the annual zero
+  baseline. Valid daily zero is reported.
+- There is **no historical daily backfill or dated-endpoint scan**. A gap, invalid
+  reading, or changed device set is not converted into fabricated daily usage.
+  Tracking resumes once consecutive compatible observations are available.
+- Repeat observations of the latest date can revise that day's total. Older dates
+  are not actively revisited; this is reported data, without a daily publication/
+  finality marker. Daily sums are not the authoritative published monthly report.
+- Two dated checkpoints and up to 500 observed daily results are persisted in a
+  separate entry-scoped store, surviving integration reloads and HA restarts.
+- Daily attributes are absent until the first computable day. During a gap/partial
+  failure the latest valid daily value keeps its original date. The report's
+  monthly state and normal availability contract are independent of daily gaps.
+- For a daily Statistics graph, use the external `daily_statistic_id` with
+  **Day + Mean**. Each mean sample is a single daily consumption total, placed at
+  HA-local midnight of its reading date, independent of arrival time. Month + Mean
+  on this daily series would show an average of daily totals; use the separate
+  monthly series for monthly consumption.
 
 ### Last year monthly usage
 
@@ -60,10 +142,13 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - State class: `TOTAL`
 - Purpose: usage for the same month in the previous year.
 - Value source: previous-year same-month entry in `monthly_history_cache` (`total_usage`).
-- Missing data behavior: returns last known value.
+- Missing data behavior: returns the last known value within the same comparison
+  period; unknown when that period has no known value. Current meter response
+  availability does not gate historical cache lookup.
 - Attributes:
   - `month_id` (current month key)
   - `last_year_month_id`
+  - `monthly_statistic_id` (import-only last-year own-usage comparison)
 
 ### Average monthly usage
 
@@ -88,7 +173,9 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - State class: none (monthly statistics are imported separately).
 - Purpose: average usage for the same month in the previous year.
 - Value source: previous-year same-month entry in `monthly_history_cache` (`average_usage`).
-- Missing data behavior: returns last known value.
+- Missing data behavior: returns the last known value within the same comparison
+  period; unknown when that period has no known value. Current meter response
+  availability does not gate historical cache lookup.
 - Attributes:
   - `month_id` (current month key)
   - `last_year_month_id`
@@ -120,7 +207,10 @@ This document describes all MijnTed sensors, what they represent, and how they b
     - `total_usage_start`
     - `total_usage_end`
     - `total_usage`
-    - `status` (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`)
+     - `status` (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`)
+     - `published_usage` (published own total, or null)
+     - `value_source` (`published` or `readings`)
+     - `boundary_reconciled` (historical boundary verified against publication)
 
 ## Diagnostic Sensors
 
@@ -242,7 +332,7 @@ delivery type ID. Water discovery also uses the primary delivery type's
 already-fetched payload, so water-only accounts and accounts with water listed
 first are supported without duplicate API requests. Delivery types that report
 `m³` (device `unitOfMeasure` or `unitOfMeasures`) get water sensors; other types
-are ignored. Existing primary entities retain their identities and behavior.
+are ignored. Primary entities follow their documented source and unit contracts.
 A delivery type that fails to load never affects the heat sensors: failed
 endpoints become empty defaults, and a type
 whose whole fetch fails is skipped for that refresh. Water entities are created
@@ -283,8 +373,8 @@ injection. A monthly water usage sensor is not provided yet.
 | Full refresh fails (`UpdateFailed`) | All sensors become unavailable (`available = false`) until next successful refresh. |
 | Connection error with valid token and cached coordinator data | Coordinator returns cached data; sensors keep previous values and stay available. |
 | Partial API failure inside `asyncio.gather` | Failed endpoints are replaced with empty defaults (`{}` or `[]`). Sensors react per type (fallback to cache, `None`, or unchanged). |
-| `filter_status` becomes empty due timeout/maintenance | `monthly_usage`, `total_usage`, and device sensors return last known values if available; dynamic device entities are not removed. |
-| Non-empty `filter_status` temporarily omits devices | Current-month usage retains their cached readings; live usage and recorder imports sum the same merged start/end device set. |
+| `filter_status` becomes empty due timeout/maintenance | Current-month usage keeps a same-month last-known/cache value; API-behind calendar projection is zero. Total/device sensors keep last known values; dynamic entities are not removed. |
+| Non-empty `filter_status` temporarily omits devices | Calendar-month usage merges cached readings; the reading-date report and canonical graph keep the last complete snapshot and its original date. |
 | Newly observed device without a known month-start reading | Its first observed reading becomes the usage baseline outside January; January uses the annual zero baseline. |
 | `unit_of_measures` endpoint fails/returns empty | `unit_of_measures` sensor keeps last known state. |
 | `delivery_types` empty | `delivery type` sensor returns `None`. |
@@ -307,7 +397,9 @@ Summary:
 - When API data is behind the new month, current month usage remains zero (`days = 0`, `start == end`).
 - When API enters the new month, normal usage/day/average accumulation starts.
 - Previous-month `COMPLETE_READINGS` transition locks current-month start values for continuity.
-- Previous-month finalization closes/finalizes that month but does not shift already-locked current-month starts.
+- Published totals and compatible corrected anchors can reconcile an already
+  locked boundary and repair the following baseline. `FINALIZED` means published,
+  not immutable. Pending repair and bounded retry state survive restarts.
 
 ## Statistics Injection Behavior
 
@@ -317,6 +409,7 @@ rows. Use statistics-capable graphs to view the imported periods.
 
 - Injecting sensors:
   - `monthly_usage`
+  - `published_usage` (all four monthly reporting series and observed daily data)
   - `last_year_monthly_usage`
   - `average_monthly_usage`
   - `last_year_average_monthly_usage`
@@ -325,10 +418,18 @@ rows. Use statistics-capable graphs to view the imported periods.
   - Entity has `entity_id`
   - `hass` is available
   - Recorder integration is loaded
-- Duplicate protection for non-average usage statistics:
-  - `statistics_tracking` stores the last injected month key per sensor type
-  - The current calendar month is re-imported after updates so its statistic does not freeze at the first value
-  - When a historical month value is corrected later (for example previous month final-day data arrives after month switch), a one-time reinjection hint allows that corrected month to be imported even if it is older than `last_injected`
+- `monthly_usage` and `last_year_monthly_usage` import into separate external
+  `mijnted:<entry_id>_monthly_usage` and
+  `mijnted:<entry_id>_last_year_monthly_usage` series. They upsert one arithmetic
+  mean sample per HA-local consumption month, carrying the monthly aggregate.
+  No automatic collection writes into these IDs. The current own-usage month is
+  included when its complete dated report is available, including a true zero; last-year
+  comparison months are shifted forward one year and future targets are excluded.
+- Cached historical values are upserted on refresh, including corrections to
+  retained periods.
+- Monthly usage and Last year monthly usage also import historical entity-based
+  state statistics. These series include live observations and imported monthly
+  states. The separate external mean series provide consumption-period reporting.
 - `total_usage` injection:
   - Uses monthly `total_usage_end` states and updates `sum` cumulatively
 - `average_monthly_usage` and `last_year_average_monthly_usage` injection:
@@ -337,15 +438,55 @@ rows. Use statistics-capable graphs to view the imported periods.
 - Reset path:
   - The reset button clears persisted monthly cache and in-memory `statistics_tracking`, then triggers refresh
   - It does not delete existing recorder history/statistics or clear each sensor's in-memory last-known state
+  - Forward-only daily tracking uses separate storage and is retained; the reset
+    does not trigger a daily historical scan.
 
-### Monthly Building-Average Graphs
+### Monthly Usage and Building-Average Graphs
 
-In a Statistics graph card, select the building-average statistics from source
-**mijnted** and choose **Month + Mean**. Their IDs are also available in
-each average sensor's `monthly_statistic_id` attribute. Historical API averages
-are placed in their HA-local consumption month, independent of publication time.
-For a combined usage-and-average graph, select **State + Mean**
-(`stat_types: [state, mean]`): usage lines use `state`, averages use `mean`.
+In a Statistics graph card, select all four monthly statistics from source
+**mijnted** and choose **Month + Mean** (`stat_types: [mean]`). IDs are available
+in the corresponding usage/average entity's `monthly_statistic_id` attribute.
+The own-usage statistic is named **Published usage** in the selector. Monthly
+usage's entity-based state statistic is separately selectable.
+For a card combining entity-based state statistics with report mean statistics,
+request both types (`stat_types: [state, mean]`). A card containing only the four
+external monthly reporting series uses `stat_types: [mean]`.
+Each sample carries one monthly aggregate; it is not an average of live states.
+Published usage exports the four canonical monthly series and the daily series.
+Those imports operate independently of the enabled state of standalone
+average/comparison entities. Enable each standalone view needed by an entity card.
+
+**Attributes are not required for graph selection.** In a Statistics graph,
+select the statistic entries from source **mijnted**, or use their IDs in YAML.
+Ordinary entity cards select the standalone sensor views.
+
+Example four-line graph (replace `<entry_id>` with the lowercase entry ID from
+the report's statistic attributes):
+
+```yaml
+type: statistics-graph
+title: MijnTed
+days_to_show: 120
+period: month
+chart_type: line
+stat_types:
+  - mean
+entities:
+  - mijnted:<entry_id>_monthly_usage
+  - mijnted:<entry_id>_average_monthly_usage
+  - mijnted:<entry_id>_last_year_monthly_usage
+  - mijnted:<entry_id>_last_year_average_monthly_usage
+```
+
+For the forward-only daily graph, select
+`mijnted:<entry_id>_reported_daily_usage` with **Day + Mean**. Daily and monthly
+graphs use different statistic IDs; adding daily observations does not mix them
+into the monthly report.
+
+Historical API/cache values backfill the retained 16 historical months, plus the
+current provisional month. Pending historical boundaries are reconciled during
+refresh. Recorder periods outside the retained window remain stored; the cache
+does not reconstruct those periods.
 
 ## Related Button
 
@@ -354,11 +495,3 @@ For a combined usage-and-average graph, select **State + Mean**
 
 Entity IDs shown in examples are defaults; use the actual entity ID from your
 Home Assistant entity registry if it has been renamed.
-
-## Monthly source and boundary metadata
-
-Historical own usage uses available published monthly totals. Compatible closing
-anchors reconcile per-device readings and the following month's opening baseline.
-Total usage's current/history payloads include `published_usage`, `value_source`
-(`published` or `readings`), and `boundary_reconciled`. The coordinator persists
-pending boundary repairs and retry state. See [month lifecycle](MONTH_SWITCH.md).

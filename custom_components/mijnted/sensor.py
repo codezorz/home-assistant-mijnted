@@ -8,6 +8,7 @@ from homeassistant.helpers import entity_registry as er
 from .const import CONF_NAME, DEFAULT_NAME, DOMAIN
 from .sensors import (
     MijnTedMonthlyUsageSensor,
+    MijnTedPublishedUsageSensor,
     MijnTedLastUpdateSensor,
     MijnTedTotalUsageSensor,
     MijnTedActiveModelSensor,
@@ -100,6 +101,7 @@ async def async_setup_entry(
     
     sensors: List[SensorEntity] = [
         MijnTedMonthlyUsageSensor(coordinator, entry.entry_id, config_name=config_name),
+        MijnTedPublishedUsageSensor(coordinator, entry.entry_id, config_name=config_name),
         MijnTedLastUpdateSensor(coordinator, entry.entry_id, config_name=config_name),
         MijnTedTotalUsageSensor(coordinator, entry.entry_id, config_name=config_name),
         MijnTedActiveModelSensor(coordinator, entry.entry_id, config_name=config_name),

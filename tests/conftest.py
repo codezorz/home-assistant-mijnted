@@ -6,6 +6,7 @@ submodule that the integration touches at import time must be registered here.
 """
 import sys
 from datetime import datetime, timezone
+from enum import IntEnum
 from unittest.mock import MagicMock
 
 _ha = MagicMock()
@@ -41,6 +42,21 @@ _ha.const.CONF_CLIENT_ID = "client_id"
 _ha.config_entries.ConfigFlow = _ConfigFlow
 _ha.config_entries.OptionsFlow = _OptionsFlow
 _ha.config_entries.ConfigEntry = _ConfigEntry
+_ha.core.callback = lambda method: method
+
+
+class _StatisticMeanType(IntEnum):
+    """Recorder mean types used by real metadata and the upstream reducer fixture."""
+    NONE = 0
+    ARITHMETIC = 1
+    CIRCULAR = 2
+
+
+_ha.components.recorder.models.StatisticMeanType = _StatisticMeanType
+_ha.components.recorder.models.StatisticData = dict
+_ha.components.recorder.models.StatisticMetaData = dict
+_ha.components.recorder.statistics.async_import_statistics.return_value = None
+_ha.components.recorder.statistics.async_add_external_statistics.return_value = None
 
 _SUBMODULES = {
     "homeassistant": _ha,
@@ -49,6 +65,7 @@ _SUBMODULES = {
     "homeassistant.core": _ha.core,
     "homeassistant.helpers": _ha.helpers,
     "homeassistant.helpers.entity": _ha.helpers.entity,
+    "homeassistant.helpers.event": _ha.helpers.event,
     "homeassistant.helpers.entity_registry": _ha.helpers.entity_registry,
     "homeassistant.helpers.storage": _ha.helpers.storage,
     "homeassistant.helpers.update_coordinator": _ha.helpers.update_coordinator,
@@ -67,6 +84,9 @@ _SUBMODULES = {
 for name, mock in _SUBMODULES.items():
     sys.modules[name] = mock
 
+_ha.util.dt.now.side_effect = lambda: datetime.now(timezone.utc)
+_ha.util.dt.get_default_time_zone.return_value = timezone.utc
+
 # Mock runtime dependency imported at module scope by oauth_util.
 sys.modules["pkce"] = _pkce
 
@@ -80,7 +100,10 @@ class _CoordinatorEntity:
 
 
 class _SensorEntity:
-    pass
+    @property
+    def name(self):
+        """Allow native translated entity names without overriding production naming."""
+        return getattr(self, "_attr_name", None) or getattr(self, "_translated_name", None)
 
 
 class _ButtonEntity:
@@ -90,6 +113,3 @@ class _ButtonEntity:
 _ha.helpers.update_coordinator.CoordinatorEntity = _CoordinatorEntity
 _ha.components.sensor.SensorEntity = _SensorEntity
 _ha.components.button.ButtonEntity = _ButtonEntity
-
-_ha.util.dt.now.side_effect = lambda: datetime.now(timezone.utc)
-_ha.util.dt.get_default_time_zone.return_value = timezone.utc

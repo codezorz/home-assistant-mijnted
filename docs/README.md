@@ -4,6 +4,7 @@
 
 - [Sensors and statistics](SENSORS.md)
 - [Month lifecycle](MONTH_SWITCH.md)
+- [Usage reporting architecture](USAGE_REPORTING.md)
 - [API endpoints](ENDPOINTS.md)
 - [Issue reporting](ISSUE_REPORTING.md)
 

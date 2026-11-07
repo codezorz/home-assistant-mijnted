@@ -285,6 +285,7 @@ class TestMonthlyUsagePartialResponse:
             "last_update": {"lastSyncDate": "2026-04-03"},
             "monthly_history_cache": cache,
             "statistics_tracking": StatisticsTracking(monthly_usage="4.2026"),
+            "reading_report": {"month_id": "4.2026", "reading_date": "2026-04-02", "value": 13.0},
         })
         sensor = MijnTedMonthlyUsageSensor(coordinator, "test_entry")
         sensor.entity_id = "sensor.home_monthly_usage"
@@ -294,8 +295,10 @@ class TestMonthlyUsagePartialResponse:
         with (
             patch("custom_components.mijnted.sensors.base.date") as mock_date,
             patch("custom_components.mijnted.sensors.base.datetime", wraps=datetime) as mock_datetime,
+            patch("custom_components.mijnted.sensors.base.dt_util.now", return_value=now),
             patch("custom_components.mijnted.sensors.base.StatisticData", side_effect=lambda **kwargs: kwargs),
-            patch("custom_components.mijnted.sensors.base.async_import_statistics", return_value=None) as import_statistics,
+            patch("custom_components.mijnted.sensors.base.async_add_external_statistics", return_value=None) as import_statistics,
+            patch("custom_components.mijnted.sensors.base.async_import_statistics", return_value=None) as entity_statistics,
         ):
             mock_date.today.return_value = date(2026, 4, 3)
             mock_date.side_effect = date
@@ -307,16 +310,19 @@ class TestMonthlyUsagePartialResponse:
             assert current_data.total_usage_end == 830.0
             await sensor._async_inject_statistics()
             statistics = import_statistics.call_args.args[2]
-            assert [stat["state"] for stat in statistics] == [16.0]
+            assert statistics[-1]["mean"] == 13.0
+            assert entity_statistics.call_args.args[2][-1]["state"] == 16.0
 
             coordinator.data["filter_status"] = [
                 {"deviceNumber": "1001", "currentReadingValue": 710.0},
                 {"deviceNumber": "1002", "currentReadingValue": 122.0},
             ]
+            coordinator.data["reading_report"] = {"month_id": "4.2026", "reading_date": "2026-04-03", "value": 18.0}
             assert sensor.state == 18.0
             await sensor._async_inject_statistics()
             statistics = import_statistics.call_args.args[2]
-            assert [stat["state"] for stat in statistics] == [18.0]
+            assert statistics[-1]["mean"] == 18.0
+            assert entity_statistics.call_args.args[2][-1]["state"] == 18.0
 
             coordinator.data["filter_status"] = []
             assert sensor.state == 18.0

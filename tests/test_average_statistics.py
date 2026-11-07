@@ -62,7 +62,8 @@ def recorder():
         local_date.today.return_value = date(2026, 4, 6)
         dt_util.now.return_value = datetime(2026, 4, 6, tzinfo=timezone.utc)
         dt_util.get_default_time_zone.return_value = timezone.utc
-        yield SimpleNamespace(external=external, internal=internal, dt_util=dt_util)
+        with patch("custom_components.mijnted.sensors.usage.dt_util", dt_util):
+            yield SimpleNamespace(external=external, internal=internal, dt_util=dt_util)
 
 
 class TestAverageMonthlyStatistics:
@@ -269,19 +270,20 @@ class TestLastYearAverageStatistics:
     async def test_missing_average_does_not_import_stale_live_fallback(self, recorder):
         """Live fallback retained -> no copied previous-period value in monthly series."""
         sensor = _sensor({
-            "2025-04": _cache_entry("2025-04", None),
+            "2025-04": _cache_entry("2025-04", 700.0),
         }, MijnTedLastYearAverageMonthlyUsageSensor)
-        sensor._last_known_value = 700.0
+        assert sensor.state == 700.0
+        sensor.coordinator.data["monthly_history_cache"]["2025-04"]["average_usage"] = None
         assert sensor.state == 700.0
         await sensor._async_inject_average_statistics(year_offset=1)
         recorder.external.assert_not_called()
 
 
 class TestMixedMonthlyGraph:
-    """Keep both usage states and imported averages available to one graph."""
+    """Keep all four consumption-month aggregates in isolated external series."""
 
-    async def test_four_series_advertise_state_and_mean_after_import(self, recorder):
-        """Completed month -> two queryable usage states and two average means."""
+    async def test_four_series_advertise_monthly_means_after_import(self, recorder):
+        """Completed month -> four means alongside selectable entity-state statistics."""
         cache = {
             "2025-03": _cache_entry("2025-03", 181.0),
             "2026-03": _cache_entry("2026-03", 306.25),
@@ -298,24 +300,29 @@ class TestMixedMonthlyGraph:
 
         imports = {
             call.args[1]["statistic_id"]: (call.args[1], call.args[2])
-            for call in recorder.internal.call_args_list + recorder.external.call_args_list
+            for call in recorder.external.call_args_list
         }
         expected = {
-            "sensor.home_monthly_usage": ("state", 39.0),
-            "sensor.home_last_year_monthly_usage": ("state", 17.0),
+            "mijnted:test_entry_monthly_usage": ("mean", 39.0),
+            "mijnted:test_entry_last_year_monthly_usage": ("mean", 17.0),
             "mijnted:test_entry_average_monthly_usage": ("mean", 306.25),
             "mijnted:test_entry_last_year_average_monthly_usage": ("mean", 181.0),
         }
         assert set(imports) == set(expected)
+        assert imports["mijnted:test_entry_monthly_usage"][0]["name"] == "Published usage"
+        entity_imports = {call.args[1]["statistic_id"]: (call.args[1], call.args[2])
+                          for call in recorder.internal.call_args_list}
+        assert set(entity_imports) == {"sensor.home_monthly_usage", "sensor.home_last_year_monthly_usage"}
+        for statistic_id, value in (("sensor.home_monthly_usage", 39.0), ("sensor.home_last_year_monthly_usage", 17.0)):
+            metadata, statistics = entity_imports[statistic_id]
+            assert metadata["source"] == "recorder"
+            assert metadata["has_sum"] is True
+            assert metadata["mean_type"] == StatisticMeanType.NONE
+            assert next(row["state"] for row in statistics if row["start"].month == 3 and row["start"].year == 2026) == value
         for statistic_id, (stat_type, value) in expected.items():
             metadata, statistics = imports[statistic_id]
-            if stat_type == "state":
-                # HA gates state queries on has_sum, even for state-only imports.
-                assert metadata["has_sum"] is True
-                assert metadata["mean_type"] == StatisticMeanType.NONE
-            else:
-                assert metadata["has_sum"] is False
-                assert metadata["mean_type"] == StatisticMeanType.ARITHMETIC
+            assert metadata["has_sum"] is False
+            assert metadata["mean_type"] == StatisticMeanType.ARITHMETIC
             march = next(
                 row for row in statistics
                 if row["start"] == datetime(2026, 3, 1, tzinfo=timezone.utc)

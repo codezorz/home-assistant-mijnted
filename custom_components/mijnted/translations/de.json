@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "sensor": {
+      "published_usage": {
+        "name": "Veröffentlichter Verbrauch"
+      }
+    }
+  }
+}

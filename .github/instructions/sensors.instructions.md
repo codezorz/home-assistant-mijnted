@@ -7,7 +7,8 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
 
 ## Adding an entity
 
-1. Implement usage metrics in `sensors/usage.py`, diagnostics in
+1. Implement monthly/total/report entities in `sensors/usage.py`, daily report
+   projections/import helpers in `sensors/daily.py`, diagnostics in
    `sensors/diagnostics.py`, or per-device readings in `sensors/device.py`.
    Sensors inherit `MijnTedSensor`, which already sets the standard unique ID
    from the config-entry ID and `sensor_type`; do not duplicate that setup
@@ -44,11 +45,26 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
 - Choose units and `SensorStateClass` based on the quantity. Use `UNIT_MIJNTED`
   for usage units and zero suggested display precision where appropriate;
   display precision does not round underlying values.
-- Recorder injection helpers live in `sensors/base.py`. Preserve deduplication
-  and late-correction reinjection behavior. Keep external building-average
-  series isolated from live states; average sensors do not auto-collect statistics.
+- Recorder injection helpers live in `sensors/base.py`. Keep canonical external
+  monthly usage/average series isolated from automatic live-entity statistics.
+  Upsert consumption-month aggregate samples as means from available dated
+  reports, including revisions and actual reported zero. Import retained periods on refresh so
+  corrections to any cached month are applied.
+  Published usage does not auto-collect statistics; it owns all four external
+  monthly reporting series and the forward daily series independently of the
+  standalone average/comparison entities. Retain those entities' identities for
+  ordinary dashboard selection. Daily values are attributes and statistics, not
+  another entity. The report state follows the received reading month, without
+  a synthetic calendar zero. Read `coordinator.data["reading_report"]` rather than
+  duplicating calculations or reading another entity. Each comparison/average
+  view keeps its own period metadata; do not relabel a lagged average with the
+  reading report's month. Daily data is independently dated.
+  Daily imports use the reading date and only observed forward daily results;
+  never fabricate gaps or scan daily history during setup/reset.
   Apply the `docs/SENSORS.md` missing-data contract consistently to live values
   and recorder imports.
 - Reuse `_build_device_info` for sensor/button device association.
 - Follow `docs/MONTH_SWITCH.md` for calendar-month identity, zero-day API lag,
-  previous-month completion, and current-month baseline locking.
+  previous-month completion, and correctable baseline locking. Monthly usage's
+  local rollover callback must be cancelled on unload; scope its fallback to the
+  calendar month so a previous-month value cannot leak across midnight.

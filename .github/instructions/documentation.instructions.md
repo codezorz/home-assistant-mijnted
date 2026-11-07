@@ -15,6 +15,7 @@ change. Verify claims against code; distinguish existing behavior from proposals
 | Installation, setup, options, troubleshooting | `README.md` | Config-flow translations in `custom_components/mijnted/translations/en.json` |
 | Sensor catalog, attributes, availability, statistics, reset button | `docs/SENSORS.md` | README overview; sensor implementation guidance if its contract changes |
 | Month lifecycle and boundary timeline | `docs/MONTH_SWITCH.md` | Link from sensor docs; update related cache tests for code changes |
+| Reporting architecture and data ownership | `docs/USAGE_REPORTING.md` | Sensor and orchestration instructions reference current responsibilities |
 | HTTP endpoints, auth lifecycle, request/response formats | `docs/ENDPOINTS.md` | README setup if credentials/options change |
 | Development rules | `.github/instructions/development.instructions.md` | Test design stays in testing instructions |
 | Development setup, check commands, manual verification | `docs/DEVELOPMENT.md` | Development instructions link to the detailed guide |
@@ -31,6 +32,12 @@ change. Verify claims against code; distinguish existing behavior from proposals
 | Aikido Developer-plan setup, dashboard triage, tracking | `.agents/skills/aikido-triage/references/aikido.md` | Skill links generic triage policy; scoped Aikido instructions own agent constraints |
 
 ## Keep guidance DRY
+
+- Describe current behavior directly in reference documentation and developer
+  instructions. Keep investigation history, version comparisons, and migration
+  narratives in issue/PR discussions or release notes. Reference docs document
+  available entities, data contracts, and setup without descriptions of retired
+  behavior or implementation paths.
 
 - `AGENTS.md` is a short entry point and map, not a copy of every policy.
 - `.github/instructions/` contains development instructions and repository
