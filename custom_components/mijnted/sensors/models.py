@@ -1,5 +1,6 @@
 """Data models for sensor data structures."""
 from dataclasses import dataclass, field
+import math
 from typing import Dict, Any, List, Optional
 
 MONTH_STATE_OPEN = "OPEN"
@@ -144,6 +145,9 @@ class CurrentData:
             "total_usage_end": self.total_usage_end,
             "total_usage": self.total_usage,
             "status": self.status,
+            "published_usage": None,
+            "value_source": "readings",
+            "boundary_reconciled": False,
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -217,6 +221,8 @@ class HistoryData:
     total_usage_end: Optional[float] = None
     total_usage: Optional[float] = None
     status: str = MONTH_STATE_OPEN
+    published_usage: Optional[float] = None
+    boundary_reconciled: bool = False
 
     def to_month_payload(self) -> Dict[str, Any]:
         """Build the aligned month payload used by total-usage attributes.
@@ -238,6 +244,9 @@ class HistoryData:
             "total_usage_end": self.total_usage_end,
             "total_usage": self.total_usage,
             "status": self.status,
+            "published_usage": self.published_usage,
+            "value_source": "published" if self.published_usage is not None else "readings",
+            "boundary_reconciled": self.boundary_reconciled,
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -301,9 +310,13 @@ class MonthCacheEntry:
         total_usage: Total usage for the period, or None.
         average_usage: Average usage for the period, or None.
         devices: List of device readings (stored as dicts when serialized).
-        finalized: Whether the month's data is finalized.
+        finalized: Whether a monthly insight was published (still revisable).
         state: Month lifecycle state (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`).
-        start_locked: Whether this month's start readings are locked.
+        start_locked: Whether accepted starts are protected from incomplete responses.
+        published_usage: Own monthly total recognized as published, including zero.
+        boundary_reconciled: Whether per-device boundaries match the published total.
+        boundary_retry_at: Earliest next retry for pending boundary repair (ISO time).
+        boundary_retry_count: Consecutive failures used for bounded retry backoff.
     """
     month_id: str
     year: int
@@ -316,6 +329,10 @@ class MonthCacheEntry:
     finalized: bool = False
     state: str = MONTH_STATE_OPEN
     start_locked: bool = False
+    published_usage: Optional[float] = None
+    boundary_reconciled: bool = False
+    boundary_retry_at: Optional[str] = None
+    boundary_retry_count: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation for storage.
@@ -335,6 +352,10 @@ class MonthCacheEntry:
             "finalized": self.finalized,
             "state": self.state,
             "start_locked": self.start_locked,
+            "published_usage": self.published_usage,
+            "boundary_reconciled": self.boundary_reconciled,
+            "boundary_retry_at": self.boundary_retry_at,
+            "boundary_retry_count": self.boundary_retry_count,
         }
 
     @classmethod
@@ -357,16 +378,30 @@ class MonthCacheEntry:
                         devices.append(device)
         finalized = bool(data.get("finalized", False))
         state = normalize_month_status(data.get("state"), finalized)
+        try:
+            published = float(data["published_usage"])
+            if not math.isfinite(published) or published < 0:
+                published = None
+        except (KeyError, ValueError, TypeError):
+            published = None
+        try:
+            retries = max(0, min(6, int(data.get("boundary_retry_count", 0))))
+        except (ValueError, TypeError):
+            retries = 0
         return cls(
             month_id=data.get("month_id", ""),
             year=data.get("year", 0),
             month=data.get("month", 0),
             start_date=data.get("start_date", ""),
             end_date=data.get("end_date", ""),
-            total_usage=data.get("total_usage"),
+            total_usage=published if published is not None else data.get("total_usage"),
             average_usage=data.get("average_usage"),
             devices=devices,
             finalized=finalized,
             state=state,
             start_locked=bool(data.get("start_locked", False)),
+            published_usage=published,
+            boundary_reconciled=published is not None and bool(data.get("boundary_reconciled", False)),
+            boundary_retry_at=data.get("boundary_retry_at"),
+            boundary_retry_count=retries,
         )

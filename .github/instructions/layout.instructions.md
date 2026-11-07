@@ -13,6 +13,7 @@ custom_components/mijnted/
 ├── config_flow.py       # Config flow UI and validation
 ├── const.py             # Domain, URLs, timeouts, platforms, all constants
 ├── exceptions.py        # MijntedApiError, MijntedAuthenticationError, etc.
+├── reconciliation.py    # Published monthly totals and pending boundary repair
 ├── manifest.json        # Metadata, version, requirements
 ├── sensor.py            # Sensor platform: creates sensor entities from coordinator
 ├── button.py            # Button platform
@@ -37,7 +38,7 @@ custom_components/mijnted/
 | New sensor | `sensors/usage.py`, `device.py`, or `diagnostics.py`; then `sensors/__init__.py` and the entity list in `sensor.py` (sensors) or `button.py` (buttons) |
 | New data API call | `api.py`; shared URLs/constants in `const.py` |
 | Credential login or token handling | `auth.py`, `utils/oauth_util.py`, `config_flow.py`; callbacks in `__init__.py` |
-| Cache lifecycle or month calculations | `__init__.py`, `sensors/base.py`, `sensors/models.py`, `utils/date_util.py` |
+| Cache lifecycle or month calculations | `__init__.py`, `reconciliation.py`, `sensors/base.py`, `sensors/models.py`, `utils/date_util.py` |
 | New constant | `const.py` |
 | Config flow | `config_flow.py`, `translations/en.json` |
 | Version | `manifest.json` |

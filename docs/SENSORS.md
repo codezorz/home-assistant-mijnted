@@ -354,3 +354,11 @@ For a combined usage-and-average graph, select **State + Mean**
 
 Entity IDs shown in examples are defaults; use the actual entity ID from your
 Home Assistant entity registry if it has been renamed.
+
+## Monthly source and boundary metadata
+
+Historical own usage uses available published monthly totals. Compatible closing
+anchors reconcile per-device readings and the following month's opening baseline.
+Total usage's current/history payloads include `published_usage`, `value_source`
+(`published` or `readings`), and `boundary_reconciled`. The coordinator persists
+pending boundary repairs and retry state. See [month lifecycle](MONTH_SWITCH.md).

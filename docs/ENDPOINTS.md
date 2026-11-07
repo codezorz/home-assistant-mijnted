@@ -409,3 +409,12 @@ The client first parses JSON according to content type. For other content types
 it attempts JSON decoding of the response text (including quoted strings);
 unparseable text becomes `{"value": "..."}`. Coordinator normalization extracts
 text values where required. Do not assume every plain-text response is a dict.
+
+## Historical monthly publication
+
+The coordinator recognizes a historical monthly publication when
+`totalEnergyUsage` and `averageEnergyUseForBillingUnit` are finite nonnegative
+values. The average must be non-null. Published zero is valid; a zero total with
+a null average is a placeholder. The API provides no immutable/final flag.
+Yearly responses can revise published own usage and averages. Compatible dated
+device anchors provide the per-device boundaries used to reconcile baselines.

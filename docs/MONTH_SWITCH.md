@@ -51,7 +51,7 @@ Boundary rule for the next month:
 - When previous month reaches `COMPLETE_READINGS`, current month `start` readings are recalculated from previous-month `end` readings and marked as locked (`start_locked = true`).
 - The integration prefers the previous month's last-day API anchor. Empty or incompatible anchor responses use the cached device set as a temporary baseline but leave it unlocked so a later complete anchor can correct it.
 - An anchor that contains all cached devices can repair an incomplete historical cache. Missing month-start readings are restored from the preceding month's cache or last-day anchor; correction remains unlocked for retry if a required start is unavailable.
-- After `start_locked = true`, current month baseline is stable and no longer shifted by later finalization updates.
+- `start_locked = true` protects an accepted baseline from incomplete responses. Verified closing anchors can reconcile that baseline when upstream values change.
 
 ## Month Switch Timeline
 
@@ -113,8 +113,8 @@ Expected behavior:
 
 - February cache entry receives average insight fields.
 - February transitions `COMPLETE_READINGS -> FINALIZED`.
-- February is finalized and frozen.
-- March remains `OPEN`; if March `start_locked` was already set in Phase B, the March baseline does not shift here.
+- February is marked as published and remains correctable.
+- March remains `OPEN`. Its baseline follows verified per-device closing readings, including corrections to an accepted boundary.
 
 ## Quick Checks for Validation
 
@@ -134,3 +134,19 @@ Expected behavior:
 
 - In rare edge cases where month-boundary cache values look stale or incorrect, use button `button.mijnted_reset_statistics` to rebuild cache/statistics from fresh data.
 - This resets integration cache/injection tracking, not recorder data. See the [reset behavior](SENSORS.md#related-button). Entity IDs are examples; use your registry's actual ID.
+
+## Published totals and pending boundaries
+
+Yearly API data reconciles historical own totals and building averages. A finite
+nonnegative own total and usable non-null building average identify a published
+monthly result. Published zero is valid; zero with a null average is a placeholder.
+
+The cache retains 16 historical months plus the current month. It persists
+`published_usage`, `boundary_reconciled`, `boundary_retry_at`, and
+`boundary_retry_count`. Provisional months and pending repairs survive restarts.
+Pending boundaries use compatible real device anchors and bounded one-hour-to-six-hour
+retry backoff. Verified closing readings repair the following opening baseline;
+January retains its annual zero baseline. A revised published result reopens
+verification of that boundary.
+Opening and closing anchors are validated together; an inconsistent cached
+opening baseline is refreshed from the preceding dated anchor while pending.
