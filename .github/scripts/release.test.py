@@ -166,7 +166,7 @@ class TestReleaseLabels:
 
 
 class TestPackaging:
-    """Check HACS layout and the exact code preserved during promotion."""
+    """Check Marketplace layout and the exact code preserved during promotion."""
 
     def test_beta_package_is_flat_and_deterministic(self, source_zip, tmp_path):
         """Release ZIPs contain the integration only, with an exact manifest version."""

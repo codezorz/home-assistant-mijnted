@@ -217,6 +217,11 @@ git diff --check
 Do not run `python .github/scripts/release.py beta` or `promote` locally just to
 test: these commands publish real tags/releases using the authenticated `gh`
 CLI. Follow [development setup](DEVELOPMENT.md) for the test
-environment. Use workflow logs and a real HACS installation to verify the first
-published ZIP can be installed and reports its stamped version. Older releases
-have no ZIP asset; their existing tags/assets are not rewritten by these workflows.
+environment. Use workflow logs and the built-in Marketplace on Home Assistant
+2026.11 or newer to verify the first published ZIP can be installed and reports its
+stamped version. Check that stable releases are offered by default and betas are
+available after enabling the repository's **Pre-release** entity and turning on
+its switch. See the [installation and update steps](../README.md#installation)
+and the [Marketplace release guide](https://contributors.home-assistant.io/marketplace/guides/releases/)
+for the packaging contract. Older releases have no ZIP asset; their existing
+tags/assets are not rewritten by these workflows.
