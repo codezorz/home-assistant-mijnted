@@ -2,78 +2,166 @@
   "config": {
     "step": {
       "user": {
-        "title": "Fill in your MijnTed credentials",
+        "title": "Connect to MijnTed",
+        "description": "Enter your MijnTed credentials. Updates are requested every {default} seconds by default. The polling interval can be between {minimum} and {maximum} seconds.",
         "data": {
-          "username": "MijnTed account username",
-          "password": "MijnTed account password",
-          "client_id": "MijnTed account client-id",
-          "name": "Device name (e.g. MijnTed, Home, Office)",
+          "username": "Username",
+          "password": "Password",
+          "client_id": "Client ID",
+          "name": "Device name",
           "polling_interval": "Polling interval (seconds)"
         },
-        "description": "How often to poll the API for updates. Default: 3600 seconds (1 hour). Range: 900-86400 seconds (15 minutes to 24 hours)."
+        "data_description": {
+          "name": "Your own name for this installation, for example Home or Office.",
+          "client_id": "The client ID used by your MijnTed account."
+        }
       },
       "reauth_confirm": {
-        "title": "Reauthenticate with your MijnTed credentials",
+        "title": "Reauthenticate with MijnTed",
+        "description": "Enter your MijnTed credentials again to restore access. Existing settings are prefilled, except the password. The polling interval must be between {minimum} and {maximum} seconds.",
         "data": {
-          "username": "MijnTed account username",
-          "password": "MijnTed account password",
-          "client_id": "MijnTed account client-id",
-          "name": "Device name (e.g. MijnTed, Home, Office)",
+          "username": "Username",
+          "password": "Password",
+          "client_id": "Client ID",
+          "name": "Device name",
           "polling_interval": "Polling interval (seconds)"
-        },
-        "description": "How often to poll the API for updates. Default: 3600 seconds (1 hour). Range: 900-86400 seconds (15 minutes to 24 hours)."
+        }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect, please try again",
-      "invalid_auth": "Invalid authentication",
-      "grant_expired": "Refresh token has expired. Please re-authenticate to continue using the integration.",
-      "unknown": "Unexpected error",
-      "access_token_payload_missing": "Access token payload is missing",
-      "failed_delivery_types": "Failed to get delivery types",
-      "failed_energy_usage": "Failed to get energy usage",
-      "failed_last_data_update": "Failed to get last data update",
-      "failed_filter_status": "Failed to get filter status",
-      "failed_usage_insight": "Failed to get usage insight"
+      "cannot_connect": "Could not connect to MijnTed. Please try again.",
+      "invalid_auth": "Authentication failed. Check your username, password, and client ID.",
+      "unknown": "An unexpected error occurred. Please try again."
     },
     "abort": {
-      "already_configured": "Device is already configured",
-      "reauth_successful": "Re-authentication was successful"
+      "reauth_successful": "Reauthentication was successful."
     }
   },
   "options": {
     "step": {
-      "mijnted_options": {
+      "init": {
+        "title": "MijnTed settings",
+        "description": "Change the device name or polling interval. The polling interval must be between {minimum} and {maximum} seconds.",
         "data": {
-          "name": "Device name (e.g. MijnTed, Home, Office)",
+          "name": "Device name",
           "polling_interval": "Polling interval (seconds)"
         }
       }
     }
   },
+  "common": {
+    "room_bedroom": "bedroom",
+    "room_living_room": "living room",
+    "water_meter_warm": "Warm water meter",
+    "water_meter_cold": "Cold water meter",
+    "water_meter_generic": "Water meter",
+    "reported_daily_usage": "Reported daily usage"
+  },
   "entity": {
     "sensor": {
+      "monthly_usage": {
+        "name": "Monthly usage",
+        "state_attributes": {
+          "month_id": {"name": "Month"},
+          "start_date": {"name": "Start date"},
+          "end_date": {"name": "End date"},
+          "days": {"name": "Days"},
+          "monthly_statistic_id": {"name": "Monthly statistic ID"}
+        }
+      },
       "published_usage": {
-        "name": "Published usage"
+        "name": "Published usage",
+        "state_attributes": {
+          "month_id": {"name": "Month"},
+          "reading_date": {"name": "Reading date"},
+          "start_date": {"name": "Start date"},
+          "end_date": {"name": "End date"},
+          "value_source": {"name": "Value source", "state": {"published": "Published total", "reported": "Meter readings"}},
+          "start_locked": {"name": "Start readings locked"},
+          "boundary_reconciled": {"name": "Month boundary reconciled"},
+          "reported_daily_usage": {"name": "Reported daily usage"},
+          "reported_daily_date": {"name": "Daily reading date"},
+          "monthly_statistic_id": {"name": "Monthly statistic ID"},
+          "average_monthly_statistic_id": {"name": "Monthly average statistic ID"},
+          "last_year_monthly_statistic_id": {"name": "Last-year monthly statistic ID"},
+          "last_year_average_monthly_statistic_id": {"name": "Last-year monthly average statistic ID"},
+          "daily_statistic_id": {"name": "Daily statistic ID"}
+        }
       },
-      "energy_usage": {
-        "name": "Energy usage"
+      "average_monthly_usage": {
+        "name": "Average monthly usage",
+        "state_attributes": {
+          "month_id": {"name": "Month"},
+          "monthly_statistic_id": {"name": "Monthly statistic ID"}
+        }
       },
-      "last_data_update": {
-        "name": "Last data update"
+      "last_year_monthly_usage": {
+        "name": "Last year monthly usage",
+        "state_attributes": {
+          "month_id": {"name": "Month"},
+          "last_year_month_id": {"name": "Month last year"},
+          "monthly_statistic_id": {"name": "Monthly statistic ID"}
+        }
       },
-      "filter": {
-        "name": "Filter"
+      "last_year_average_monthly_usage": {
+        "name": "Last year average monthly usage",
+        "state_attributes": {
+          "month_id": {"name": "Month"},
+          "last_year_month_id": {"name": "Month last year"},
+          "monthly_statistic_id": {"name": "Monthly statistic ID"}
+        }
+      },
+      "total_usage": {
+        "name": "Total usage",
+        "state_attributes": {
+          "current": {"name": "Current month"},
+          "history": {"name": "Monthly history"}
+        }
+      },
+      "last_update": {"name": "Last update"},
+      "active_model": {"name": "Active model"},
+      "delivery_types": {"name": "Delivery type"},
+      "residential_unit_detail": {"name": "Residential unit"},
+      "unit_of_measures": {
+        "name": "Units of measurement",
+        "state": {"units": "Units"},
+        "state_attributes": {"unit_of_measures": {"name": "Units of measurement"}}
+      },
+      "last_successful_sync": {"name": "Last successful sync"},
+      "latest_available_insight": {
+        "name": "Latest available insight",
+        "state_attributes": {
+          "month_id": {"name": "Month"},
+          "has_average": {"name": "Average available"},
+          "usage_unit": {"name": "Usage unit"},
+          "statistics": {"name": "Statistics tracking"}
+        }
+      },
+      "device": {
+        "name": "Device {context}",
+        "state_attributes": {
+          "room": {"name": "Room"},
+          "device_id": {"name": "Device ID"},
+          "measurement_device_id": {"name": "Measurement device ID"}
+        }
+      },
+      "water_meter": {
+        "name": "{meter} {context}",
+        "state_attributes": {
+          "room": {"name": "Room"},
+          "device_id": {"name": "Device ID"},
+          "measurement_device_id": {"name": "Measurement device ID"},
+          "delivery_type": {"name": "Delivery type"}
+        }
       }
     },
-    "button": {
-      "reset_statistics": {
-        "name": "Reset Statistics"
-      }
-    }
+    "button": {"reset_statistics": {"name": "Reset statistics"}}
   },
-  "room_codes": {
-    "KA": "bedroom",
-    "W": "living room"
+  "exceptions": {
+    "cannot_connect": {"message": "Could not connect to MijnTed. Check your connection and try again."},
+    "invalid_auth": {"message": "MijnTed authentication failed. Check your credentials."},
+    "grant_expired": {"message": "MijnTed access has expired. Reauthenticate using the configuration flow."},
+    "api_error": {"message": "MijnTed could not return the requested data. Please try again later."},
+    "unknown": {"message": "An unexpected error occurred while updating MijnTed."}
   }
 }

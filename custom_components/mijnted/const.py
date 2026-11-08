@@ -8,14 +8,6 @@ AUTH_URL = "https://mytedprod.b2clogin.com/mytedprod.onmicrosoft.com/b2c_1_user/
 PLATFORMS = [Platform.SENSOR, Platform.BUTTON]
 DEFAULT_POLLING_INTERVAL = timedelta(hours=1)
 UNIT_MIJNTED = "Units"
-MONTHLY_USAGE_NAME = "monthly usage"
-PUBLISHED_USAGE_NAME = "published usage"
-MONTHLY_STATISTIC_NAMES = {
-    "monthly_usage": PUBLISHED_USAGE_NAME,
-    "last_year_monthly_usage": "last year monthly usage",
-    "average_monthly_usage": "average monthly usage",
-    "last_year_average_monthly_usage": "last year average monthly usage",
-}
 UNIT_WATER = "m³"
 
 # API constants

@@ -16,7 +16,6 @@ from ..const import (
     DEFAULT_NAME,
     DEFAULT_START_VALUE,
     DOMAIN,
-    MONTHLY_STATISTIC_NAMES,
     UNIT_MIJNTED,
 )
 from ..utils import DateUtil, DataUtil
@@ -62,7 +61,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     Args:
         coordinator: DataUpdateCoordinator providing MijnTed API data.
         sensor_type: Type identifier for the sensor (e.g. "last_update", "device_0").
-        name: Display name for the sensor entity (without device prefix).
+        translation_key: Entity-local translated name key.
         entry_id: Config entry ID used to scope entity identity.
         config_name: User-configured device name (e.g. "MijnTed", "Home").
     """
@@ -73,7 +72,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         self,
         coordinator: DataUpdateCoordinator[Dict[str, Any]],
         sensor_type: str,
-        name: str,
+        translation_key: str,
         entry_id: str,
         config_name: str = DEFAULT_NAME,
     ) -> None:
@@ -82,13 +81,13 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         Args:
             coordinator: Data update coordinator
             sensor_type: Type identifier for the sensor
-            name: Display name for the sensor
+            translation_key: Entity-local translated name key
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
         super().__init__(coordinator)
         self.sensor_type = sensor_type
-        self._name = name
+        self._attr_translation_key = translation_key
         self._entry_id = entry_id
         self._config_name = config_name
         self._attr_unique_id = self._build_unique_id(entry_id, sensor_type)
@@ -129,17 +128,6 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         """
         return self._build_device_info(self.coordinator.data, self._config_name)
 
-    @property
-    def name(self) -> Optional[str]:
-        """Return the name of the sensor.
-        
-        Returns:
-            Capitalized sensor name (device prefix handled by has_entity_name)
-        """
-        if getattr(self, "_attr_translation_key", None):
-            return super().name
-        return self._name.capitalize()
-    
     @property
     def available(self) -> bool:
         """Return True if sensor has fresh data from coordinator.
@@ -491,9 +479,9 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             return
         metadata = StatisticMetaData(
             mean_type=StatisticMeanType.ARITHMETIC, has_sum=False,
-            name=MONTHLY_STATISTIC_NAMES[
+            name=self.coordinator.mijnted_translations.statistic_name(
                 series_key or ("monthly_usage" if self.sensor_type == "published_usage" else self.sensor_type)
-            ].capitalize(),
+            ),
             source=DOMAIN, statistic_id=self._get_monthly_statistic_id(series_key),
             unit_of_measurement=UNIT_MIJNTED, unit_class=None,
         )
@@ -541,7 +529,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         metadata = StatisticMetaData(
             mean_type=StatisticMeanType.ARITHMETIC,
             has_sum=False,
-            name=MONTHLY_STATISTIC_NAMES[series_key].capitalize() if series_key else self.name,
+            name=self.coordinator.mijnted_translations.statistic_name(series_key or self.sensor_type),
             source=DOMAIN,
             statistic_id=self._get_average_statistic_id(series_key),
             unit_of_measurement=UNIT_MIJNTED,

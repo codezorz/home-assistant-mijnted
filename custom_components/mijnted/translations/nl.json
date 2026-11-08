@@ -1,9 +1,165 @@
 {
-  "entity": {
-    "sensor": {
-      "published_usage": {
-        "name": "Gepubliceerd verbruik"
+  "config": {
+    "step": {
+      "user": {
+        "title": "Verbinden met MijnTed",
+        "description": "Voer je MijnTed-inloggegevens in. Standaard worden gegevens elke {default} seconden opgehaald. Het ophaalinterval kan tussen {minimum} en {maximum} seconden liggen.",
+        "data": {
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord",
+          "client_id": "Client-ID",
+          "name": "Apparaatnaam",
+          "polling_interval": "Ophaalinterval (seconden)"
+        },
+        "data_description": {
+          "name": "Je eigen naam voor deze installatie, bijvoorbeeld Thuis of Kantoor.",
+          "client_id": "De client-ID die door je MijnTed-account wordt gebruikt."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw aanmelden bij MijnTed",
+        "description": "Voer je MijnTed-inloggegevens opnieuw in om de toegang te herstellen. Bestaande instellingen zijn ingevuld, behalve het wachtwoord. Het ophaalinterval moet tussen {minimum} en {maximum} seconden liggen.",
+        "data": {
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord",
+          "client_id": "Client-ID",
+          "name": "Apparaatnaam",
+          "polling_interval": "Ophaalinterval (seconden)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met MijnTed. Probeer het opnieuw.",
+      "invalid_auth": "Aanmelden mislukt. Controleer je gebruikersnaam, wachtwoord en client-ID.",
+      "unknown": "Er is een onverwachte fout opgetreden. Probeer het opnieuw."
+    },
+    "abort": {"reauth_successful": "Opnieuw aanmelden is gelukt."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MijnTed-instellingen",
+        "description": "Wijzig de apparaatnaam of het ophaalinterval. Het ophaalinterval moet tussen {minimum} en {maximum} seconden liggen.",
+        "data": {
+          "name": "Apparaatnaam",
+          "polling_interval": "Ophaalinterval (seconden)"
+        }
       }
     }
+  },
+  "common": {
+    "room_bedroom": "slaapkamer",
+    "room_living_room": "woonkamer",
+    "water_meter_warm": "Warmwatermeter",
+    "water_meter_cold": "Koudwatermeter",
+    "water_meter_generic": "Watermeter",
+    "reported_daily_usage": "Gerapporteerd dagverbruik"
+  },
+  "entity": {
+    "sensor": {
+      "monthly_usage": {
+        "name": "Maandverbruik",
+        "state_attributes": {
+          "month_id": {"name": "Maand"},
+          "start_date": {"name": "Begindatum"},
+          "end_date": {"name": "Einddatum"},
+          "days": {"name": "Dagen"},
+          "monthly_statistic_id": {"name": "Maandstatistiek-ID"}
+        }
+      },
+      "published_usage": {
+        "name": "Gepubliceerd verbruik",
+        "state_attributes": {
+          "month_id": {"name": "Maand"},
+          "reading_date": {"name": "Meetdatum"},
+          "start_date": {"name": "Begindatum"},
+          "end_date": {"name": "Einddatum"},
+          "value_source": {"name": "Waardeherkomst", "state": {"published": "Gepubliceerd totaal", "reported": "Meterstanden"}},
+          "start_locked": {"name": "Beginstanden vergrendeld"},
+          "boundary_reconciled": {"name": "Maandgrens gecontroleerd"},
+          "reported_daily_usage": {"name": "Gerapporteerd dagverbruik"},
+          "reported_daily_date": {"name": "Dagmeetdatum"},
+          "monthly_statistic_id": {"name": "Maandstatistiek-ID"},
+          "average_monthly_statistic_id": {"name": "Maandgemiddeldestatistiek-ID"},
+          "last_year_monthly_statistic_id": {"name": "Maandstatistiek-ID vorig jaar"},
+          "last_year_average_monthly_statistic_id": {"name": "Maandgemiddeldestatistiek-ID vorig jaar"},
+          "daily_statistic_id": {"name": "Dagstatistiek-ID"}
+        }
+      },
+      "average_monthly_usage": {
+        "name": "Gemiddeld maandverbruik",
+        "state_attributes": {
+          "month_id": {"name": "Maand"},
+          "monthly_statistic_id": {"name": "Maandstatistiek-ID"}
+        }
+      },
+      "last_year_monthly_usage": {
+        "name": "Maandverbruik vorig jaar",
+        "state_attributes": {
+          "month_id": {"name": "Maand"},
+          "last_year_month_id": {"name": "Maand vorig jaar"},
+          "monthly_statistic_id": {"name": "Maandstatistiek-ID"}
+        }
+      },
+      "last_year_average_monthly_usage": {
+        "name": "Gemiddeld maandverbruik vorig jaar",
+        "state_attributes": {
+          "month_id": {"name": "Maand"},
+          "last_year_month_id": {"name": "Maand vorig jaar"},
+          "monthly_statistic_id": {"name": "Maandstatistiek-ID"}
+        }
+      },
+      "total_usage": {
+        "name": "Totaalverbruik",
+        "state_attributes": {
+          "current": {"name": "Huidige maand"},
+          "history": {"name": "Maandgeschiedenis"}
+        }
+      },
+      "last_update": {"name": "Laatste update"},
+      "active_model": {"name": "Actief model"},
+      "delivery_types": {"name": "Leveringstype"},
+      "residential_unit_detail": {"name": "Wooneenheid"},
+      "unit_of_measures": {
+        "name": "Meeteenheden",
+        "state": {"units": "Eenheden"},
+        "state_attributes": {"unit_of_measures": {"name": "Meeteenheden"}}
+      },
+      "last_successful_sync": {"name": "Laatste geslaagde synchronisatie"},
+      "latest_available_insight": {
+        "name": "Laatst beschikbaar inzicht",
+        "state_attributes": {
+          "month_id": {"name": "Maand"},
+          "has_average": {"name": "Gemiddelde beschikbaar"},
+          "usage_unit": {"name": "Verbruikseenheid"},
+          "statistics": {"name": "Statistiekregistratie"}
+        }
+      },
+      "device": {
+        "name": "Apparaat {context}",
+        "state_attributes": {
+          "room": {"name": "Ruimte"},
+          "device_id": {"name": "Apparaat-ID"},
+          "measurement_device_id": {"name": "Meetapparaat-ID"}
+        }
+      },
+      "water_meter": {
+        "name": "{meter} {context}",
+        "state_attributes": {
+          "room": {"name": "Ruimte"},
+          "device_id": {"name": "Apparaat-ID"},
+          "measurement_device_id": {"name": "Meetapparaat-ID"},
+          "delivery_type": {"name": "Leveringstype"}
+        }
+      }
+    },
+    "button": {"reset_statistics": {"name": "Statistieken opnieuw opbouwen"}}
+  },
+  "exceptions": {
+    "cannot_connect": {"message": "Kan geen verbinding maken met MijnTed. Controleer je verbinding en probeer het opnieuw."},
+    "invalid_auth": {"message": "Aanmelden bij MijnTed is mislukt. Controleer je inloggegevens."},
+    "grant_expired": {"message": "De toegang tot MijnTed is verlopen. Meld je opnieuw aan via de configuratie."},
+    "api_error": {"message": "MijnTed kan de gevraagde gegevens niet leveren. Probeer het later opnieuw."},
+    "unknown": {"message": "Er is een onverwachte fout opgetreden bij het bijwerken van MijnTed."}
   }
 }

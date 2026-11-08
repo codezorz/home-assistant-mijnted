@@ -19,6 +19,11 @@ dev = [
     "tzdata",
     "voluptuous",
 ]
+ha-validation = [
+    "homeassistant==2026.11.0; sys_platform == 'linux' and python_version == '3.14' and python_full_version >= '3.14.2'",
+    "fnv-hash-fast==2.0.3; sys_platform == 'linux' and python_version == '3.14' and python_full_version >= '3.14.2'",
+    "psutil-home-assistant==0.0.1; sys_platform == 'linux' and python_version == '3.14' and python_full_version >= '3.14.2'",
+]
 
 [tool.uv]
 package = false

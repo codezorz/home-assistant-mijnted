@@ -29,6 +29,48 @@ This document describes all MijnTed sensors, what they represent, and how they b
 
 ## Sensor Catalog
 
+### Language and display names
+
+MijnTed provides English, Dutch, and German UI labels. Names in this catalog are
+the English defaults. Setup/options/reauthentication dialogs and supported
+frontend state/attribute labels follow Home Assistant's interface language.
+
+Default entity names use the Home Assistant **server language** when the platform
+is set up. Upgrading replaces integration-owned defaults through the existing
+entity registry entries. After changing the server language, reload the MijnTed
+integration or restart Home Assistant to refresh its defaults. Changing only your
+profile's language does not rename entities. Your configured device name, entity
+name overrides, existing entity IDs, and history are retained.
+
+Known room codes (`KA` and `W`) appear as translated room context in device and
+water-meter names. Unknown codes and arbitrary room names remain verbatim; a
+missing room uses the device number. Room-context changes update default names
+on refresh without changing identity or replacing custom names.
+
+All five external reporting-statistic names use the same installation-level
+language policy. Existing metadata names are refreshed on setup, including when
+there is no new data to import. A recorder metadata failure does not block sensor
+creation; name updates retry after a later successful refresh. Statistic IDs,
+units, timestamps, and stored measurements stay intact. Shared series receive the
+same name from every exporter, including when standalone comparison entities are disabled. The
+calendar **Monthly usage** entity and the external **Published usage** series
+retain their different meanings. Custom dashboard/card labels remain yours.
+
+Some diagnostic content deliberately retains its raw representation:
+
+- Model identifiers, API delivery codes, unknown unit descriptions, and raw room
+  attributes remain technical/API values. Known unit descriptions use the
+  diagnostic sensor's [translated state](#units-of-measurement).
+- **Latest available insight** retains its existing `MonthName YYYY` state for
+  compatibility with templates/history. Its month text uses the Python process
+  locale, not the HA server/profile language; HA's state translations cannot
+  format this dynamic month/year string with placeholders. Its entity name and
+  supported attribute labels are translated.
+- Nested `current`, `history`, statistics-tracking, and residential-unit payloads
+  retain raw keys/values. HA's entity attribute translations label top-level
+  attributes, not arbitrary nested JSON. Canonical units such as `Units` and `m³`
+  remain unchanged so recorder data keeps the same meaning.
+
 ## Usage Sensors
 
 ### Monthly usage
@@ -264,17 +306,29 @@ This document describes all MijnTed sensors, what they represent, and how they b
 - State: `residential_unit`
 - Attributes: `residential_unit_detail` payload.
 
-### Unit of measures
+### Units of measurement
 
 - Class: `MijnTedUnitOfMeasuresSensor`
 - Unique ID: `mijnted_<configEntryId>_unit_of_measures`
-- Name: `<configured device name> Unit of measures`
+- Name: `<configured device name> Units of measurement`
 - Category: `diagnostic`
-- Purpose: display name of the first unit entry returned by API.
-- Value source: first element of `unit_of_measures` list, field `displayName`.
+- Purpose: localized description of the first unit entry returned by API.
+- Device class: `enum`; no measurement unit or automatic statistics.
+- Value source: first element of `unit_of_measures`. Known identifier `eenheid`
+  and known labels `Units`, `Eenheden`, and `Einheiten` resolve to the stable raw
+  state `units`. HA displays **Units** (English), **Eenheden** (Dutch), or
+  **Einheiten** (German) using the interface language, with English fallback.
+- Unrecognized descriptions and symbols such as `m3`, `m³`, and `kWh` are
+  displayed verbatim. The integration does not guess their meaning or change
+  spelling/capitalization. Actual usage-sensor and recorder units remain unchanged.
 - Missing data behavior: returns last known value.
 - Attributes:
   - `unit_of_measures`: raw list payload (if list)
+- Compatibility: entity/unique IDs and stored history remain intact. Templates
+  or automations comparing this diagnostic sensor's state to `Eenheden`,
+  `Einheiten`, or `Units` must now compare it to `units`. Existing historical
+  states retain their original text; the raw API descriptions remain available
+  in the `unit_of_measures` attribute. Unknown descriptions retain their raw states.
 
 ### Latest available insight
 

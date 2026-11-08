@@ -5,9 +5,11 @@ without installing the full Home Assistant runtime.  Every ``homeassistant.*``
 submodule that the integration touches at import time must be registered here.
 """
 import sys
+import json
 from datetime import datetime, timezone
 from enum import IntEnum
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 _ha = MagicMock()
 _pkce = MagicMock()
@@ -58,6 +60,31 @@ _ha.components.recorder.models.StatisticMetaData = dict
 _ha.components.recorder.statistics.async_import_statistics.return_value = None
 _ha.components.recorder.statistics.async_add_external_statistics.return_value = None
 
+
+def translation_resources(language="en"):
+    """Read shipped labels for stand-ins; native fallback is tested separately."""
+    directory = Path(__file__).parents[1] / "custom_components/mijnted/translations"
+    path = directory / f"{language}.json"
+    return json.loads((path if path.exists() else directory / "en.json").read_text(encoding="utf-8"))
+
+
+def flattened_resources(category, language="en"):
+    """Flatten test resources into the shape returned at the HA API boundary."""
+    def flatten(value, prefix):
+        if isinstance(value, dict):
+            return {key: text for part, child in value.items()
+                    for key, text in flatten(child, f"{prefix}.{part}").items()}
+        return {prefix: value}
+    return flatten(translation_resources(language)[category], f"component.mijnted.{category}")
+
+
+async def get_translations(hass, language, category, integrations):
+    """Stand in for translation I/O in logic tests, without contacting HA."""
+    return flattened_resources(category, language if isinstance(language, str) else "en")
+
+
+_ha.helpers.translation.async_get_translations = AsyncMock(side_effect=get_translations)
+
 _SUBMODULES = {
     "homeassistant": _ha,
     "homeassistant.const": _ha.const,
@@ -68,6 +95,7 @@ _SUBMODULES = {
     "homeassistant.helpers.event": _ha.helpers.event,
     "homeassistant.helpers.entity_registry": _ha.helpers.entity_registry,
     "homeassistant.helpers.storage": _ha.helpers.storage,
+    "homeassistant.helpers.translation": _ha.helpers.translation,
     "homeassistant.helpers.update_coordinator": _ha.helpers.update_coordinator,
     "homeassistant.components": _ha.components,
     "homeassistant.components.button": _ha.components.button,
@@ -97,17 +125,33 @@ class _CoordinatorEntity:
     def __init__(self, coordinator):
         """Store the coordinator like Home Assistant's base entity."""
         self.coordinator = coordinator
+        from custom_components.mijnted.localization import MijnTedTranslations
+        if not isinstance(getattr(coordinator, "mijnted_translations", None), MijnTedTranslations):
+            coordinator.mijnted_translations = MijnTedTranslations(
+                flattened_resources("entity"), flattened_resources("common"),
+            )
+
+    def _handle_coordinator_update(self):
+        """Allow logic tests to exercise placeholder refreshes."""
+        self.async_write_ha_state()
 
 
 class _SensorEntity:
     @property
     def name(self):
-        """Allow native translated entity names without overriding production naming."""
-        return getattr(self, "_attr_name", None) or getattr(self, "_translated_name", None)
+        """Expose labels for recorder logic tests; this does not emulate HA lifecycle."""
+        key = getattr(self, "_attr_translation_key", None)
+        resources = getattr(self.coordinator, "mijnted_translations", None)
+        if key and resources:
+            return resources.sensor_name(key).format(**getattr(self, "_attr_translation_placeholders", {}))
+        return None
 
 
 class _ButtonEntity:
-    pass
+    @property
+    def name(self):
+        """Expose shipped button labels in logic tests."""
+        return translation_resources()["entity"]["button"][self._attr_translation_key]["name"]
 
 
 _ha.helpers.update_coordinator.CoordinatorEntity = _CoordinatorEntity

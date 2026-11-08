@@ -2190,7 +2190,7 @@ def _handle_connection_error(
             err,
             extra={"entry_id": entry.entry_id, "error_type": "MijntedConnectionError", "token_expired": True}
         )
-        raise UpdateFailed(f"Connection failed: {err}") from err
+        raise UpdateFailed(translation_domain=DOMAIN, translation_key="cannot_connect") from err
 
     if cached_data:
         _LOGGER.warning(
@@ -2205,7 +2205,7 @@ def _handle_connection_error(
         err,
         extra={"entry_id": entry.entry_id, "error_type": "MijntedConnectionError", "has_cached_data": False}
     )
-    raise UpdateFailed(f"Connection failed: {err}") from err
+    raise UpdateFailed(translation_domain=DOMAIN, translation_key="cannot_connect") from err
 
 
 def _handle_grant_expired(hass: HomeAssistant, entry: ConfigEntry, err: MijntedGrantExpiredError) -> None:
@@ -2235,9 +2235,7 @@ def _handle_grant_expired(hass: HomeAssistant, entry: ConfigEntry, err: MijntedG
             "Reauth flow already in progress, skipping duplicate trigger",
             extra={"entry_id": entry.entry_id},
         )
-    raise UpdateFailed(
-        "Refresh token has expired. Please re-authenticate using the configuration flow."
-    ) from err
+    raise UpdateFailed(translation_domain=DOMAIN, translation_key="grant_expired") from err
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -2378,7 +2376,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 err,
                 extra={"entry_id": entry.entry_id, "error_type": "MijntedAuthenticationError"}
             )
-            raise UpdateFailed(f"Authentication failed: {err}") from err
+            raise UpdateFailed(translation_domain=DOMAIN, translation_key="invalid_auth") from err
         except MijntedConnectionError as err:
             return _handle_connection_error(hass, entry, api, err)
         except MijntedApiError as err:
@@ -2387,14 +2385,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 err,
                 extra={"entry_id": entry.entry_id, "error_type": "MijntedApiError"}
             )
-            raise UpdateFailed(f"API error: {err}") from err
+            raise UpdateFailed(translation_domain=DOMAIN, translation_key="api_error") from err
         except Exception as err:
             _LOGGER.exception(
                 "Unexpected error communicating with API: %s",
                 err,
                 extra={"entry_id": entry.entry_id, "error_type": type(err).__name__}
             )
-            raise UpdateFailed(f"Unexpected error: {err}") from err
+            raise UpdateFailed(translation_domain=DOMAIN, translation_key="unknown") from err
 
     polling_interval_seconds = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL.total_seconds())
     update_interval = timedelta(seconds=int(polling_interval_seconds))

@@ -67,6 +67,12 @@ uses this name as the prefix for the integration's entity names. The name and
 polling interval can be changed later from the integration's configuration
 options.
 
+The integration supports English, Dutch, and German. Setup dialogs follow Home
+Assistant's interface language; default entity names and reporting-statistic names
+use the server language, with English fallback. After changing the server language,
+reload MijnTed or restart Home Assistant. Existing entity IDs, history, and your
+custom names are preserved. See [language and display names](docs/SENSORS.md#language-and-display-names).
+
 ### Obtaining Your Client ID
 
 Retrieve the client ID using either method below, then paste the result into the
@@ -140,7 +146,7 @@ Detailed references: [sensor catalog](docs/SENSORS.md), [month-switch timeline](
 - **Active model** - The active model identifier (e.g., "F71")
 - **Delivery type** - Available delivery types for your residential unit
 - **Residential unit** - Detailed information about your residential unit
-- **Unit of measures** - Unit of measurement information
+- **Units of measurement** - Known unit descriptions are translated; unknown descriptions and symbols remain as supplied by MijnTed. See [diagnostic value compatibility](docs/SENSORS.md#units-of-measurement).
 - **Latest available insight** - Month with the last available insight data including average. Displays the month name only (e.g. "January 2026"). Attributes include month_id, usage_unit, has_average.
 - **Water sensors** - If your residential unit has water meters (warm and/or cold, reported in m³), a meter reading sensor per meter is created, usable in the Energy dashboard's water consumption. See [water sensors](docs/SENSORS.md#water-sensors).
 - **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)

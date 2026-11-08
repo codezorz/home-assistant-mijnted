@@ -14,6 +14,7 @@ change. Verify claims against code; distinguish existing behavior from proposals
 |---|---|---|
 | Installation, setup, options, troubleshooting | `README.md` | Config-flow translations in `custom_components/mijnted/translations/en.json` |
 | Sensor catalog, attributes, availability, statistics, reset button | `docs/SENSORS.md` | README overview; sensor implementation guidance if its contract changes |
+| UI translation development policy | `.github/instructions/translations.instructions.md` | Link from relevant guidance; user-visible naming behavior stays in `docs/SENSORS.md` |
 | Month lifecycle and boundary timeline | `docs/MONTH_SWITCH.md` | Link from sensor docs; update related cache tests for code changes |
 | Reporting architecture and data ownership | `docs/USAGE_REPORTING.md` | Sensor and orchestration instructions reference current responsibilities |
 | HTTP endpoints, auth lifecycle, request/response formats | `docs/ENDPOINTS.md` | README setup if credentials/options change |

@@ -25,11 +25,10 @@ description: Entity creation, sensor source/fallback contracts, statistics, unit
 
 ## Display names
 
-- Use sentence case for display labels, preserving proper nouns and acronyms.
-  Keep technical IDs and Python class names separate from display labels.
-- Use entity-local names and let HA supply device context for entities. Reuse
-  the existing entity-local display name for related statistics instead of
-  maintaining another label or adding redundant device prefixes/storage suffixes.
+- Follow [translation instructions](translations.instructions.md) for entity-local
+  names, dynamic room context, installation language, and shared statistic labels.
+  HA supplies the entity's device context; reporting-series identity determines
+  the related statistic label, independently of which entity exports it.
 
 ## Values, availability, and statistics
 

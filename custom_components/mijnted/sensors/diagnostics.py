@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -6,6 +6,24 @@ from .base import MijnTedSensor
 from .models import StatisticsTracking
 from ..utils import TimestampUtil, ListUtil, DataUtil, DateUtil
 from ..const import CALCULATION_YEAR_MONTH_SORT_MULTIPLIER, DEFAULT_NAME
+
+_UNIT_DESCRIPTION_STATES = {
+    "eenheid": "units",
+    "units": "units",
+    "eenheden": "units",
+    "einheiten": "units",
+}
+
+
+def _unit_description_state(unit: Dict[str, Any]) -> Optional[str]:
+    """Normalize known API unit descriptions; preserve unknown display text."""
+    for candidate in (unit.get("value"), unit.get("displayName")):
+        if isinstance(candidate, str):
+            state = _UNIT_DESCRIPTION_STATES.get(candidate.strip().casefold())
+            if state is not None:
+                return state
+    display_name = unit.get("displayName")
+    return display_name if isinstance(display_name, str) else None
 
 
 class MijnTedLastUpdateSensor(MijnTedSensor):
@@ -25,7 +43,7 @@ class MijnTedLastUpdateSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_update", "last update", entry_id, config_name=config_name)
+        super().__init__(coordinator, "last_update", "last_update", entry_id, config_name=config_name)
         self._attr_icon = "mdi:clock-outline"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -69,7 +87,7 @@ class MijnTedActiveModelSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "active_model", "active model", entry_id, config_name=config_name)
+        super().__init__(coordinator, "active_model", "active_model", entry_id, config_name=config_name)
         self._attr_icon = "mdi:tag"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -103,7 +121,7 @@ class MijnTedDeliveryTypesSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "delivery_types", "delivery type", entry_id, config_name=config_name)
+        super().__init__(coordinator, "delivery_types", "delivery_types", entry_id, config_name=config_name)
         self._attr_icon = "mdi:package-variant"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -141,7 +159,7 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "residential_unit_detail", "residential unit", entry_id, config_name=config_name)
+        super().__init__(coordinator, "residential_unit_detail", "residential_unit_detail", entry_id, config_name=config_name)
         self._attr_icon = "mdi:home"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -173,7 +191,7 @@ class MijnTedResidentialUnitDetailSensor(MijnTedSensor):
 class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
     """Sensor for unit of measures information.
 
-    Displays the display name of the first unit of measure from the API.
+    Translates known descriptions of the first API unit, retaining unknown text.
 
     Args:
         coordinator: DataUpdateCoordinator providing MijnTed API data.
@@ -187,17 +205,14 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "unit_of_measures", "unit of measures", entry_id, config_name=config_name)
+        super().__init__(coordinator, "unit_of_measures", "unit_of_measures", entry_id, config_name=config_name)
         self._attr_icon = "mdi:ruler"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_device_class = SensorDeviceClass.ENUM
 
     @property
-    def state(self) -> Optional[str]:
-        """Return the state of the sensor.
-        
-        Returns:
-            Display name of first unit of measure, or last known value if unavailable (e.g. timeout)
-        """
+    def native_value(self) -> Optional[str]:
+        """Return a translatable state or raw description, retaining the last known value."""
         data = self.coordinator.data
         if not data:
             return self._last_known_value
@@ -205,11 +220,17 @@ class MijnTedUnitOfMeasuresSensor(MijnTedSensor):
         unit_of_measures = data.get("unit_of_measures", [])
         first_item = ListUtil.get_first_item(unit_of_measures)
         if first_item is not None and isinstance(first_item, dict):
-            display_name = first_item.get("displayName")
-            if display_name is not None:
-                self._update_last_known_value(display_name)
-                return display_name
+            value = _unit_description_state(first_item)
+            if value is not None:
+                self._update_last_known_value(value)
+                return value
         return self._last_known_value
+
+    @property
+    def options(self) -> List[str]:
+        """Allow known semantic states and the current untranslated API description."""
+        value = self.native_value
+        return ["units", value] if value is not None and value != "units" else ["units"]
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -245,7 +266,7 @@ class MijnTedLastSuccessfulSyncSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_successful_sync", "last successful sync", entry_id, config_name=config_name)
+        super().__init__(coordinator, "last_successful_sync", "last_successful_sync", entry_id, config_name=config_name)
         self._attr_icon = "mdi:clock-check"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -278,7 +299,7 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "latest_available_insight", "latest available insight", entry_id, config_name=config_name)
+        super().__init__(coordinator, "latest_available_insight", "latest_available_insight", entry_id, config_name=config_name)
         self._attr_icon = "mdi:calendar-month"
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_native_unit_of_measurement = None

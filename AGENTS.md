@@ -35,6 +35,7 @@ Runtime code lives in `custom_components/mijnted/`; there is no separate build.
 | Comments and docstrings | `.github/instructions/docstrings.instructions.md` |
 | API/auth changes | `.github/instructions/api-auth.instructions.md` |
 | Sensor/button changes | `.github/instructions/sensors.instructions.md` |
+| UI localization, dynamic names, statistic labels | `.github/instructions/translations.instructions.md` |
 
 User-facing documentation starts at `README.md`; detailed behavior is in
 `docs/SENSORS.md`, `docs/MONTH_SWITCH.md`, and `docs/ENDPOINTS.md`.

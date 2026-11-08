@@ -55,6 +55,13 @@ jobs:
       - name: Run test suite
         run: python -m pytest -q --junitxml=pytest-results.xml
 
+      - name: Verify native Home Assistant localization
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/mijnted-ha-validation
+        run: |
+          python -m uv sync --locked --group ha-validation --python 3.14
+          "$UV_PROJECT_ENVIRONMENT/bin/python" tests/ha_localization_check.py
+
       - name: Upload test results
         if: success() || failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

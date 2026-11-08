@@ -40,7 +40,8 @@ async def async_import_daily_statistics(sensor: MijnTedSensor) -> None:
         return
     metadata = StatisticMetaData(
         source=DOMAIN, statistic_id=daily_statistic_id(sensor._entry_id),
-        name="Reported daily usage", mean_type=StatisticMeanType.ARITHMETIC,
+        name=sensor.coordinator.mijnted_translations.statistic_name("reported_daily_usage"),
+        mean_type=StatisticMeanType.ARITHMETIC,
         has_sum=False, unit_of_measurement=UNIT_MIJNTED, unit_class=None,
     )
     rows = [StatisticData(

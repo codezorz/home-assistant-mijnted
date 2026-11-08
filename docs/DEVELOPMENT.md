@@ -111,6 +111,33 @@ not a passing test or a reason to ignore an assertion failure.
 
 ## Home Assistant smoke test
 
+### Native Home Assistant localization checks
+
+The optional `ha-validation` dependency group in `pyproject.toml` and `uv.lock`
+pins HA 2026.11.0 and its recorder requirements for Linux Python 3.14.2 or newer
+within the 3.14 series. It does not add HA as an integration runtime requirement
+or install it in the ordinary Windows test environment.
+
+From Linux or WSL, use a separate environment and the active checkout:
+
+```sh
+export UV_PROJECT_ENVIRONMENT="$HOME/.venv-mijnted-ha-validation"
+python -m uv sync --locked --group ha-validation --python 3.14
+"$UV_PROJECT_ENVIRONMENT/bin/python" tests/ha_localization_check.py
+```
+
+Run this file directly: the normal pytest conftest replaces HA with stand-ins.
+The native checks exercise real HA translation loading/fallback (including
+missing labels and invalid placeholders), entity-platform/registry naming across
+reloads, retained user overrides, dynamic room placeholders, and metadata-only
+statistic renaming against temporary SQLite storage. It also checks diagnostic
+unit enum translations, passthrough of unknown text/symbols, and retry after a
+recorder metadata read failure. No MijnTed cloud access is
+performed. Validate code runs these checks in a separate locked environment in CI.
+They do not verify browser rendering or a production HA installation.
+
+### Installed integration smoke test
+
 1. Copy this checkout's `custom_components/mijnted` to a test HA installation's
    `custom_components` directory and restart HA to load changed Python code.
 2. Add or reload MijnTed and verify the affected sensors/buttons, availability,
