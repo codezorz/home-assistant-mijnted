@@ -1,5 +1,5 @@
 ---
-applyTo: "custom_components/mijnted/**,tests/**,.github/**,.agents/**,.claude/**,docs/**,AGENTS.md,CLAUDE.md,CONTRIBUTING.md,pyproject.toml,uv.lock,pytest.ini"
+applyTo: "custom_components/mijnted/**,tests/**,tests_native/**,.github/**,.agents/**,.claude/**,docs/**,AGENTS.md,CLAUDE.md,CONTRIBUTING.md,pyproject.toml,uv.lock,pytest.ini"
 description: Development environment policy, dependency maintenance, and change-appropriate validation.
 ---
 
@@ -11,6 +11,8 @@ description: Development environment policy, dependency maintenance, and change-
 - Prefer the existing shared virtual environment when its requirements are
   compatible. Keep Windows and WSL environments separate; do not copy credentials
   or environments between checkouts automatically.
+- Keep fast and native environments separate; follow the
+  [reporting profile setup](../../docs/DEVELOPMENT.md#ha-native-reporting-tests) for `tests_native/`.
 - Keep runtime dependency inputs aligned between the HA manifest and
   `pyproject.toml`. Commit dependency inputs and `uv.lock` together. Regenerate
   the ignored pip export with `--locked`; never commit it as a second source.

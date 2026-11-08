@@ -1,7 +1,9 @@
 version: 2
 updates:
   - package-ecosystem: uv
-    directory: "/"
+    directories:
+      - "/"
+      - "/tests_native"
     target-branch: "main"
     open-pull-requests-limit: 5
     schedule:

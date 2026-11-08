@@ -175,7 +175,7 @@ class MijnTedPublishedUsageSensor(MijnTedSensor):
                  config_name: str = DEFAULT_NAME) -> None:
         """Create the retrospective entity without automatic statistics collection."""
         super().__init__(coordinator, "published_usage", "published_usage", entry_id, config_name=config_name)
-        self._attr_icon = "mdi:calendar-check"
+        self._attr_icon = "mdi:chart-timeline-variant"
         self._attr_suggested_display_precision = 0
 
     @property

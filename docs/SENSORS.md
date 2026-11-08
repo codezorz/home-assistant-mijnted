@@ -81,6 +81,8 @@ on the month's final day. “Published” means available from MijnTed, not immu
 The first value in a month can be zero or nonzero; this view has no calendar reset
 or automatic state-class statistics.
 
+Default icon: `mdi:chart-timeline-variant`.
+
 Unknown until a usable observation/baseline exists. Partial responses retain the
 last complete report and its date; restart restores the checkpoint. Entity history
 records receipt time, while external statistics identify consumption periods.
