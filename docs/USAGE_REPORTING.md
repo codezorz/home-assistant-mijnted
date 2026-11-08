@@ -41,7 +41,9 @@ responses. Their last-known fallbacks are scoped to the comparison period.
    consumption where consecutive compatible checkpoints are available.
 4. `utils/readings.py` builds `reading_report` from the latest complete checkpoint
    and its month's opening baseline.
-5. Entities project coordinator data; reporting helpers import period-aligned
+5. `naming.py` prepares stable device-name context and suffixes in `device_names`,
+   independently of consumption calculations and the monthly cache.
+6. Entities project coordinator data; reporting helpers import period-aligned
    statistics.
 
 `reading_report` contains the resolved value and its `month_id`, `reading_date`,

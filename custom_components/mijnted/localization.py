@@ -47,6 +47,13 @@ class MijnTedTranslations:
         key = ROOM_KEYS.get(room)
         return self.common_label(key) if key else room
 
+    def device_context(self, room: Optional[str], device_number: str, number: Optional[int] = None) -> str:
+        """Format room/number context through translated templates, preserving raw names."""
+        context = self.room_label(room) if room else device_number
+        if number is not None:
+            return self.common_label("numbered_context").format(context=context, number=str(number))
+        return context
+
     def statistic_name(self, series_key: str) -> str:
         """Name a reporting series independently of the entity exporting it."""
         key = STATISTIC_TRANSLATION_KEYS[series_key]

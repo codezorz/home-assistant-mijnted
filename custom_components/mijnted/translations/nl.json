@@ -48,6 +48,7 @@
     }
   },
   "common": {
+    "numbered_context": "{context} {number}",
     "room_bedroom": "slaapkamer",
     "room_living_room": "woonkamer",
     "water_meter_warm": "Warmwatermeter",

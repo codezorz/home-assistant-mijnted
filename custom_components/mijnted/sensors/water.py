@@ -16,7 +16,7 @@ _MODEL_PREFIX_KINDS = {"WWZF": WATER_KIND_WARM, "KWZF": WATER_KIND_COLD}
 _DELIVERY_TYPE_KINDS = {"2": WATER_KIND_WARM, "3": WATER_KIND_COLD}
 
 
-def _delivery_payloads(data: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def delivery_payloads(data: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     """Combine additional deliveries with the already-fetched primary payload."""
     if not data:
         return {}
@@ -34,7 +34,7 @@ def _delivery_payloads(data: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, An
     return deliveries
 
 
-def _delivery_devices(delivery: Dict[str, Any]) -> List[Dict[str, Any]]:
+def delivery_devices(delivery: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Return device status dicts of a delivery-type payload."""
     devices = delivery.get("filter_status")
     if not isinstance(devices, list):
@@ -57,7 +57,7 @@ def get_water_kind(delivery_type: str, active_model: Any) -> Optional[str]:
 
 def is_water_delivery(delivery: Dict[str, Any]) -> bool:
     """Return True when a delivery-type payload reports its readings in m³."""
-    for device in _delivery_devices(delivery):
+    for device in delivery_devices(delivery):
         if device.get("unitOfMeasure") == UNIT_WATER:
             return True
     unit_of_measures = delivery.get("unit_of_measures")
@@ -79,11 +79,11 @@ def get_water_deliveries(data: Optional[Dict[str, Any]]) -> Dict[str, List[str]]
         Delivery types that are not measured in m³ are left out.
     """
     water: Dict[str, List[str]] = {}
-    for delivery_type, delivery in _delivery_payloads(data).items():
+    for delivery_type, delivery in delivery_payloads(data).items():
         if not is_water_delivery(delivery):
             continue
         device_numbers: List[str] = []
-        for device in _delivery_devices(delivery):
+        for device in delivery_devices(delivery):
             device_number = device.get("deviceNumber")
             if device_number is not None and str(device_number) not in device_numbers:
                 device_numbers.append(str(device_number))
@@ -129,12 +129,12 @@ class MijnTedWaterMeterSensor(MijnTedSensor):
     @property
     def _delivery(self) -> Dict[str, Any]:
         """Primary or additional delivery payload for this sensor's delivery type."""
-        return _delivery_payloads(self.coordinator.data).get(self.delivery_type, {})
+        return delivery_payloads(self.coordinator.data).get(self.delivery_type, {})
 
     @property
     def _device_data(self) -> Optional[Dict[str, Any]]:
         """Device status for this sensor, or None when the API no longer lists it."""
-        for device in _delivery_devices(self._delivery):
+        for device in delivery_devices(self._delivery):
             if str(device.get("deviceNumber", "")) == self.device_number:
                 return device
         return None
@@ -144,10 +144,13 @@ class MijnTedWaterMeterSensor(MijnTedSensor):
         kind = get_water_kind(self.delivery_type, self._delivery.get("active_model"))
         device_data = self._device_data
         room = device_data.get("room") if device_data else None
+        context = (self.coordinator.data or {}).get("device_names", {}).get(self.sensor_type, {})
+        room = context.get("room", room)
+        kind = context.get("kind", kind)
         translations = self.coordinator.mijnted_translations
         self._attr_translation_placeholders = {
             "meter": translations.common_label(f"water_meter_{kind or 'generic'}"),
-            "context": translations.room_label(room) if room else self.device_number,
+            "context": translations.device_context(room, self.device_number, context.get("number")),
         }
         self.__dict__.pop("name", None)
 

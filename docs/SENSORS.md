@@ -47,6 +47,30 @@ water-meter names. Unknown codes and arbitrary room names remain verbatim; a
 missing room uses the device number. Room-context changes update default names
 on refresh without changing identity or replacing custom names.
 
+#### Duplicate device names
+
+Meters sharing the same room code/name and label type receive stable suffixes:
+**Device living room 1**, **Device living room 2**, and so on. A singleton keeps
+its unsuffixed name. Warm, cold, and generic water-meter labels form separate
+groups; matching water labels can be numbered across delivery types. Each
+installation has its own assignments, independent of the display language.
+
+The first observed batch uses natural device-number order. Later arrivals get
+the next unused number without moving existing meters. Once a group has been
+numbered, its suffixes remain even if a peer disappears. Numbers are not reused;
+gaps are intentional. A meter moving rooms uses the destination's reservations;
+if it returns, it recovers its earlier number in that room.
+
+Assignments and the last known naming context persist across restarts/reloads,
+temporarily missing readings, and monthly statistics resets. A failed metadata
+endpoint does not turn a known water-meter kind into an unknown one. Explicitly
+unknown models still use the generic water label. A reported missing/empty room
+uses the device number; an absent device retains its previous naming context.
+Room attributes continue to represent the API response itself.
+
+These suffixes change only integration-owned default names. Existing entity IDs,
+unique IDs, history, units, readings, and user-assigned names are retained.
+
 All five external reporting-statistic names use the same installation-level
 language policy. Existing metadata names are refreshed on setup, including when
 there is no new data to import. A recorder metadata failure does not block sensor
@@ -362,6 +386,7 @@ be absent or refer to a different month than the fallback state.
 - Name pattern:
   - With room: `<configured device name> Device <translated room>`
   - Without room: `<configured device name> Device <deviceNumber>`
+- Duplicate names use the [stable numbering policy](#duplicate-device-names).
 - Unit:
   - `"Einheiten"` and `"Eenheden"` are normalized to `Units`
   - Other unit strings are passed through as-is
@@ -409,6 +434,7 @@ injection. A monthly water usage sensor is not provided yet.
 - Unique ID: `mijnted_<configEntryId>_water_<deliveryType>_device_<deviceNumber>`
 - Name: `<configured device name> <Warm|Cold> water meter <translated room>`
   (without room: `... water meter <deviceNumber>`)
+- Duplicate labels use the same [stable numbering policy](#duplicate-device-names).
 - Source: `currentReadingValue` of the device in that delivery type's `deviceStatuses`.
 - Unit/classes: `m³`, device class `water`, state class `total_increasing`, so it
   can be used directly in the Energy dashboard's water consumption.

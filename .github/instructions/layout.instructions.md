@@ -14,6 +14,7 @@ custom_components/mijnted/
 ├── const.py             # Domain, URLs, timeouts, platforms, all constants
 ├── exceptions.py        # MijntedApiError, MijntedAuthenticationError, etc.
 ├── localization.py      # HA-loaded labels, room mapping, statistic-name synchronization
+├── naming.py            # Durable duplicate-name reservations and coordinator name projection
 ├── reconciliation.py    # Revisable published-month boundaries and retry state
 ├── daily.py             # Persisted forward-only dated reading checkpoints
 ├── manifest.json        # Metadata, version, requirements
@@ -48,6 +49,7 @@ custom_components/mijnted/
 | New constant | `const.py` |
 | Config flow | `config_flow.py`, `translations/en.json` |
 | UI localization | `localization.py`, `translations/*.json`; follow `translations.instructions.md` |
+| Duplicate device names | `naming.py`, `sensors/device.py`, `sensors/water.py`; projection prepared in `__init__.py` |
 | Version | `manifest.json` |
 
 Repository-level instructions and tooling are mapped in `AGENTS.md`; document

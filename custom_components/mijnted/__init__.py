@@ -13,6 +13,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import MijntedApi
 from .daily import DailyUsageTracker
+from .naming import DeviceNameTracker
 from .const import (
     CACHE_HISTORY_MONTHS,
     CONF_PASSWORD,
@@ -2250,6 +2251,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
     
     daily_tracker = DailyUsageTracker(hass, entry.entry_id)
+    name_tracker = DeviceNameTracker(hass, entry.entry_id)
 
     async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str], refresh_token_expires_at: Optional[datetime] = None) -> None:
         """Callback to persist updated tokens to config entry."""
@@ -2367,6 +2369,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 payload["reading_report"] = build_reading_report(
                     snapshot, report_month.to_dict() if report_month else {},
                 )
+                payload["device_names"] = await name_tracker.async_update(payload)
                 return payload
         except MijntedGrantExpiredError as err:
             _handle_grant_expired(hass, entry, err)
