@@ -64,8 +64,8 @@ that a scanner or reported vulnerability has been resolved.
 ### Won't-fix closure in both systems
 
 For a justified accepted-risk decision, record why the behavior is accepted and
-when to revisit it. Suppress each applicable source finding through the tool's
-API with that explanation and the root-cause tracking link. Read back the state
+when to revisit it. Suppress each applicable source finding through its supported
+repository-scoped controls with the explanation and root-cause tracking link. Read back the state
 and reason, then add the tracker closing explanation and close the root-cause
 issue as **not planned** with `wontfix`. No fixing PR is needed for this path.
 

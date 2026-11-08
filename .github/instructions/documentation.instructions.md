@@ -34,11 +34,13 @@ change. Verify claims against code; distinguish existing behavior from proposals
 
 ## Keep guidance DRY
 
-- Describe current behavior directly in reference documentation and developer
-  instructions. Keep investigation history, version comparisons, and migration
-  narratives in issue/PR discussions or release notes. Reference docs document
-  available entities, data contracts, and setup without descriptions of retired
-  behavior or implementation paths.
+- Document only the current supported behavior and current workflows in docs,
+  instructions, and skills. Never describe superseded situations, compare against
+  past implementations, or embed migration/investigation narratives there. Those
+  belong in issue/PR discussions or release notes. Examples must explain the
+  current contract, not preserve a record of an implementation change.
+- Give each rule or detailed contract one authoritative home. Other documents
+  provide a short audience-specific summary and a link, not another checklist.
 
 - `AGENTS.md` is a short entry point and map, not a copy of every policy.
 - `.github/instructions/` contains development instructions and repository

@@ -1,7 +1,6 @@
 # Aikido dashboard reference
 
-This repository uses Aikido's free Developer plan. The local REST API helper
-has been removed; use the dashboard for Aikido and `gh` for GitHub tracking.
+Use Aikido's free Developer-plan dashboard and `gh` for manual GitHub tracking.
 
 Follow [security triage policy](../../../../.github/instructions/security-triage.instructions.md)
 and [SECURITY.md](../../../../SECURITY.md). These own root-cause grouping,
@@ -9,9 +8,8 @@ disclosure, dispositions, and verification requirements.
 
 ## Developer plan and GitHub Apps
 
-The following published entitlements were checked on **2026-11-07**. Check the
-[current pricing](https://www.aikido.dev/pricing) before relying on a changed
-allowance or enabling another integration.
+Check [current pricing](https://www.aikido.dev/pricing) before relying on an
+allowance or enabling another integration. The repository uses this setup:
 
 | Capability | Developer-plan setup |
 |---|---|
@@ -30,7 +28,7 @@ The GitHub Apps are separate connections:
 |---|---|---|
 | **Aikido Security** | Reads source repositories for scheduled scans. | Keep installed with access to `codezorz/home-assistant-mijnted`. |
 | **Aikido Autofix** | Creates remediation PRs from findings. | Keep if using the included AutoFix allowance. |
-| **Aikido Issues** | Creates and synchronizes GitHub issues. | Can uninstall while staying on Developer. |
+| **Aikido Issues** | Creates and synchronizes GitHub issues. | Keep disconnected; use manual tracking. |
 | **Aikido PR Checks** | Scans incoming PRs and publishes gating results. | Leave uninstalled/disconnected while staying on Developer. |
 
 The **GitHub** tile under **PR Quality Gating** in
@@ -64,36 +62,26 @@ changing global Git/editor configuration.
 [Aikido MCP](https://help.aikido.dev/ai-and-dev-tools/aikido-mcp) is a separate
 optional coding-tool connection. Verify workspace availability and
 [permissions](https://help.aikido.dev/ai-and-dev-tools/aikido-mcp/mcp-permissions)
-before relying on local scans or finding access. This repository does not
-configure an MCP connection or require the retired REST credentials.
+before relying on local scans or finding access. The repository does not configure
+an MCP connection.
 
 ## Inspecting findings
 
-1. Open [Repositories](https://app.aikido.dev/repositories) and select
-   `codezorz/home-assistant-mijnted`. Confirm it is active, its scanned branch,
-   and its last scan. A visible repository or installed app alone does not prove
-   a recent scan completed.
-2. Open the relevant finding in the repository or feed. Record its dashboard
-   URL, available finding/repository IDs, severity, rule/advisory, affected
-   package/path/version, and scan coverage. Keep raw secret evidence private.
-3. Compare the finding against the current code and dependency graph. An older
-   scan can remain open after a fix; check coverage before treating that as a
-   failed remediation. The free plan has scheduled scans, not manual rescans.
+1. Select `codezorz/home-assistant-mijnted` in [Repositories](https://app.aikido.dev/repositories).
+   Verify active status, scanned branch/commit, and completed scan coverage.
+2. Capture the finding's exposed identifiers/URL and evidence under the
+   [root-cause process](../../../../.github/instructions/security-triage.instructions.md#finding-to-root-cause-tracking-process).
+3. Compare against current source/dependencies. Finding status must be interpreted
+   against the scan's coverage; this plan uses scheduled rather than manual rescans.
 
 If dashboard access or scan metadata is unavailable, record what could and
 could not be verified. Do not request API credentials as a fallback.
 
 ## Finding identity and GitHub tracking
 
-Search existing GitHub records, including closed issues, by stable finding IDs,
-advisories, dashboard URLs, and technical root cause before creating another.
-Use `gh` and the [issue policy](../../../../.github/instructions/issues.instructions.md)
-for authorized GitHub updates. GitHub issue synchronization is not included in
-this plan; tracking updates are manual.
-
-Keep existing region/repository/finding-specific markers unchanged so earlier
-records remain discoverable. When the dashboard exposes both numeric IDs, the
-existing format is:
+Use `gh` under the [tracking policy](../../../../.github/instructions/security-triage.instructions.md#finding-to-root-cause-tracking-process).
+Preserve region/repository/finding markers and exact dashboard URLs. When both
+numeric IDs are exposed, the marker format is:
 
 ```text
 <!-- aikido:app.aikido.dev:repo:123:issue:456 -->
@@ -104,10 +92,7 @@ Use actual IDs only; do not substitute a display-group ID for an individual
 finding ID. If the UI does not expose those identifiers, retain the exact
 dashboard URL and technical context instead of inventing a marker.
 
-One root-cause record can contain multiple finding markers. Retain each
-finding's severity, affected component, and repository/branch. Follow the
-[label policy](../../../../.github/instructions/git-workflow.instructions.md#labels-and-issue-closure)
-and reuse the existing `aikido` source label where available.
+Reuse the `aikido` source label under [label policy](../../../../.github/instructions/git-workflow.instructions.md#labels-and-issue-closure).
 
 ## Dashboard dispositions
 
@@ -115,13 +100,9 @@ Use individual-finding controls scoped to this repository. A display group may
 contain findings from other projects; do not apply a group-wide ignore merely
 to complete this repository's triage.
 
-| Disposition | Aikido action and verification |
-|---|---|
-| Valid and actionable | Leave open, add a tracking reference where supported, and remediate through a reviewed PR. |
-| False positive / unaffected | Ignore the individual finding with technical evidence and its root-cause tracking reference; verify the state and explanation. |
-| Accepted risk / won't fix | Ignore each applicable individual finding with rationale and tracking; verify all states and explanations before closing GitHub tracking as not planned. |
-| Deferred | Snooze until a future review date with a reason and tracking reference; verify the date and state. |
-| Already tracked | Reuse the existing root-cause record and retain its finding links. |
+Apply [disposition policy](../../../../.github/instructions/security-triage.instructions.md#dispositions):
+use **Ignore** for justified suppression and **Snooze** for dated deferral, with
+the rationale and tracking reference. Actionable findings remain open for remediation.
 
 Reopen the finding after an action and read back its state and rationale. Use
 an available note/history entry to preserve the full explanation if the UI's
@@ -129,11 +110,8 @@ status label is generic. **Ignored** is different from **solved**. If an
 individual disposition, note, or verification is unavailable, report the
 remaining step instead of claiming both systems are synchronized.
 
-After a remediation merges, wait for a scheduled scan covering the fix or
-perform an equivalent reassessment against the fixed code. Record the evidence
-and follow [post-merge policy](../../../../.github/instructions/security-triage.instructions.md#pr-closure-and-post-merge-follow-up).
-Neither merging an AutoFix PR nor an old open finding proves the new code's
-scan result.
+Verify remediation under [post-merge policy](../../../../.github/instructions/security-triage.instructions.md#pr-closure-and-post-merge-follow-up)
+using a covering scheduled scan or equivalent reassessment.
 
 ## References
 

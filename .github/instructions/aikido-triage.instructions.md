@@ -8,7 +8,7 @@ description: Aikido Developer-plan boundaries and dashboard-based, repository-sc
 - Use the free Developer-plan setup in the [Aikido reference](../../.agents/skills/aikido-triage/references/aikido.md#developer-plan-and-github-apps).
   The public REST API, GitHub issue sync, and PR security review require an
   upgrade. Do not request API credentials or re-enable paid PR checks as part of
-  routine triage. The retired local REST helper is no longer supported.
+  routine triage.
 - Use the [Aikido skill](../../.agents/skills/aikido-triage/SKILL.md) and its
   [dashboard reference](../../.agents/skills/aikido-triage/references/aikido.md)
   for finding identity, manual tracking, and disposition verification.

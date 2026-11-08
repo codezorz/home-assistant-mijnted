@@ -15,8 +15,7 @@ description: Required CI checks, CodeQL event and permission constraints, and fo
 - Keep advanced CodeQL scanning on normal `pull_request` merge checkouts with
   the built-in token and no repository secrets. Default CodeQL setup must remain
   disabled while the advanced workflow uploads results.
-- Do not gate CodeQL on a repository activation variable. The obsolete guard
-  skipped fork PR scans even after workflow approval.
+- Run CodeQL directly on its configured events without a repository-variable gate.
 - Preserve first-time-contributor workflow approvals. Approval permits one
   workflow run; it does not grant permanent contributor approval.
 - Lint changed workflows with `actionlint` and run change-appropriate checks from
