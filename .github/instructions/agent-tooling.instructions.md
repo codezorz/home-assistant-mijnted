@@ -40,21 +40,12 @@ description: Shared guidance metadata and Claude's metadata-only session-start h
 
 ## Local agent setup
 
-- OpenCode discovers `.agents/skills/`; restart OpenCode after configuration
-  or skill changes so a fresh session discovers the updated definitions.
-- Claude Code imports shared instructions and README through
-  [CLAUDE.md](../../CLAUDE.md). Its `SessionStart` hook indexes `applyTo`, `name`,
-  and `description` headers from the current checkout. It advertises relevant
-  files without copying skill bodies into `.claude/skills/` or eagerly loading
-  every document.
-- Start Claude with Bash, Git, and awk available (Git Bash on Windows). Use
-  `/context` to verify memory imports and inspect the instruction/skill index.
-  Skills are selected from that index and read as files; this does not register
-  native `/skill-name` commands. Restart after hook configuration changes.
-- New instructions and skills with valid frontmatter are picked up next session
-  without a second registration. The supported metadata format is defined above.
-- Check discovery from the checkout root with
-  `bash .claude/hooks/list-guidance.sh`. Focused tests live in
-  `tests/test_agent_guidance_hook.py`.
+- OpenCode discovers `.agents/skills/`; restart after configuration/skill changes.
+- Claude imports [CLAUDE.md](../../CLAUDE.md). Start it with Bash, Git, and awk
+  available (Git Bash on Windows), and use `/context` to verify imports/discovery.
+  Skill files are selected from the metadata index, not registered as slash commands.
+- Verify the current checkout's index with `bash .claude/hooks/list-guidance.sh`.
+  Valid metadata is discovered next session without separate registration;
+  restart after hook changes. Focused tests are in `tests/test_agent_guidance_hook.py`.
 - Keep personal Claude preferences in ignored `CLAUDE.local.md` or
   `.claude/settings.local.json`.

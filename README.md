@@ -34,11 +34,8 @@ references live in [`docs/`](docs/README.md):
 5. Click the "+ ADD INTEGRATION" button and search for "MijnTed".
 6. Follow the configuration steps.
 
-Use the attached integration ZIP, rather than GitHub's automatic **Source code**
-archives: the release ZIP contains the exact installed version. Repository
-checkouts intentionally report `0.0.0-dev.0`. Older releases without a
-`mijnted.zip` asset can still be installed manually by copying their tagged
-`custom_components/mijnted` directory.
+Install the `mijnted.zip` release asset: it contains the stamped release version.
+Repository source checkouts report the development version `0.0.0-dev.0`.
 
 ### Updates and beta versions
 
@@ -48,8 +45,8 @@ Updates appear under **Settings > Updates**. Restart Home Assistant after updati
 the integration to load the new code; Marketplace creates a repair reminder when
 a restart is needed.
 
-Stable releases are offered by default. To test numbered betas such as
-`v1.0.26-beta.1`, open the MijnTed repository's device page under
+Stable releases are offered by default. To test a beta, open the MijnTed
+repository's device page under
 **Settings > Devices & services > Marketplace**. Enable its disabled **Pre-release**
 entity, then turn on the switch. To select a specific available release, open the
 MijnTed Marketplace page's three-dot menu and select **Install another version**.
@@ -67,13 +64,9 @@ uses this name as the prefix for the integration's entity names. The name and
 polling interval can be changed later from the integration's configuration
 options.
 
-The integration supports English, Dutch, and German. Setup dialogs follow Home
-Assistant's interface language; default entity names and reporting-statistic names
-use the server language, with English fallback. After changing the server language,
-reload MijnTed or restart Home Assistant. Existing entity IDs, history, and your
-custom names are preserved. See [language and display names](docs/SENSORS.md#language-and-display-names).
-Duplicate device and water-meter default names get [stable numbered suffixes](docs/SENSORS.md#duplicate-device-names),
-while singleton names stay unsuffixed.
+English, Dutch, and German are supported. See
+[language and display names](docs/SENSORS.md#language-and-display-names) for language
+selection, custom names, and stable numbering of duplicate device labels.
 
 ### Obtaining Your Client ID
 
@@ -133,65 +126,24 @@ During setup, enter your client ID, username, and password. The integration hand
 
 ## Usage
 
-Once configured, the integration will create several sensors in Home Assistant:
+The integration provides:
 
-Detailed references: [sensor catalog](docs/SENSORS.md), [month-switch timeline](docs/MONTH_SWITCH.md), and [API/authentication](docs/ENDPOINTS.md).
+- **Monthly usage** for calendar-month progress and **Published usage** for the
+  latest available reading month, plus building averages and last-year comparisons.
+- Total and individual meter readings, with water meters usable in the Energy dashboard.
+- Diagnostic dates, model/unit information, and a **Reset statistics** button.
 
-- **Monthly usage** - Current calendar month's energy usage, calculated from start/end readings with annual-reset handling in January. Attributes include `start_date`, `end_date`, `days`, and `month_id`. Use the **Last update** sensor to see the date through which API readings are available.
-- **Published usage** - A lagging month-to-date own-usage report following the date/month of available MijnTed readings. It advances to the next month when that month's readings arrive, using their actual value without a synthetic zero. Own-period metadata and optional dated daily consumption are attributes. It exports all four monthly graph series plus forward daily statistics, including monthly backfill and late corrections. Average/comparison sensors remain selectable views with their own period metadata.
-- **Last year monthly usage** - Last year's monthly usage for the corresponding month (prefers API-provided value from previous year's data)
-- **Average monthly usage** - Average usage extracted from historical monthly usage data
-- **Last year average monthly usage** - Last year's average monthly usage for the corresponding month (prefers API-provided value from previous year's data)
-- **Total usage** - Sum of all device readings (cumulative filter status, accumulating counter). Attributes expose aligned month payloads for `current` and `history`, including month `status` (`OPEN`, `COMPLETE_READINGS`, `FINALIZED`). Automatically injects historical data for proper history graphs.
-- **Last update** - Date for which device readings are currently available from the API (often 1-2 days behind)
-- **Last successful sync** - Timestamp of the most recent returned refresh payload; some individual endpoints can have failed during that refresh
-- **Active model** - The active model identifier (e.g., "F71")
-- **Delivery type** - Available delivery types for your residential unit
-- **Residential unit** - Detailed information about your residential unit
-- **Units of measurement** - Known unit descriptions are translated; unknown descriptions and symbols remain as supplied by MijnTed. See [diagnostic value compatibility](docs/SENSORS.md#units-of-measurement).
-- **Latest available insight** - Month with the last available insight data including average. Displays the month name only (e.g. "January 2026"). Attributes include month_id, usage_unit, has_average.
-- **Water sensors** - If your residential unit has water meters (warm and/or cold, reported in m³), a meter reading sensor per meter is created, usable in the Energy dashboard's water consumption. See [water sensors](docs/SENSORS.md#water-sensors).
-- **Device Sensors** - Individual sensors for each device/room (dynamically created based on your setup, named by room when available)
-- **Reset statistics** - Button to reset statistics tracking and trigger re-injection of historical data. See [reset behavior](docs/SENSORS.md#related-button) for what it clears.
-
-Usage sensors request zero decimal places for display; underlying values retain their precision.
+The [sensor reference](docs/SENSORS.md) owns values, attributes, units, availability,
+and reset behavior. Usage sensors request zero displayed decimal places without
+rounding the underlying values.
 
 ### History and Statistics
 
-With recorder enabled, usage sensors import long-term statistics. Ordinary sensor
-state history records receipt time. For monthly own usage, last-year usage, and
-the two building-average lines, select the external statistics from source
-**mijnted** and use **Month + Mean**. The IDs are also exposed in the sensors'
-statistic attributes. See
-[monthly graph setup](docs/SENSORS.md#monthly-usage-and-building-average-graphs).
-
-Monthly usage resets to zero at HA-local month start even while readings lag.
-Late published totals and compatible meter anchors repair historical totals and
-the following month's baseline.
-Published usage follows the reading month: a November 1 result received
-on November 3 is dated November 1 in statistics. Its state history still records
-receipt time. Available readings are revisable; no artificial 00:00/23:59 samples
-are introduced to force a zero into the lagging report.
-
-Published usage exports the four monthly statistics even if the standalone
-average/comparison entities are disabled. In the Statistics graph, select the
-entries from source **mijnted** directly; attributes are not required for selection.
-The [four-line graph example](docs/SENSORS.md#monthly-usage-and-building-average-graphs)
-shows the exact YAML structure.
-
-For newly observed daily consumption, use Published usage's external
-`daily_statistic_id` with **Day + Mean**. Samples belong to their reading date,
-even if received later. Daily readings have no monthly-style finality marker;
-missing daily checkpoints stay gaps rather than being spread across days.
-Daily attributes appear after consecutive compatible readings have been observed;
-there is no separate daily sensor entity and no historical daily scan/backfill.
-
-Late month corrections upsert the affected monthly aggregate. The reset button
-rebuilds monthly cache/tracking; it preserves daily checkpoints and recorder data.
-See [statistics behavior](docs/SENSORS.md#statistics-injection-behavior) for the
-full contract and [month-switch behavior](docs/MONTH_SWITCH.md) for boundary cases.
-
-You can use these sensors in your automations, scripts, and dashboards to monitor and analyze your energy consumption. The sensors include additional attributes with detailed information that can be accessed in templates and automations.
+With recorder enabled, select the external statistics from source **mijnted**:
+**Month + Mean** for monthly reports, **Day + Mean** for daily consumption.
+See [graph setup and YAML](docs/SENSORS.md#monthly-usage-and-building-average-graphs).
+Ordinary entity history records receipt time; the reporting series identify
+consumption periods. [Month transitions](docs/MONTH_SWITCH.md) explain API lag and corrections.
 
 ## API
 

@@ -113,10 +113,9 @@ not a passing test or a reason to ignore an assertion failure.
 
 ### Native Home Assistant localization checks
 
-The optional `ha-validation` dependency group in `pyproject.toml` and `uv.lock`
-pins HA 2026.11.0 and its recorder requirements for Linux Python 3.14.2 or newer
-within the 3.14 series. It does not add HA as an integration runtime requirement
-or install it in the ordinary Windows test environment.
+The optional `ha-validation` group in [pyproject.toml](../pyproject.toml) owns the
+native HA/recorder versions and Linux/Python markers; `uv.lock` pins the environment.
+It is separate from the integration's runtime requirements and ordinary Windows tests.
 
 From Linux or WSL, use a separate environment and the active checkout:
 
@@ -126,18 +125,11 @@ python -m uv sync --locked --group ha-validation --python 3.14
 "$UV_PROJECT_ENVIRONMENT/bin/python" tests/ha_localization_check.py
 ```
 
-Run this file directly: the normal pytest conftest replaces HA with stand-ins.
-The native checks exercise real HA translation loading/fallback (including
-missing labels and invalid placeholders), entity-platform/registry naming across
-reloads, retained user overrides, dynamic room placeholders, and metadata-only
-statistic renaming against temporary SQLite storage. It also checks diagnostic
-unit enum translations, passthrough of unknown text/symbols, and retry after a
-recorder metadata read failure. No MijnTed cloud access is
-performed. Validate code runs these checks in a separate locked environment in CI.
-Duplicate-name checks also exercise primary/water labels in all three languages,
-unchanged registry IDs and custom names, partial responses, and restoration from
-HA Store after a cold Home Assistant instance restart.
-They do not verify browser rendering or a production HA installation.
+Run the file directly because pytest's conftest replaces HA with stand-ins. It
+checks native translation/registry naming, diagnostic states, durable duplicate
+numbering, and recorder metadata/history using isolated HA/SQLite storage without
+cloud access. Validate code runs the same command in CI. Browser rendering and
+installed-HA behavior require the smoke test below.
 
 ### Installed integration smoke test
 

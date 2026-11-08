@@ -1,111 +1,63 @@
 ---
 applyTo: "tests/**,.github/scripts/*.test.py,pytest.ini,pyproject.toml,uv.lock,requirements_test.txt,.github/dependabot.yml,.github/workflows/validate-code.yml,.github/workflows/codeql.yml"
-description: Test design, mock boundaries, async behavior, and Home Assistant stand-ins for local tests.
+description: Meaningful test design, async/mock boundaries, and native Home Assistant verification.
 ---
 
 # Testing
 
-Follow [development rules](development.instructions.md) and the
-[development guide](../../docs/DEVELOPMENT.md) for environment setup, commands,
-and HA smoke testing. Test discovery and async mode are configured in `pytest.ini`.
-Development dependency inputs belong in `pyproject.toml`; `uv.lock` records the
-resolved runtime/test graph. The Home Assistant manifest owns runtime requirements,
-mirrored in the project's dependencies and checked by `test_dependency_metadata.py`.
-`requirements_test.txt` is an ignored pip export generated from the lock, not a
-second dependency source. Regenerate it with `uv export --locked` after lock updates;
-see [dependency maintenance](../../docs/DEVELOPMENT.md#dependency-maintenance)
-for the full command and Dependabot maintenance.
-Lint changed GitHub Actions workflows with `actionlint`. CodeQL's fork-PR
-approval and required-check behavior are documented in the [CI guide](../../docs/CI.md).
-Keep its analysis independent of repository activation variables: the temporary
-migration guard skipped fork PRs even after workflow approval.
-
-Integration tests live in `tests/`; tooling tests live beside their scripts in
-`.github/scripts/*.test.py`. Pytest discovers both locations
-and uses importlib mode to support dotted tooling-test filenames.
+Use [development setup/checks](../../docs/DEVELOPMENT.md) for commands and dependency
+maintenance; [CI policy](ci.instructions.md) owns workflows and fork approvals.
+Dependency inputs belong in `pyproject.toml` with `uv.lock`; the pip export is generated.
 
 ## Test design
 
-- Add meaningful tests for changed behavior, especially month/year rollover,
-  API lag, partial failure, baseline locking, and late statistics corrections.
-- Do not add application tests for documentation-only edits or assertions that
-  merely duplicate implementation details.
-- Group by feature/module (`test_date_util.py`, `test_cache_refresh_retry.py`).
-  Follow existing class-based grouping and use fixtures for reusable data.
-- Write `async def test_...` directly; `asyncio_mode = auto` handles the loop.
-- Use `AsyncMock` for awaited calls and `MagicMock` for synchronous calls.
-- Patch where the symbol is looked up by the code under test, not only where
-  originally defined. Keep orchestration-module imports consistent with nearby tests.
-- Freeze/patch the date at the module that uses it; never make boundary tests
-  depend on the real current month.
-- Give modules/classes a brief purpose docstring and test methods a one-line
-  condition/result description. Standard pytest `-v` shows node IDs, not these
-  docstrings automatically.
-
-## Home Assistant stand-ins
-
-`tests/conftest.py` registers a `MagicMock` tree for imported `homeassistant.*`
-modules in `sys.modules`. It also supplies concrete values/classes where mocks
-cannot behave like the real type:
-
-| Symbol | Purpose |
-|---|---|
-| `_ha`, `_SUBMODULES` | Root mock and registered HA module paths |
-| `_ha.const.Platform.SENSOR` / `.BUTTON` | Literal platform strings read by `const.py` at import time |
-| `_CoordinatorEntity`, `_SensorEntity`, `_ButtonEntity` | Real empty classes preventing multiple-inheritance metaclass conflicts |
-| `_ConfigFlow`, `_OptionsFlow`, `_ConfigEntry` | Config-flow stand-ins, including domain subclass arguments and a read-only `config_entry` property |
-| `_pkce` | Deterministic PKCE pair for imports/auth-flow tests |
-
-When adding an import-time `homeassistant.*` dependency, register the module.
-Set concrete values for constants/classes read at import time. Add a real
-stand-in class if a mock would be used as a base class. These stand-ins test
-Python logic, not compatibility with a real HA API.
-
-`tests/ha_localization_check.py` is run directly in the separately locked native
-HA environment, avoiding this conftest. It verifies HA translation fallback,
-platform/registry naming and user overrides, and SQLite metadata-only statistic
-renaming. Follow the [native-check setup](../../docs/DEVELOPMENT.md#native-home-assistant-localization-checks)
-instead of importing or extending these stand-ins for native assertions.
+- Add behavioral coverage for changed contracts, not assertions that copy
+  implementation details. Documentation-only changes need no application tests.
+- Group by feature/module with reusable fixtures and small domain-object factories.
+  Keep month IDs, cache keys, and lifecycle states realistic.
+- Write async tests directly; `pytest.ini` configures discovery/import mode and
+  `asyncio_mode = auto`. Use `AsyncMock` for awaited calls and `MagicMock` for sync calls.
+- Patch where a symbol is looked up. Freeze/patch clocks at their use site;
+  boundary tests must not depend on today's date.
+- Give modules/classes brief purpose docstrings and tests a one-line
+  condition/result description.
 
 ## Mock boundaries
 
 | Layer | Approach |
 |---|---|
-| Pure date/list/data/JWT helpers | Test directly; patch the clock where needed. Not every utility is pure: OAuth and retry helpers involve I/O or timing. |
-| Cache/coordinator helpers in `__init__.py` | Patch sibling fetching/persistence functions at the importing module; assert state transitions and retry behavior. |
-| API/auth | Mock HTTP sessions or the API method boundary. Never contact production MijnTed in unit tests. |
-| HA objects | Use `hass.data = {}` and realistic `entry.entry_id` / `entry.data`; mock async methods explicitly. |
-| Persistence | Prefer patching `_load_persisted_cache` / `_save_persisted_cache`; otherwise mock `Store.async_load` / `async_save` as async methods. |
-| Recorder | The import is mocked by conftest; assert payload/metadata when injection is the behavior under test. |
+| Pure data/date helpers | Test directly with controlled clocks. OAuth/retry helpers also require I/O/timing boundaries. |
+| Coordinator/cache | Patch fetching/persistence at the importing module; assert state transitions, retries, and corrections. |
+| API/auth | Mock HTTP/API methods; never contact production MijnTed in unit tests. |
+| HA objects | Use realistic entry IDs/data and concrete `hass.data`; mock async methods explicitly. |
+| Storage | Patch the owning load/save helper or use async `Store` methods with detached snapshots. |
+| Recorder | Assert payload/metadata in logic tests; use native HA for database/API compatibility. |
 
-Monthly ownership/aggregation regressions also exercise the pinned pure HA
-2026.11.0 reducer in `tests/fixtures/ha_statistics_2026_11.py`; its upstream source
-and license are recorded in that fixture. This is real reducer behavior without
-a recorder database, not a full HA runtime test. Keep delayed publication,
-already-locked corrections, local month boundaries/DST, and forward daily
-checkpoint/gap/restart behavior covered when changing these paths. `tzdata` is a
-development dependency so named-zone checks work on Windows as well as Linux.
+## Home Assistant stand-ins
 
-Build domain objects with small factory helpers (`DeviceReading`,
-`MonthCacheEntry`). Keep month IDs, cache keys, and lifecycle states realistic.
-Extract repeated patch groups only when it makes a test's intent easier to see.
+[`tests/conftest.py`](../../tests/conftest.py) owns the mocked `homeassistant.*`
+module tree and concrete enum/entity/flow stand-ins. Register new import-time
+dependencies there; use real constants/classes where a `MagicMock` cannot model
+typing, inheritance, or read-only properties. These tests establish Python logic,
+not compatibility with the real HA lifecycle or translation loader.
 
-## Common failures
+Run [`tests/ha_localization_check.py`](../../tests/ha_localization_check.py) directly
+in the [native environment](../../docs/DEVELOPMENT.md#native-home-assistant-localization-checks),
+outside that conftest. Pure recorder-reduction coverage uses the pinned fixture in
+`tests/fixtures/`, which records upstream source/license provenance.
 
-| Failure | Fix |
-|---|---|
-| `ModuleNotFoundError: homeassistant.*` | Register the imported module in `_SUBMODULES`. |
-| Metaclass conflict | Supply a real stand-in base class rather than multiple `MagicMock` bases. |
-| Missing import-time constant | Assign the concrete constant on `_ha` before imports. |
-| Cannot await a `MagicMock` / coroutine never awaited | Use `AsyncMock` for async targets and verify awaited calls. |
-| Unexpected persistence call | Mock the persistence helper or async `Store` methods. |
-| Missing non-HA dependency | Install test/runtime requirements in the documented environment. |
+For cache/date/statistic changes, cover the applicable
+[month lifecycle](../../docs/MONTH_SWITCH.md) and
+[sensor contracts](../../docs/SENSORS.md): lag, rollover/DST, zero versus missing,
+partial devices, period-scoped fallback, restart, and late corrections. Named-zone
+tests use the `tzdata` development dependency.
 
-Do not dismiss behavioral assertion failures as "outside HA." Only actual
-runtime-specific checks belong in the real-HA verification step.
+## Tooling and failures
 
-## Agent tooling tests
+Tooling tests live beside scripts in `.github/scripts/*.test.py` or their feature
+module under `tests/`. Hook tests use temporary repositories and no production access.
+Run `actionlint` for changed Actions workflows.
 
-Session-hook tests run the shell script in temporary Git repositories to verify
-worktree-root discovery, metadata-only output, and missing-directory handling.
-Keep these tests independent of HA and production network access.
+Resolve missing dependencies/modules in the documented environment and fix failed
+behavioral assertions. Report genuine native-HA verification gaps separately;
+do not label a failing test as an environment limitation merely because HA is mocked.

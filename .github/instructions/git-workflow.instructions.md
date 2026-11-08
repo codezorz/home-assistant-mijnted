@@ -1,222 +1,118 @@
 ---
 applyTo: "**"
-description: Branches, version decisions, commits/PRs, labels, issue links, review ownership, and releases.
+description: Branch, version, commit, PR, label, issue-link, and publishing policy.
 ---
 
 # Git and GitHub workflow
 
-This is the authoritative repository policy for branches, versions, commits,
-pull requests, labels, and releases. Apply publishing steps only when requested.
+This file owns Git/release policy. The [PR skill](../../.agents/skills/pr-workflow/SKILL.md)
+provides the task workflow; [release operations](../../docs/RELEASING.md) owns
+publisher setup, execution, and recovery. Publishing requires a user request.
 
 ## Branches and worktrees
 
-- The default branch and PR target are `main`. Work on a descriptive topic
-  branch (`fix/*`, `feature/*`, `enhancement/*`, `docs/*`, or `tooling/*`).
-- For new editing tasks, prefer an isolated task worktree. Ask the user whether
-  to create or reuse one before starting, unless they already explicitly asked
-  for a worktree. If they prefer the current checkout, honor that choice while
-  preserving existing work and using a topic branch.
-- Continue an existing branch for the same task. Do not split an ongoing task
-  into an unrelated branch.
-- For a new task, start from the requested base or the default branch. Fetch
-  when an up-to-date remote base is needed; do not assume local `main` is current.
-- Follow `.agents/skills/git-worktrees/SKILL.md` for checkout placement/naming.
-  Never overwrite another checkout's uncommitted work or force a branch into
-  multiple worktrees.
+- Target `main` from a descriptive topic branch: `fix/*`, `feature/*`,
+  `enhancement/*`, `docs/*`, or `tooling/*`. Continue the same task's branch.
+- Follow the [worktree workflow](../../.agents/skills/git-worktrees/SKILL.md).
+  Ask about checkout choice before new editing work; preserve existing changes
+  and use explicit working directories. Never force a branch into two worktrees.
+- Fetch when a current remote base is needed. Do not assume local `main` is current
+  or silently use a stale ref after a failed fetch.
 
 ## Versioning
 
-- Keep the source manifest at `0.0.0-dev.0`; do not commit release-version bumps.
-  Tags and published GitHub releases determine versions. Workflows stamp the
-  exact tag version, without `v`, into the release ZIP's manifest.
-- Every newly reachable commit on `main` after the configured bootstrap commit
-  receives a numbered beta after its syntax check and tests pass. This includes
-  documentation and tooling changes, plus intermediate commits in multi-commit
-  pushes and merged branches. Keep retained history aligned with the
-  [logical-commit policy](#commits-and-pull-requests).
-- PR release labels determine beta targets: `release:patch`, `release:minor`,
-  or `release:major`. They select version intent, not beta versus stable
-  publication. Unlabelled PRs and direct pushes still default to patch in the
-  publisher; this fallback does not replace explicit labeling of integration
-  changes. The publisher reconstructs labels at the main merge event, ignoring
-  later label edits. Open PRs do not influence versions.
-- Accumulate the highest requested bump since the latest published stable,
-  rather than incrementing the current beta core for each PR. Repeated minor
-  requests continue the same minor cycle. An already-reserved higher beta cycle
-  cannot move backwards, including legacy cycles. Promotion publishes that
-  beta's exact core version; it has no bump selection. Do not add version
-  overrides to `.github/release-config.json`.
-- Apply exactly one explicit release label to PRs that change integration
-  behavior. Leave release labels off operational-only PRs. Classify by behavior
-  and compatibility, not file paths or diff size; mixed PRs follow their highest
-  integration impact.
+- Keep the source manifest at `0.0.0-dev.0`. Release tags determine versions;
+  publishers stamp the ZIP manifest. Do not commit version bumps.
+- Each validated commit entering `main` receives a numbered beta, including
+  documentation/tooling commits. Retained commits must be independently releasable.
+- Integration-changing PRs carry exactly one explicit release label. Operational-only
+  PRs have no release label and use their appropriate type label.
 
-  | PR impact | Release-label guidance |
+  | Impact | Release intent |
   |---|---|
-  | Documentation, instructions, CI, release automation, or developer tooling only | No release label; use an appropriate existing type label |
   | Nonbreaking integration fix | `release:patch` |
-  | Backward-compatible integration feature | Recommend `release:minor`; confirm the feature's release target with the user |
-  | Breaking integration change, even a bug fix | Discuss and confirm `release:major` with the user |
+  | Backward-compatible feature | Recommend `release:minor`; confirm with the user |
+  | Breaking change | Discuss and confirm `release:major` with the user |
 
-- Routine nonbreaking integration fixes receive `release:patch` without a bump
-  question. For new features or breaking behavior, confirm the release target
-  before creating/updating the PR unless the user already chose. Use an explicit
-  label for the agreed target; leaving it unlabelled is not an integration-change
-  release decision.
-- Record the release decision in the PR body, including why an operational-only
-  PR has no release label. Generic type labels such as `documentation`,
-  `enhancement`, and `bug` do not determine release versions. Documentation and
-  tooling commits still receive normal betas; omitting a label does not skip
-  publication. An explicit patch label records reviewed integration intent but
-  does not lower or restart an active minor/major beta cycle.
-- Keep each PR focused on a feature or coherent set of related fixes. Note an
-  explicit target-version decision in the PR description when applicable.
+- Routine nonbreaking fixes need no version question. Confirm feature/breaking
+  targets before creating/updating the PR, and record the decision in its body.
+  Mixed changes follow their highest integration impact; file paths do not determine intent.
+- Labels determine the version target, not beta versus stable publication. The
+  publisher reconstructs intent at merge; open-PR labels and post-merge edits do
+  not affect published intent. Check labels again when scope changes and before merge.
+- Bump requests accumulate from the latest published stable, keeping the highest
+  requested target. Repeated minor requests share a cycle; reserved targets never
+  move backwards. Unlabelled/direct commits default to patch, but that fallback
+  does not replace the explicit-label requirement for integration PRs.
+- Promotion publishes a tested beta's exact core version when requested. Do not
+  introduce version overrides in `.github/release-config.json`.
 
 ## Commits and pull requests
 
-- Organize commits as logical, independently reviewable slices: one feature is
-  one commit; each independent issue/root-cause fix is one commit, including its
-  necessary tests and documentation. Do not split one feature into commits by
-  file, implementation layer, or tests versus code.
-- A PR may contain multiple related fixes, with one commit per independent
-  issue/root cause. Multiple commits following this rule do not require a
-  separate approval. Explain the commit-to-issue mapping in the PR body and
-  identify which issues are fully fixed versus only referenced.
-- Each retained commit must pass its appropriate checks and be independently
-  releasable: the beta publisher validates every commit reaching `main`.
-  Preserve logical slices when merging a multi-change PR.
-- Before committing, inspect status, diff, and `git log --oneline -10`.
-  Stage only intended files; never stage credentials or unrelated work.
-- Write the commit message to a temporary file and use `git commit --file <file>`.
-  Remove the temporary file afterward. Use a quoted Bash heredoc when writing
-  multiline messages so shell variables and backticks remain literal.
-- Before creating a PR, inspect remote tracking, every included commit, and
-  the diff against the base branch. Push the topic branch and target `main`.
-- Write the PR body to a temporary file and use `gh pr create --body-file <file>`;
-  remove the file afterward. Summarize behavior, validation, and version decisions.
-- Use `gh` for GitHub operations. Request review from the applicable owners in
-  `CODEOWNERS`, and return the PR URL.
-- Do not skip hooks or change Git configuration unless explicitly requested.
-  If a commit hook fails, fix the problem and retry the appropriate commit
-  operation under the review-update rules below.
+- One feature or independent root-cause fix is one logical commit, including its
+  tests and documentation. Do not split by file/layer or retain review-only fixups.
+  A PR can contain related independent fixes, one releasable commit each; explain
+  their issue mapping and intended commit count before merge.
+- Before committing, inspect status, the full diff, and `git log --oneline -10`.
+  Stage only intended files and never credentials. Run change-appropriate checks.
+- Write commit messages to a temporary file and use `git commit --file <file>`.
+  Use a quoted Bash heredoc if a shell writes multiline text. Remove the file afterward.
+- Before a PR, inspect remote tracking, every included commit, and the complete
+  base-branch diff. Push the topic branch and target `main`.
+- Use `gh`; write the PR body to a temporary file and use
+  `gh pr create --body-file <file>`, then remove it. Include behavior, validation,
+  release intent, and issue scope. Request applicable `CODEOWNERS` review and return the URL.
+- Do not skip hooks or change Git configuration without permission. Fix a rejected
+  commit's problem and retry the appropriate operation under the rules below.
 
 ### Review updates and history
 
-- Corrections to an existing PR feature/fix, including code, tests, documentation,
-  and review feedback, belong in that feature/fix's existing commit. Amend or
-  consolidate them into the owning logical slice; never retain an additional
-  "fix review finding" or "follow-up tweak" commit for the same change.
-- Create another commit only for a genuinely independent logical change. If the
-  affected commit is not the branch tip, rewrite that slice while preserving the
-  other logical commits. Present the agreed logical commit count before merge;
-  do not defer review-history cleanup to a merge-time squash.
-- For an agent-managed task branch with an open PR, the maintainer's request to
-  update/fix that PR authorizes amending/consolidating its logical commits and
-  updating the pushed branch with `--force-with-lease`. Do not request separate
-  permission for routine review corrections within that authorized task.
-  Rewriting unrelated/shared branches still requires explicit authorization.
-- Record the expected remote tip before rewriting and use an explicit lease for
-  that task branch. If the lease fails, investigate remote changes rather than
-  overwriting them. Never use an unguarded force push or rewrite `main` as part
-  of PR maintenance.
+- Fold corrections into the feature/fix's owning commit. Amend or consolidate its
+  slice, preserving unrelated commits; add a commit only for an independent change.
+- A maintainer request to fix/update an agent-managed open PR authorizes this
+  consolidation and `--force-with-lease` on that task branch. Record the expected
+  remote tip first and use an explicit lease. Investigate a failed lease instead
+  of overwriting remote changes; never use an unguarded force push.
+- Rewriting unrelated/shared branches requires explicit authorization. Never rewrite
+  `main` as PR maintenance. Do not defer logical-history cleanup to merge-time squash.
 
 ## Labels and issue closure
 
-Follow [issue instructions](issues.instructions.md) for creation, triage,
-completion criteria, and beta feedback.
-
-- Query the repository's existing labels; do not invent labels. Apply suitable
-  labels when creating/updating PRs and when triaging/closing issues.
-- The release-label scheme above is part of repository automation. If its
-  labels are missing, create those defined labels when setting up that scheme.
-  Before merging, verify exactly one release label for integration-changing PRs
-  and none for operational-only PRs. Recheck the classification and label when
-  the PR's scope changes; conflicting release labels stop publication.
-- Keep labels on merged PRs. Remove labels when closing an unmerged PR or
-  cleaning up previously closed, unmerged PRs.
+- Query existing labels; do not invent them. Provision the defined release labels
+  if setting up this scheme and they are missing. Keep labels on merged PRs;
+  remove them when closing an unmerged PR.
+- [Issue policy](issues.instructions.md) owns type labels, dispositions, completion,
+  and beta feedback. Security severity follows [security triage](security-triage.instructions.md).
 
 ### Issue references versus closing keywords
 
-- Use `Refs #123`, `Related to #123`, or `Part of #123` for context,
-  investigations, interim work, and partial implementations. State what the PR
-  completes and what remains; leave the broader issue open.
-- Use `Fixes #123`, `Closes #123`, or `Resolves #123` only when merging the PR
-  fulfills the [issue completion policy](issues.instructions.md#completion-and-beta-feedback).
-  Read the issue and its relevant discussion first. If implementation scope is
-  unclear, use a reference and ask; do not infer completion from a related
-  feature or a passing test suite.
-- GitHub closes the whole issue when a closing PR merges into the default branch
-  (`main`). There is no partial-close syntax: `Closes #123 (partially)` still
-  closes #123. A later sentence saying that work remains does not prevent closure.
-- Closing keywords also work in commit messages when the commit reaches `main`.
-  Manually linking an issue through the **Development** sidebar can also close it
-  on merge. Use plain references for partial work rather than these closing links.
-- A partial PR may close a separate, fully completed sub-issue while referencing
-  its parent. Do not silently narrow the parent issue or move its remaining scope
-  to follow-ups just to justify closing it.
-- Before creating/updating a PR and before merging any PR (including contributor
-  PRs), review its body, included commit messages, final merge/squash message, and
-  Development links for unintended closures. Inspect GitHub's parsed PR-body and
-  manual closing links with
-  `gh pr view <number> --json body,closingIssuesReferences`; inspect commit messages
-  separately because commit-based closures need not appear in that list. Confirm
-  each intended closure against the issue's scope and replace partial-work
-  closing keywords/links with references before merging.
-- If a partial PR already closed an issue accidentally, correct the PR body/link,
-  reopen the issue, and comment with the merged PR, completed subset, and remaining
-  scope. Editing a merged PR body alone does not reopen the issue. Preserve its
-  type label; accidental closure is not a `duplicate`, `invalid`, or `wontfix`.
-
-See [GitHub's linking documentation](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
-for supported keywords and auto-closing behavior.
+- Use `Refs #123`, `Related to #123`, or `Part of #123` for partial work or context.
+  State completed and remaining scope; do not narrow an issue silently to justify closure.
+- Use `Fixes`, `Closes`, or `Resolves` only when merge fulfills the
+  [whole issue's completion criteria](issues.instructions.md#completion-and-beta-feedback).
+  Read the issue/discussion first; ask if scope is unclear.
+- Closing keywords in PR bodies or commits, and manual Development links, can close
+  the whole issue on merge to `main`. There is no partial-close syntax. A partial
+  PR can close a fully completed sub-issue while referencing its parent.
+- Before publishing/updating and before merge, inspect the PR body, included commit
+  messages, final merge/squash message, and Development links. Check parsed links
+  with `gh pr view <number> --json body,closingIssuesReferences`; inspect commit
+  messages separately. Remove unintended closing links.
+- For accidental closure, correct the link, reopen, and comment with the fixing PR,
+  completed subset, and remaining work. Preserve the type label; a body edit alone
+  does not reopen an issue.
 
 ## Post-merge local cleanup
 
-- When the agent observes or performs a PR merge, verify its merged state with
-  `gh` and ask whether to remove the task worktree and local topic branch.
-  Offer both explicitly; wait for confirmation before removing either.
-- Follow `.agents/skills/git-worktrees/SKILL.md`: inspect registered worktrees,
-  dirty/untracked files, and remaining unmerged work. Ask how to preserve any
-  work found before proceeding. Keep the primary checkout and `main`.
-- From another checkout, remove the confirmed task checkout with
-  `git worktree remove <path>`, then delete the confirmed local branch with
-  `git branch -d <branch>`. Do not force removal or branch deletion. If Git
-  refuses deletion after a squash/rebase merge, investigate the remaining work
-  and ask before using a force-delete operation.
-- Verify and report the remaining worktree/branch state. Remote branch deletion
-  requires a separate request; local cleanup does not imply it.
+- Verify merge with `gh`, then ask explicitly whether to remove the task worktree
+  and local branch. Remote branch deletion needs separate permission.
+- Follow the [worktree cleanup procedure](../../.agents/skills/git-worktrees/SKILL.md).
+  Inspect dirty/untracked and unmerged work, preserve user changes, and keep the
+  primary checkout/`main`. Use non-forced removal/deletion. If deletion is refused
+  after a squash/rebase merge, investigate and ask before forcing it.
 
 ## Releases
 
-Releases are tags on commits reachable from `main`, not release branches.
-The **Tag beta release** workflow reconciles pending commits on pushes and manual
-dispatch. It creates `vX.Y.Z-beta.N` tags, prereleases, and
-`mijnted.zip` assets. Do not publish unmerged topic-branch commits.
-
-For stable publication, run **Promote release** from `main`. Supply an
-existing beta tag or leave it empty to select the published beta at the current
-`main` tip. If that beta is not available yet, wait for or rerun the beta workflow.
-Promotion removes the beta suffix to produce `vX.Y.Z`, tags the selected beta's
-exact commit, and changes only the manifest version in its package. It does not
-rebuild application code. The source commit must be newer than and descend from the
-latest stable commit, and its core version must exceed the latest stable.
-Completed promotions are no-ops on retry; unfinished ones
-must retain their original beta core version.
-Stable release notes are generated between the previous published stable tag
-and the promoted commit, with a stable-to-stable changelog link. Keep beta
-provenance in the Actions log rather than the public notes.
-The next beta defaults to `vX.Y.(Z+1)-beta.1`, continuing the counter if tags
-already exist for that cycle. New merged PR labels may raise that target;
-an already-active higher cycle remains active.
-
-Both publishers share a concurrency lock, recover unfinished draft releases,
-and use a short-lived GitHub App installation token with Contents and Workflows
-write access, scoped to this repository. Both Git checkout/tag pushes and `gh`
-release operations must use that token. `GITHUB_TOKEN` cannot obtain Workflows
-write access needed for historical workflow-changing commits. Configure
-`RELEASE_APP_CLIENT_ID` as a repository variable and `RELEASE_APP_PRIVATE_KEY` as a
-repository secret. The beta workflow uses a separate read-only `GITHUB_TOKEN`
-with Issues and Pull requests read permissions for merge-time label history.
-No additional release App permissions, branch bypass, or manifest push is needed.
-See [release operations](../../docs/RELEASING.md) for setup, operation, and recovery
-details, and [development instructions](development.instructions.md) for checks.
+Release only commits reachable from `main` using the existing workflows. Follow
+[release operations](../../docs/RELEASING.md) for automatic betas, tested-beta
+promotion, GitHub App permissions, validation isolation, and retry recovery.
