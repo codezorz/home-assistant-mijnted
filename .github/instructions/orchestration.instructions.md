@@ -18,6 +18,13 @@ description: Coordinator ownership, platform setup, monthly cache persistence, a
   and feeds `coordinator.data["daily_usage"]`. It uses received latest statuses,
   not historical scans. Only consecutive compatible dates produce consumption;
   preserve gaps and January's annual reset. Its store survives monthly resets.
+- **Device naming**: `naming.py` restores and reserves duplicate-name ordinals in
+  `mijnted_device_names_<entry_id>`, separately from monthly/daily storage. Prepare
+  the `device_names` projection before coordinator listeners run. Group by raw
+  context and label family/kind, never translated text or response order. Retain
+  reservations and last known contexts through partial failures; do not reclaim
+  slots or clear them during monthly resets. Failed loads defer allocation and
+  failed writes retry on subsequent refreshes without blocking readings.
 - **Reading-month projection**: the coordinator builds `reading_report` from the
   latest complete persisted checkpoint and the matching month's baseline using
   `utils/readings.py`. Partial new-date responses must not advance its date or

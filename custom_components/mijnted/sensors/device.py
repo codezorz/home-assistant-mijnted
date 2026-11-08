@@ -67,7 +67,9 @@ class MijnTedDeviceSensor(MijnTedSensor):
     def _refresh_name_placeholders(self) -> None:
         """Prepare translated room context while keeping identity number-based."""
         room = (self._device_data or {}).get("room")
-        context = self.coordinator.mijnted_translations.room_label(room) if room else str(self.device_number)
+        naming = (self.coordinator.data or {}).get("device_names", {}).get(self.sensor_type, {})
+        room = naming.get("room", room)
+        context = self.coordinator.mijnted_translations.device_context(room, str(self.device_number), naming.get("number"))
         self._attr_translation_placeholders = {"context": context}
         self.__dict__.pop("name", None)
 

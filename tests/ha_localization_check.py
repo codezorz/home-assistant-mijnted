@@ -4,6 +4,7 @@ Run with the Home Assistant 2026.11.0 environment documented in DEVELOPMENT.md:
     python tests/ha_localization_check.py
 """
 
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import partial
 import json
@@ -36,6 +37,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.setup import async_setup_component
 
 from custom_components.mijnted import localization
+from custom_components.mijnted.naming import DeviceNameTracker
 from custom_components.mijnted.localization import (
     async_load_translations,
     async_refresh_statistic_names,
@@ -156,6 +158,103 @@ class NativeLocalizationChecks(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(button.name, reset)
             await button_platform.async_reset()
             await platform.async_reset()
+
+    async def test_stable_duplicate_names_registry_and_cold_storage_restore(self):
+        """Numbered defaults -> retained IDs/overrides, native translations, and durable cold restart."""
+        registry = er.async_get(self.hass)
+        first = registry.async_get_or_create(
+            "sensor", "mijnted", "mijnted_entry_device_2", config_entry=self.entry,
+            suggested_object_id="legacy_living_room", original_name="Device living room",
+        )
+        second = registry.async_get_or_create(
+            "sensor", "mijnted", "mijnted_entry_device_10", config_entry=self.entry,
+            suggested_object_id="legacy_living_room_2", original_name="Device living room",
+        )
+        registry.async_update_entity(second.entity_id, name="Radiator by TV")
+
+        def row(number, room, unit="Units"):
+            """Build deterministic primary/water reading fixtures."""
+            return {"deviceNumber": str(number), "room": room, "currentReadingValue": 12, "unitOfMeasure": unit}
+
+        base_data = {
+            "delivery_types": [1], "filter_status": [row(10, "W"), row(9, "KA"), row(2, "W")],
+            "extra_delivery_data": {
+                "7": {"active_model": "WWZF-AP", "unit_of_measures": [{"value": "m³"}],
+                      "filter_status": [row(21, "KA", "m³"), row(20, "KA", "m³")]},
+                "3": {"active_model": "KWZF-AP", "unit_of_measures": [{"value": "m³"}],
+                      "filter_status": [row(30, "KA", "m³")]},
+            },
+        }
+        new_water_id = None
+        for language, device, bedroom, warm, cold in [
+            ("en", "Device living room", "Device bedroom", "Warm water meter bedroom", "Cold water meter bedroom"),
+            ("nl", "Apparaat woonkamer", "Apparaat slaapkamer", "Warmwatermeter slaapkamer", "Koudwatermeter slaapkamer"),
+            ("de", "Gerät Wohnzimmer", "Gerät Schlafzimmer", "Warmwasserzähler Schlafzimmer", "Kaltwasserzähler Schlafzimmer"),
+        ]:
+            self.hass.config.language = language
+            tracker = DeviceNameTracker(self.hass, self.entry.entry_id)
+            coordinator = DataUpdateCoordinator(
+                self.hass, LOGGER, name="mijnted", update_interval=None, config_entry=self.entry,
+            )
+            coordinator.mijnted_translations = await async_load_translations(self.hass)
+            data = deepcopy(base_data)
+            if language != "en":
+                data["filter_status"].reverse()
+                data["extra_delivery_data"]["7"]["filter_status"].reverse()
+            data["device_names"] = await tracker.async_update(data)
+            coordinator.async_set_updated_data(data)
+            sensors = [
+                MijnTedDeviceSensor(coordinator, "2", "entry"),
+                MijnTedDeviceSensor(coordinator, "10", "entry"),
+                MijnTedDeviceSensor(coordinator, "9", "entry"),
+                MijnTedWaterMeterSensor(coordinator, "7", "20", "entry"),
+                MijnTedWaterMeterSensor(coordinator, "7", "21", "entry"),
+                MijnTedWaterMeterSensor(coordinator, "3", "30", "entry"),
+            ]
+            platform = await self.platform()
+            await platform.async_add_entities(sensors)
+            await self.hass.async_block_till_done()
+            self.assertEqual(sensors[0].name, device + " 1")
+            self.assertEqual(sensors[1].name, device + " 2")
+            self.assertEqual(sensors[2].name, bedroom)
+            self.assertEqual(sensors[3].name, warm + " 1")
+            self.assertEqual(sensors[4].name, warm + " 2")
+            self.assertEqual(sensors[5].name, cold)
+            self.assertEqual(sensors[0].entity_id, first.entity_id)
+            self.assertEqual(sensors[1].entity_id, second.entity_id)
+            self.assertEqual(registry.async_get(second.entity_id).name, "Radiator by TV")
+            self.assertEqual(self.hass.states.get(second.entity_id).name, "MijnTed Radiator by TV")
+            self.assertEqual(self.hass.states.get(first.entity_id).name, "MijnTed " + device + " 1")
+            self.assertEqual(sensors[0].extra_state_attributes["room"], "W")
+
+            partial = {"filter_status": [row(10, "W")]}
+            partial["device_names"] = await tracker.async_update(partial)
+            coordinator.async_set_updated_data(partial)
+            await self.hass.async_block_till_done()
+            self.assertEqual(sensors[0].name, device + " 1")
+            self.assertEqual(sensors[3].name, warm + " 1")
+            self.assertEqual(self.hass.states.get(first.entity_id).name, "MijnTed " + device + " 1")
+
+            expanded = deepcopy(base_data)
+            expanded["extra_delivery_data"]["7"]["filter_status"].append(row(18, "KA", "m³"))
+            expanded["device_names"] = await tracker.async_update(expanded)
+            coordinator.async_set_updated_data(expanded)
+            added = MijnTedWaterMeterSensor(coordinator, "7", "18", "entry")
+            await platform.async_add_entities([added])
+            await self.hass.async_block_till_done()
+            self.assertEqual(added.name, warm + " 3")
+            if new_water_id is None:
+                new_water_id = added.entity_id
+            self.assertEqual(added.entity_id, new_water_id)
+            self.assertEqual(sensors[3].name, warm + " 1")
+            await platform.async_reset()
+
+        expected = await tracker.async_update({})
+        self.platforms.clear()
+        await self.hass.async_stop(force=True)
+        self.hass = HomeAssistant(self.directory.name)
+        restored = DeviceNameTracker(self.hass, "entry")
+        self.assertEqual(await restored.async_update({"filter_status": [row(10, "W")]}), expected)
 
     async def test_diagnostic_unit_state_translation_and_passthrough(self):
         """Known text -> native translated enum; unknown symbols/text remain valid raw states."""

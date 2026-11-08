@@ -30,6 +30,9 @@ description: Authoritative UI localization coverage, native HA fallback, dynamic
   Preserve unknown codes and arbitrary names verbatim. Missing rooms use the
   device number. Prepare dynamic placeholders outside properties, refreshing
   HA's cached name on coordinator updates without changing identity.
+  Duplicate-name ordinals come from `naming.py`; format them through the shared
+  `common.numbered_context` template. Keep raw room names/codes and entity
+  translation keys unchanged; never base numbering on localized labels.
 - Entity defaults follow HA's platform setup/registry lifecycle, including for
   existing entries. Reload/restart after a server-language change refreshes
   defaults; never replace registry user-name overrides or regenerate entity IDs.

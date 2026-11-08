@@ -48,6 +48,7 @@
     }
   },
   "common": {
+    "numbered_context": "{context} {number}",
     "room_bedroom": "Schlafzimmer",
     "room_living_room": "Wohnzimmer",
     "water_meter_warm": "Warmwasserzähler",

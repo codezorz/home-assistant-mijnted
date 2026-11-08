@@ -50,6 +50,7 @@
     }
   },
   "common": {
+    "numbered_context": "{context} {number}",
     "room_bedroom": "bedroom",
     "room_living_room": "living room",
     "water_meter_warm": "Warm water meter",

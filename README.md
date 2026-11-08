@@ -72,6 +72,8 @@ Assistant's interface language; default entity names and reporting-statistic nam
 use the server language, with English fallback. After changing the server language,
 reload MijnTed or restart Home Assistant. Existing entity IDs, history, and your
 custom names are preserved. See [language and display names](docs/SENSORS.md#language-and-display-names).
+Duplicate device and water-meter default names get [stable numbered suffixes](docs/SENSORS.md#duplicate-device-names),
+while singleton names stay unsuffixed.
 
 ### Obtaining Your Client ID
 

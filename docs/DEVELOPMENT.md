@@ -134,6 +134,9 @@ statistic renaming against temporary SQLite storage. It also checks diagnostic
 unit enum translations, passthrough of unknown text/symbols, and retry after a
 recorder metadata read failure. No MijnTed cloud access is
 performed. Validate code runs these checks in a separate locked environment in CI.
+Duplicate-name checks also exercise primary/water labels in all three languages,
+unchanged registry IDs and custom names, partial responses, and restoration from
+HA Store after a cold Home Assistant instance restart.
 They do not verify browser rendering or a production HA installation.
 
 ### Installed integration smoke test
