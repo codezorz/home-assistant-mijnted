@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .const import CONF_NAME, DEFAULT_NAME, DOMAIN
+from .localization import async_load_translations, async_setup_statistic_names
 from .sensors import (
     MijnTedMonthlyUsageSensor,
     MijnTedPublishedUsageSensor,
@@ -97,6 +98,8 @@ async def async_setup_entry(
         async_add_entities: Callback to add entities
     """
     coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator.mijnted_translations = await async_load_translations(hass)
+    await async_setup_statistic_names(hass, entry, coordinator)
     config_name = entry.data.get(CONF_NAME, DEFAULT_NAME)
     
     sensors: List[SensorEntity] = [

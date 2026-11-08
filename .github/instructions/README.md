@@ -19,6 +19,7 @@ policies for contributors and coding agents. Start with
 
 - [Development setup and checks](development.instructions.md)
 - [Testing](testing.instructions.md) and [CI](ci.instructions.md)
+- [UI translations and naming](translations.instructions.md)
 - [Git/GitHub policy](git-workflow.instructions.md) and [release operations](../../docs/RELEASING.md)
 - [Issue creation and lifecycle](issues.instructions.md)
 - [Security triage, independent of scanner](security-triage.instructions.md)

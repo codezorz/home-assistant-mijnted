@@ -61,6 +61,12 @@ Set concrete values for constants/classes read at import time. Add a real
 stand-in class if a mock would be used as a base class. These stand-ins test
 Python logic, not compatibility with a real HA API.
 
+`tests/ha_localization_check.py` is run directly in the separately locked native
+HA environment, avoiding this conftest. It verifies HA translation fallback,
+platform/registry naming and user overrides, and SQLite metadata-only statistic
+renaming. Follow the [native-check setup](../../docs/DEVELOPMENT.md#native-home-assistant-localization-checks)
+instead of importing or extending these stand-ins for native assertions.
+
 ## Mock boundaries
 
 | Layer | Approach |

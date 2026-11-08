@@ -5,7 +5,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .base import MijnTedSensor
 from ..const import DEFAULT_NAME, UNIT_WATER
-from ..utils import DataUtil, TranslationUtil
+from ..utils import DataUtil
 
 WATER_KIND_WARM = "warm"
 WATER_KIND_COLD = "cold"
@@ -91,11 +91,6 @@ def get_water_deliveries(data: Optional[Dict[str, Any]]) -> Dict[str, List[str]]
     return water
 
 
-def _water_label(kind: Optional[str]) -> str:
-    """Return the display label for a water kind ("Warm water", "Cold water", "Water")."""
-    return f"{kind.capitalize()} water" if kind else "Water"
-
-
 class MijnTedWaterMeterSensor(MijnTedSensor):
     """Meter-reading sensor for one water device, usable in the Energy dashboard.
 
@@ -119,7 +114,7 @@ class MijnTedWaterMeterSensor(MijnTedSensor):
         super().__init__(
             coordinator,
             f"water_{delivery_type}_device_{device_number}",
-            f"water meter {device_number}",
+            "water_meter",
             entry_id,
             config_name=config_name,
         )
@@ -129,6 +124,7 @@ class MijnTedWaterMeterSensor(MijnTedSensor):
         self._attr_device_class = SensorDeviceClass.WATER
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UNIT_WATER
+        self._refresh_name_placeholders()
 
     @property
     def _delivery(self) -> Dict[str, Any]:
@@ -143,18 +139,22 @@ class MijnTedWaterMeterSensor(MijnTedSensor):
                 return device
         return None
 
-    @property
-    def name(self) -> str:
-        """Return e.g. "Warm water meter Hallway", falling back to "Water meter <deviceNumber>"."""
+    def _refresh_name_placeholders(self) -> None:
+        """Prepare a complete translated meter label and verbatim/translated context."""
         kind = get_water_kind(self.delivery_type, self._delivery.get("active_model"))
         device_data = self._device_data
         room = device_data.get("room") if device_data else None
-        if room:
-            hass = getattr(self.coordinator, "hass", None)
-            suffix = TranslationUtil.translate_room_code(room, hass)
-        else:
-            suffix = self.device_number
-        return f"{_water_label(kind)} meter {suffix}"
+        translations = self.coordinator.mijnted_translations
+        self._attr_translation_placeholders = {
+            "meter": translations.common_label(f"water_meter_{kind or 'generic'}"),
+            "context": translations.room_label(room) if room else self.device_number,
+        }
+        self.__dict__.pop("name", None)
+
+    def _handle_coordinator_update(self) -> None:
+        """Refresh room and recovered water-kind context before writing state."""
+        self._refresh_name_placeholders()
+        super()._handle_coordinator_update()
 
     @property
     def native_value(self) -> Optional[float]:

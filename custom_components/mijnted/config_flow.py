@@ -34,6 +34,15 @@ from .exceptions import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _polling_placeholders() -> Dict[str, str]:
+    """Keep translated interval guidance aligned with the validated settings."""
+    return {
+        "default": str(int(DEFAULT_POLLING_INTERVAL.total_seconds())),
+        "minimum": str(MIN_POLLING_INTERVAL),
+        "maximum": str(MAX_POLLING_INTERVAL),
+    }
+
+
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
     pass
@@ -151,6 +160,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=self._get_data_schema(),
             errors=errors,
+            description_placeholders=_polling_placeholders(),
         )
 
     async def async_step_reauth(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
@@ -208,6 +218,7 @@ class MijnTedConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 dict(existing_entry.data) if existing_entry else None
             ),
             errors=errors,
+            description_placeholders=_polling_placeholders(),
         )
 
     async def _validate_input(self, user_input: Dict[str, Any]) -> None:
@@ -305,6 +316,7 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
+            description_placeholders=_polling_placeholders(),
             data_schema=vol.Schema(
                 {
                     vol.Optional(

@@ -13,6 +13,7 @@ custom_components/mijnted/
 ├── config_flow.py       # Config flow UI and validation
 ├── const.py             # Domain, URLs, timeouts, platforms, all constants
 ├── exceptions.py        # MijntedApiError, MijntedAuthenticationError, etc.
+├── localization.py      # HA-loaded labels, room mapping, statistic-name synchronization
 ├── reconciliation.py    # Revisable published-month boundaries and retry state
 ├── daily.py             # Persisted forward-only dated reading checkpoints
 ├── manifest.json        # Metadata, version, requirements
@@ -30,9 +31,9 @@ custom_components/mijnted/
 │   └── button.py        # Reset statistics button
 ├── utils/               # Helpers, including OAuthUtil's synchronous credential flow
 └── translations/
-    ├── en.json          # Config-flow strings and supported entity labels
-    ├── nl.json          # Published usage entity label
-    └── de.json          # Published usage entity label
+    ├── en.json          # Complete English UI fallback
+    ├── nl.json          # Complete Dutch UI labels
+    └── de.json          # Complete German UI labels
 ```
 
 **Where to change what:**
@@ -46,6 +47,7 @@ custom_components/mijnted/
 | Forward daily observations | `daily.py`, `sensors/daily.py`; shared validation in `utils/readings.py` |
 | New constant | `const.py` |
 | Config flow | `config_flow.py`, `translations/en.json` |
+| UI localization | `localization.py`, `translations/*.json`; follow `translations.instructions.md` |
 | Version | `manifest.json` |
 
 Repository-level instructions and tooling are mapped in `AGENTS.md`; document

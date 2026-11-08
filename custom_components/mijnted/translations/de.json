@@ -1,9 +1,165 @@
 {
-  "entity": {
-    "sensor": {
-      "published_usage": {
-        "name": "Veröffentlichter Verbrauch"
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit MijnTed verbinden",
+        "description": "Gib deine MijnTed-Zugangsdaten ein. Standardmäßig werden Daten alle {default} Sekunden abgerufen. Das Abrufintervall kann zwischen {minimum} und {maximum} Sekunden liegen.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "client_id": "Client-ID",
+          "name": "Gerätename",
+          "polling_interval": "Abrufintervall (Sekunden)"
+        },
+        "data_description": {
+          "name": "Dein eigener Name für diese Installation, zum Beispiel Zuhause oder Büro.",
+          "client_id": "Die von deinem MijnTed-Konto verwendete Client-ID."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut bei MijnTed anmelden",
+        "description": "Gib deine MijnTed-Zugangsdaten erneut ein, um den Zugriff wiederherzustellen. Vorhandene Einstellungen sind ausgefüllt, außer dem Passwort. Das Abrufintervall muss zwischen {minimum} und {maximum} Sekunden liegen.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "client_id": "Client-ID",
+          "name": "Gerätename",
+          "polling_interval": "Abrufintervall (Sekunden)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zu MijnTed fehlgeschlagen. Bitte versuche es erneut.",
+      "invalid_auth": "Anmeldung fehlgeschlagen. Überprüfe Benutzername, Passwort und Client-ID.",
+      "unknown": "Ein unerwarteter Fehler ist aufgetreten. Bitte versuche es erneut."
+    },
+    "abort": {"reauth_successful": "Die erneute Anmeldung war erfolgreich."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MijnTed-Einstellungen",
+        "description": "Ändere den Gerätenamen oder das Abrufintervall. Das Abrufintervall muss zwischen {minimum} und {maximum} Sekunden liegen.",
+        "data": {
+          "name": "Gerätename",
+          "polling_interval": "Abrufintervall (Sekunden)"
+        }
       }
     }
+  },
+  "common": {
+    "room_bedroom": "Schlafzimmer",
+    "room_living_room": "Wohnzimmer",
+    "water_meter_warm": "Warmwasserzähler",
+    "water_meter_cold": "Kaltwasserzähler",
+    "water_meter_generic": "Wasserzähler",
+    "reported_daily_usage": "Gemeldeter Tagesverbrauch"
+  },
+  "entity": {
+    "sensor": {
+      "monthly_usage": {
+        "name": "Monatsverbrauch",
+        "state_attributes": {
+          "month_id": {"name": "Monat"},
+          "start_date": {"name": "Anfangsdatum"},
+          "end_date": {"name": "Enddatum"},
+          "days": {"name": "Tage"},
+          "monthly_statistic_id": {"name": "Monatsstatistik-ID"}
+        }
+      },
+      "published_usage": {
+        "name": "Veröffentlichter Verbrauch",
+        "state_attributes": {
+          "month_id": {"name": "Monat"},
+          "reading_date": {"name": "Ablesedatum"},
+          "start_date": {"name": "Anfangsdatum"},
+          "end_date": {"name": "Enddatum"},
+          "value_source": {"name": "Wertquelle", "state": {"published": "Veröffentlichter Gesamtverbrauch", "reported": "Zählerstände"}},
+          "start_locked": {"name": "Anfangsstände gesperrt"},
+          "boundary_reconciled": {"name": "Monatsgrenze abgeglichen"},
+          "reported_daily_usage": {"name": "Gemeldeter Tagesverbrauch"},
+          "reported_daily_date": {"name": "Tagesablesedatum"},
+          "monthly_statistic_id": {"name": "Monatsstatistik-ID"},
+          "average_monthly_statistic_id": {"name": "Statistik-ID des Monatsdurchschnitts"},
+          "last_year_monthly_statistic_id": {"name": "Monatsstatistik-ID des Vorjahres"},
+          "last_year_average_monthly_statistic_id": {"name": "Statistik-ID des Monatsdurchschnitts im Vorjahr"},
+          "daily_statistic_id": {"name": "Tagesstatistik-ID"}
+        }
+      },
+      "average_monthly_usage": {
+        "name": "Durchschnittlicher Monatsverbrauch",
+        "state_attributes": {
+          "month_id": {"name": "Monat"},
+          "monthly_statistic_id": {"name": "Monatsstatistik-ID"}
+        }
+      },
+      "last_year_monthly_usage": {
+        "name": "Monatsverbrauch im Vorjahr",
+        "state_attributes": {
+          "month_id": {"name": "Monat"},
+          "last_year_month_id": {"name": "Monat im Vorjahr"},
+          "monthly_statistic_id": {"name": "Monatsstatistik-ID"}
+        }
+      },
+      "last_year_average_monthly_usage": {
+        "name": "Durchschnittlicher Monatsverbrauch im Vorjahr",
+        "state_attributes": {
+          "month_id": {"name": "Monat"},
+          "last_year_month_id": {"name": "Monat im Vorjahr"},
+          "monthly_statistic_id": {"name": "Monatsstatistik-ID"}
+        }
+      },
+      "total_usage": {
+        "name": "Gesamtverbrauch",
+        "state_attributes": {
+          "current": {"name": "Aktueller Monat"},
+          "history": {"name": "Monatsverlauf"}
+        }
+      },
+      "last_update": {"name": "Letzte Aktualisierung"},
+      "active_model": {"name": "Aktives Modell"},
+      "delivery_types": {"name": "Versorgungsart"},
+      "residential_unit_detail": {"name": "Wohneinheit"},
+      "unit_of_measures": {
+        "name": "Maßeinheiten",
+        "state": {"units": "Einheiten"},
+        "state_attributes": {"unit_of_measures": {"name": "Maßeinheiten"}}
+      },
+      "last_successful_sync": {"name": "Letzte erfolgreiche Synchronisierung"},
+      "latest_available_insight": {
+        "name": "Letzte verfügbare Verbrauchsauswertung",
+        "state_attributes": {
+          "month_id": {"name": "Monat"},
+          "has_average": {"name": "Durchschnitt verfügbar"},
+          "usage_unit": {"name": "Verbrauchseinheit"},
+          "statistics": {"name": "Statistikerfassung"}
+        }
+      },
+      "device": {
+        "name": "Gerät {context}",
+        "state_attributes": {
+          "room": {"name": "Raum"},
+          "device_id": {"name": "Geräte-ID"},
+          "measurement_device_id": {"name": "Messgeräte-ID"}
+        }
+      },
+      "water_meter": {
+        "name": "{meter} {context}",
+        "state_attributes": {
+          "room": {"name": "Raum"},
+          "device_id": {"name": "Geräte-ID"},
+          "measurement_device_id": {"name": "Messgeräte-ID"},
+          "delivery_type": {"name": "Versorgungsart"}
+        }
+      }
+    },
+    "button": {"reset_statistics": {"name": "Statistiken neu aufbauen"}}
+  },
+  "exceptions": {
+    "cannot_connect": {"message": "Verbindung zu MijnTed fehlgeschlagen. Überprüfe deine Verbindung und versuche es erneut."},
+    "invalid_auth": {"message": "Anmeldung bei MijnTed fehlgeschlagen. Überprüfe deine Zugangsdaten."},
+    "grant_expired": {"message": "Der Zugriff auf MijnTed ist abgelaufen. Melde dich über die Konfiguration erneut an."},
+    "api_error": {"message": "MijnTed konnte die angeforderten Daten nicht liefern. Bitte versuche es später erneut."},
+    "unknown": {"message": "Beim Aktualisieren von MijnTed ist ein unerwarteter Fehler aufgetreten."}
   }
 }

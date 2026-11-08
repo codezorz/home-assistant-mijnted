@@ -106,6 +106,12 @@ Published usage exports four external monthly series and a daily series through
 and card configuration. Standalone average/comparison entities provide ordinary
 entity-card selections; external graph imports operate independently of them.
 
+Series labels follow the installation-language policy in
+[language and display names](SENSORS.md#language-and-display-names). The canonical
+series key determines the label, so the consolidated report and standalone views
+cannot overwrite one series with different names. Reloading also updates existing
+name metadata without needing a new reading or changing stored data.
+
 - Monthly series contain one arithmetic-mean sample carrying an aggregate per
   HA-local consumption month. Last-year comparison periods are shifted forward
   one year; future target months are excluded.

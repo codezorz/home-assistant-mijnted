@@ -29,6 +29,7 @@ class MijnTedResetStatisticsButton(CoordinatorEntity, ButtonEntity):
     """
 
     _attr_has_entity_name = True
+    _attr_translation_key = "reset_statistics"
     
     def __init__(
         self,
@@ -49,7 +50,6 @@ class MijnTedResetStatisticsButton(CoordinatorEntity, ButtonEntity):
         self._attr_unique_id = MijnTedSensor._build_unique_id(
             entry_id, "reset_statistics"
         )
-        self._attr_name = "Reset statistics"
         self._attr_icon = "mdi:refresh"
         self._attr_entity_category = EntityCategory.CONFIG
         self._config_name = config_name

@@ -2,7 +2,6 @@ from typing import Any, Dict, Optional
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
 from ..const import DEFAULT_NAME, DOMAIN, UNIT_MIJNTED
-from ..utils import TranslationUtil
 
 
 class MijnTedDeviceSensor(MijnTedSensor):
@@ -33,13 +32,14 @@ class MijnTedDeviceSensor(MijnTedSensor):
         super().__init__(
             coordinator,
             f"device_{device_number}",
-            f"device {device_number}",
+            "device",
             entry_id,
             config_name=config_name,
         )
         self.device_number = device_number
         self._attr_icon = "mdi:radiator"
         self._attr_suggested_display_precision = 0
+        self._refresh_name_placeholders()
 
     @property
     def _device_data(self) -> Optional[Dict[str, Any]]:
@@ -64,20 +64,17 @@ class MijnTedDeviceSensor(MijnTedSensor):
         """
         return self._build_unique_id(self._entry_id, f"device_{self.device_number}")
 
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor.
-        
-        Returns:
-            Sensor name with room name if available, otherwise device number
-        """
-        device_data = self._device_data
-        if device_data and device_data.get("room"):
-            room_code = device_data['room']
-            hass = getattr(self.coordinator, 'hass', None)
-            room_name = TranslationUtil.translate_room_code(room_code, hass)
-            return f"Device {room_name}"
-        return f"Device {self.device_number}"
+    def _refresh_name_placeholders(self) -> None:
+        """Prepare translated room context while keeping identity number-based."""
+        room = (self._device_data or {}).get("room")
+        context = self.coordinator.mijnted_translations.room_label(room) if room else str(self.device_number)
+        self._attr_translation_placeholders = {"context": context}
+        self.__dict__.pop("name", None)
+
+    def _handle_coordinator_update(self) -> None:
+        """Refresh dynamic name placeholders before HA writes the new state."""
+        self._refresh_name_placeholders()
+        super()._handle_coordinator_update()
 
     @property
     def state(self) -> Any:

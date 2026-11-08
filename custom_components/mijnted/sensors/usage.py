@@ -11,7 +11,7 @@ from .base import MijnTedSensor
 from .daily import async_import_daily_statistics, daily_statistic_id, reported_daily_values
 from ..utils import DataUtil, DateUtil
 from ..utils.readings import finite_usage
-from ..const import DEFAULT_NAME, UNIT_MIJNTED, DEFAULT_START_VALUE, MONTHLY_USAGE_NAME, MONTHLY_STATISTIC_NAMES, PUBLISHED_USAGE_NAME
+from ..const import DEFAULT_NAME, UNIT_MIJNTED, DEFAULT_START_VALUE
 
 
 class MijnTedMonthlyUsageSensor(MijnTedSensor):
@@ -31,7 +31,7 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "monthly_usage", MONTHLY_USAGE_NAME, entry_id, config_name=config_name)
+        super().__init__(coordinator, "monthly_usage", "monthly_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
         self._last_known_month: Optional[str] = None
@@ -174,7 +174,7 @@ class MijnTedPublishedUsageSensor(MijnTedSensor):
     def __init__(self, coordinator: DataUpdateCoordinator[Dict[str, Any]], entry_id: str,
                  config_name: str = DEFAULT_NAME) -> None:
         """Create the retrospective entity without automatic statistics collection."""
-        super().__init__(coordinator, "published_usage", PUBLISHED_USAGE_NAME, entry_id, config_name=config_name)
+        super().__init__(coordinator, "published_usage", "published_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:calendar-check"
         self._attr_suggested_display_precision = 0
 
@@ -238,7 +238,7 @@ class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_year_monthly_usage", MONTHLY_STATISTIC_NAMES["last_year_monthly_usage"], entry_id, config_name=config_name)
+        super().__init__(coordinator, "last_year_monthly_usage", "last_year_monthly_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_suggested_display_precision = 0
 
@@ -302,7 +302,7 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "average_monthly_usage", MONTHLY_STATISTIC_NAMES["average_monthly_usage"], entry_id, config_name=config_name)
+        super().__init__(coordinator, "average_monthly_usage", "average_monthly_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-line"
         self._attr_suggested_display_precision = 0
 
@@ -376,7 +376,7 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "last_year_average_monthly_usage", MONTHLY_STATISTIC_NAMES["last_year_average_monthly_usage"], entry_id, config_name=config_name)
+        super().__init__(coordinator, "last_year_average_monthly_usage", "last_year_average_monthly_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-line-variant"
         self._attr_suggested_display_precision = 0
 
@@ -438,7 +438,7 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
             entry_id: Config entry ID used to scope entity identity
             config_name: User-configured device name
         """
-        super().__init__(coordinator, "total_usage", "total usage", entry_id, config_name=config_name)
+        super().__init__(coordinator, "total_usage", "total_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_suggested_display_precision = 0

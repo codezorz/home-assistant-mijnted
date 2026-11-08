@@ -11,7 +11,7 @@ description: Python imports, typing, async I/O, logging, constants, translations
 - **Logging**: `_LOGGER = logging.getLogger(__name__)`. Use `debug` for verbose, `warning` for recoverable issues, `exception` only when logging an exception.
 - **Constants**: Use `const.py` for shared URLs, timeouts, domain, status codes, and configuration defaults. Keep endpoint paths in the API/auth layers; do not spread HTTP details through coordinators or entities.
 - **Imports**: Relative inside the integration (`from .const import DOMAIN`, `from ..utils import DateUtil`). Use `homeassistant` imports for HA APIs. Group and order: standard library, then third-party, then `homeassistant`, then relative (`.const`, `.utils`, etc.).
-- **Config flow strings**: User-visible text must use keys from `translations/en.json`; reference the key in code.
+- **UI strings**: Follow [translation instructions](translations.instructions.md) for all user-visible text, entity names, and external-statistic labels.
 - **Entity compatibility**: Preserve existing `unique_id` values, device identifiers, and registry identity. Naming/identity changes need an explicit migration or compatibility plan and release documentation; a release note alone does not migrate existing entities.
 
 When in doubt, match the style of the existing file you are editing.
