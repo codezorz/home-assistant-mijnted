@@ -6,14 +6,20 @@ policy. This guide covers current jobs, branch settings, and troubleshooting.
 ## Validate code
 
 **Validate code** runs on every PR to `main` and manual dispatch, without path
-filters. It checks syntax and the full pytest suite on the latest stable Python 3
+filters. It checks syntax and the fast pytest suite on the latest stable Python 3
 (`3.x`, `check-latest: true`), then runs native HA localization checks in a separate
 locked Linux environment. [Development setup](DEVELOPMENT.md) owns local commands.
 
-The test runner has read-only access and disables checkout credential persistence.
+**HA-native reporting** runs alongside it on Linux using the isolated
+[reporting profile](DEVELOPMENT.md#ha-native-reporting-tests) and its supported
+Python version. Its locked environment exercises real HA reporting/lifecycle
+components with synthetic API responses and temporary storage/recorder data.
+
+Test runners have read-only access and disable checkout credential persistence.
 JUnit results are uploaded even after test failures. A fresh runner publishes
-**Pytest Results** from the artifact without checking out PR code. Fork PRs retain
-their test result/artifact; the write-permission reporting job does not run there.
+**Pytest Results** and **HA Native Results** from their artifacts without checking
+out PR code. Fork PRs retain their test results/artifacts; the write-permission
+reporting job does not run there.
 
 ## CodeQL scanning and fork approvals
 
@@ -22,8 +28,8 @@ on PRs to `main`, pushes to `main`, a weekly schedule, and manual dispatch. It u
 the normal PR merge checkout, the built-in token, and no repository secrets.
 
 Keep advanced setup enabled through this workflow and GitHub default setup disabled.
-In the `main` ruleset, require **Validate code** and the **CodeQL** code-scanning
-check. The matrix jobs **Analyze (actions)** and **Analyze (python)** upload their
+In the `main` ruleset, require **Validate code**, **HA-native reporting**, and the
+**CodeQL** code-scanning check. The matrix jobs **Analyze (actions)** and **Analyze (python)** upload their
 language categories; both analyses and the separate CodeQL result must complete.
 
 First-time-contributor runs can require approval. Approve the relevant run and

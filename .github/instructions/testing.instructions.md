@@ -1,5 +1,5 @@
 ---
-applyTo: "tests/**,.github/scripts/*.test.py,pytest.ini,pyproject.toml,uv.lock,requirements_test.txt,.github/dependabot.yml,.github/workflows/validate-code.yml,.github/workflows/codeql.yml"
+applyTo: "tests/**,tests_native/**,.github/scripts/*.test.py,pytest.ini,pyproject.toml,uv.lock,requirements_test.txt,requirements_native.txt,.github/dependabot.yml,.github/workflows/validate-code.yml,.github/workflows/codeql.yml"
 description: Meaningful test design, async/mock boundaries, and native Home Assistant verification.
 ---
 
@@ -51,6 +51,14 @@ For cache/date/statistic changes, cover the applicable
 [sensor contracts](../../docs/SENSORS.md): lag, rollover/DST, zero versus missing,
 partial devices, period-scoped fallback, restart, and late corrections. Named-zone
 tests use the `tzdata` development dependency.
+
+## HA-native reporting tests
+
+Use the [isolated reporting profile](../../docs/DEVELOPMENT.md#ha-native-reporting-tests),
+outside the mocked conftest. Keep HA components and temporary Store/SQLite I/O real;
+replace the external API with synthetic responses and block TCP networking. Query
+through the recorder executor and flush pending work before assertions. Scope fault
+injection to the selected Store key, and explicitly unload/stop restart instances.
 
 ## Tooling and failures
 

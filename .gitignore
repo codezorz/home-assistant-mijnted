@@ -126,6 +126,8 @@ celerybeat.pid
 .venv
 # Generated from uv.lock for pip-based development and candidate validation.
 /requirements_test.txt
+/requirements_native.txt
+/pytest-native-results.xml
 env/
 venv/
 ENV/

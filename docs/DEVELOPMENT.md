@@ -5,8 +5,8 @@ own contributor and agent rules. This guide explains environment setup,
 dependency maintenance, and local verification.
 
 This integration runs inside Home Assistant; there is no separate build step.
-Use local tests for Python logic and a real Home Assistant instance for entity,
-config-flow, recorder, and lifecycle compatibility.
+Use the fast suite for Python logic, the isolated HA-native suite for reporting
+runtime boundaries, and a test HA installation for interactive smoke checks.
 
 ## Getting started
 
@@ -65,10 +65,32 @@ Home Assistant continues to install runtime requirements from
 describes the development/validation environment, while HA owns its installed
 runtime environment.
 
-Tests mock Home Assistant and do not need a full HA installation. A shared venv
-can serve worktrees with compatible requirements; use a separate environment
+The fast tests mock Home Assistant and do not need a full HA installation. A
+shared venv can serve worktrees with compatible requirements; use a separate environment
 when a task needs conflicting dependency versions. Do not copy environments
 or credentials between checkouts automatically.
+
+## HA-native reporting tests
+
+The separate Linux project [tests_native/pyproject.toml](../tests_native/pyproject.toml)
+owns the supported Python range and matching Home Assistant/official
+`pytest-homeassistant` pins; its `uv.lock` resolves the environment.
+
+From the checkout root, with `uv` installed:
+
+```sh
+uv sync --project tests_native --locked --python 3.14
+uv run --project tests_native --locked python -m pytest -c tests_native/pytest.ini tests_native -q
+```
+
+Run from Linux or WSL. UV creates the ignored `tests_native/.venv`; the explicit
+pytest configuration isolates collection from the fast suite's mocked conftest.
+Fixtures use synthetic API responses and temporary file-backed HA/SQLite storage,
+with TCP networking blocked and no production credentials needed.
+
+Coverage includes monthly/daily recorder behavior, delayed readings, period
+boundaries, persistence faults, and lifecycle cleanup. A restart uses separate HA
+instances/event loops sharing the test registry, Store, and recorder files.
 
 ## Dependency maintenance
 
@@ -78,10 +100,17 @@ changes, run `python -m uv lock`; to refresh all pinned versions, run
 above, install it, and run the relevant tests. Check metadata/lock consistency
 without updates using `python -m uv lock --check`.
 
+Maintain `tests_native/pyproject.toml` and `tests_native/uv.lock` together as well.
+Run `uv lock --project tests_native --check` on Linux with supported Python, or
+`uv lock --project tests_native` for intentional changes. Update HA and its
+official fixtures together, keep manifest runtime inputs included, and rerun the
+native suite after resolving the lock. The native job's Python must remain in
+the profile's supported range.
+
 [Aikido supports `uv.lock`](https://help.aikido.dev/code-scanning/scanning-practices/python-projects-security-scanning-best-practices)
 for Python dependency scanning, including exact transitive dependency versions.
 The [Dependabot configuration](../.github/dependabot.yml) uses the `uv` ecosystem to
-update the project metadata and lock weekly, grouping Python updates and
+update both projects' metadata and locks weekly, grouping Python updates and
 retaining the existing major-version ignore policy. GitHub Actions updates
 remain in their separate weekly group. Generated pip exports are created at
 installation time so lock-only updates cannot leave a committed export stale.
@@ -96,6 +125,7 @@ Review runtime constraint changes against the HA manifest as well.
 | Dependency inputs / lock | `python -m uv lock --check`; regenerate/install the pip export; `python -m pytest -q` |
 | Integration Python | `python -m compileall custom_components/mijnted`; relevant existing tests |
 | Cache, date, or statistics behavior | Target affected tests, including rollover, API lag, zero/missing values, and late corrections |
+| Reporting entities, recorder, persistence, or lifecycle | Fast targeted tests plus the full HA-native reporting suite above |
 | Broad integration changes | `python -m pytest -q`, plus an HA smoke test for runtime-sensitive behavior |
 
 Example targeted run: `python -m pytest tests/test_config_flow.py -q`.
