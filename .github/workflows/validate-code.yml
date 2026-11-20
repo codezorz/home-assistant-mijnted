@@ -122,7 +122,7 @@ jobs:
     steps:
       # This fresh runner only parses the report artifact; it never checks out PR code.
       - name: Publish test report
-        uses: dorny/test-reporter@b94dfe179d7ff66342276f4bd6b82c3c0f659f52 # v1
+        uses: dorny/test-reporter@79b4b4400dc2354b89e9dd811ef9caa9bdd4f665 # v1
         with:
           name: Pytest Results
           artifact: pytest-results
@@ -132,7 +132,7 @@ jobs:
 
       - name: Publish native test report
         if: always() && needs.ha_native.result != 'skipped' && needs.ha_native.result != 'cancelled'
-        uses: dorny/test-reporter@b94dfe179d7ff66342276f4bd6b82c3c0f659f52 # v1
+        uses: dorny/test-reporter@79b4b4400dc2354b89e9dd811ef9caa9bdd4f665 # v1
         with:
           name: HA Native Results
           artifact: pytest-native-results
