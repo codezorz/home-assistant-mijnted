@@ -57,13 +57,17 @@ Home Assistant reauthentication flow.
 | `get_usage_per_room(year=None)` | `residentialUnitUsagePerRoom` |
 | `get_unit_of_measures(delivery_type=None)` | `unitOfMeasures` |
 
-The methods with a `delivery_type` argument default to the first delivery type
-selected by `get_delivery_types()`. The coordinator passes the other returned
-delivery types explicitly to read additional meters, such as water in `m³`
-(for example `[1, 2, 3]` for heat, warm water, and cold water). Water sensors also
-read the existing primary payload when it reports `m³`, including water-only
-accounts; this does not add API requests for the primary type. Response shapes
-are the same for every delivery type; only the units differ.
+The coordinator records the primary delivery used by the entry so changes to
+the discovery order do not switch its existing series. A legacy entry without
+a saved delivery uses existing model and meter identities to bind its history;
+if the match is ambiguous, the history stays paused until it can be confirmed.
+Other returned delivery types are passed explicitly, for example `[1, 2, 3]` for
+heating, warm water and cold water. `unitOfMeasures` advertises the available units. Reporting requests
+for a GJ heating meter append `unitOfMeasure=GJ` to data endpoints, retaining
+`fromDate` on dated requests. Water reporting requests use their delivery ID
+without a unit parameter. A meter request uses the entry's authenticated session;
+data that does not match the selected unit is not used for that meter's reports.
+Raw water sensors reuse the primary payload when it reports `m³`.
 
 Optional-year methods default to the current calendar year. Latest-status,
 last-sync, and unit-of-measure requests also use that year. Historical device

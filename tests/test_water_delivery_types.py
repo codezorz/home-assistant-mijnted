@@ -515,7 +515,7 @@ class TestExtraDeliveryTypeFetch:
                 "statistics_reinject",
             ]
         )
-        api = SimpleNamespace(residential_unit="114582")
+        api = SimpleNamespace(residential_unit="114582", delivery_type=1)
 
         assert init_mod._build_coordinator_return_dict(api, **kwargs)["extra_delivery_data"] == {}
         extra = {"2": {"delivery_type": 2}}

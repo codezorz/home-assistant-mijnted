@@ -246,15 +246,18 @@ class TestCoordinatorNameProjection:
         fetched.update(filter_status_data=raw["filter_status"], delivery_types=[1], extra_delivery_data={})
         api = MagicMock()
         api.authenticate = AsyncMock()
+        api.delivery_types = [1]
         api.__aenter__.return_value = api
         hass = MagicMock()
         hass.data = {}
-        entry = SimpleNamespace(entry_id="entry", data={"client_id": "test-client", "refresh_token": "test-refresh"})
+        entry = SimpleNamespace(entry_id="entry", data={"client_id": "test-client", "refresh_token": "test-refresh"},
+                                async_on_unload=MagicMock())
 
         class Coordinator:
             """Run the actual update closure while keeping HA scheduling out of this test."""
             def __init__(self, hass, logger, *, name, update_method, update_interval):
                 self.update = update_method
+                self.async_add_listener = MagicMock()
 
             async def async_config_entry_first_refresh(self):
                 """Deliver the first payload before platform registration."""
@@ -272,6 +275,7 @@ class TestCoordinatorNameProjection:
             patch.object(init_mod, "DataUpdateCoordinator", Coordinator),
             patch.object(init_mod, "MijntedApi", return_value=api),
             patch.object(init_mod, "_sync_tokens_to_config"),
+            patch.object(init_mod, "_load_persisted_cache", AsyncMock(return_value=None)),
             patch.object(init_mod, "_fetch_and_normalize_api_data", AsyncMock(return_value=fetched)),
             patch.object(init_mod, "_compute_anchor_calculations", AsyncMock(return_value=([], None))),
             patch.object(init_mod, "_ensure_monthly_history_cache", AsyncMock(return_value=({}, None, None, {}))),

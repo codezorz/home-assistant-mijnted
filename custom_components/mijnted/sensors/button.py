@@ -6,6 +6,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.helpers.storage import Store
 from ..const import DEFAULT_NAME, DOMAIN
+from ..meters import Meter
 from .base import MijnTedSensor
 from .models import StatisticsTracking
 
@@ -63,6 +64,12 @@ class MijnTedResetStatisticsButton(CoordinatorEntity, ButtonEntity):
         Returns:
             DeviceInfo object with device identifiers and details
         """
+        meter = getattr(self.coordinator, "mijnted_meter", None)
+        if isinstance(meter, Meter):
+            return MijnTedSensor._build_device_info(
+                self.coordinator.data, self._config_name, meter=meter, scope=self._entry_id,
+                translations=self.coordinator.mijnted_translations,
+            )
         return MijnTedSensor._build_device_info(self.coordinator.data, self._config_name)
     
     async def async_press(self) -> None:

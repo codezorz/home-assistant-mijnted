@@ -359,8 +359,8 @@ class MijnTedLatestAvailableInsightSensor(MijnTedSensor):
         month_keys.sort(key=lambda k: DateUtil.parse_month_key(k) or (0, 0), reverse=True)
         
         for month_key in month_keys:
-            month_data = monthly_history_cache[month_key]
-            if isinstance(month_data, dict):
+            month_data = self._get_month_cache_entry_dict(monthly_history_cache[month_key])
+            if month_data:
                 if month_data.get("average_usage") is not None:
                     month_num = month_data.get("month")
                     year = month_data.get("year")

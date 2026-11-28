@@ -122,6 +122,14 @@ tenant. The `x` characters above are placeholders, not a value to enter.
 - You can configure this during setup or leave it at the default
 - To change it later, open the integration's options/configure dialog in Settings > Devices & services. Saving the interval reloads the integration.
 
+**Additional meters (Optional):** Discovered heating and water devices are shown by
+default. Use **Additional meters** in the same dialog to choose which of those
+devices to show. This setting applies only to additional devices.
+
+If **Delivery for existing history** appears after an upgrade, choose the
+original delivery by its model or meter number. Leave it blank if you're unsure;
+new samples for the existing history are paused until the delivery is identified.
+
 During setup, enter your client ID, username, and password. The integration handles OAuth 2.0 and retains credentials, the client ID, and tokens in the Home Assistant config entry for automatic reauthentication. See the [authentication reference](docs/ENDPOINTS.md#authentication-lifecycle) for details.
 
 ## Usage
@@ -130,12 +138,12 @@ The integration provides:
 
 - **Monthly usage** for calendar-month progress and **Published usage** for the
   latest available reading month, plus building averages and last-year comparisons.
-- Total and individual meter readings, with water meters usable in the Energy dashboard.
+- Heating and water readings in the units available to your account, with individual
+  water meters usable in the Energy dashboard.
 - Diagnostic dates, model/unit information, and a **Reset statistics** button.
 
 The [sensor reference](docs/SENSORS.md) owns values, attributes, units, availability,
-and reset behavior. Usage sensors request zero displayed decimal places without
-rounding the underlying values.
+and reset behavior.
 
 ### History and Statistics
 

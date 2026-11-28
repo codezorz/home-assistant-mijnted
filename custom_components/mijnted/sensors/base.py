@@ -18,6 +18,7 @@ from ..const import (
     DOMAIN,
     UNIT_MIJNTED,
 )
+from ..meters import Meter
 from ..utils import DateUtil, DataUtil
 from ..utils.readings import finite_usage
 from .models import (
@@ -94,14 +95,44 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         self._last_known_value = None
         self._last_comparison_period: Optional[Tuple[int, int]] = None
 
+    @property
+    def _usage_precision(self) -> int:
+        """Display fractional measurements without rounding recorded values."""
+        return 0 if self._usage_unit == UNIT_MIJNTED else 3
+
+    @property
+    def _meter(self) -> Meter | None:
+        """Return the physical delivery/unit context of an additional sensor."""
+        meter = getattr(self.coordinator, "mijnted_meter", None)
+        return meter if isinstance(meter, Meter) else None
+
+    @property
+    def _usage_unit(self) -> str:
+        """Keep legacy units and use the selected unit on meter-scoped series."""
+        return self._meter.unit if self._meter else UNIT_MIJNTED
+
+    def _statistic_name(self, series_key: str) -> str:
+        """Distinguish the same graph across delivery types and units."""
+        translations = self.coordinator.mijnted_translations
+        name = translations.statistic_name(series_key)
+        return f"{self._config_name} {self._meter.label(translations)}: {name}" if self._meter else name
+
     @staticmethod
     def _build_unique_id(entry_id: str, entity_key: str) -> str:
         """Build a config-entry-scoped entity unique ID."""
         return f"{DOMAIN}_{entry_id}_{entity_key.lower()}"
 
     @staticmethod
-    def _build_device_info(data: Optional[Dict[str, Any]], config_name: str = DEFAULT_NAME) -> DeviceInfo:
+    def _build_device_info(
+        data: Optional[Dict[str, Any]], config_name: str = DEFAULT_NAME,
+        *, meter: Meter | None = None, scope: str = "", translations: Any = None,
+    ) -> DeviceInfo:
         """Build device information from coordinator data."""
+        if meter:
+            return DeviceInfo(
+                identifiers={(DOMAIN, scope)}, name=f"{config_name} {meter.label(translations)}",
+                manufacturer="MijnTed", model=(data or {}).get("active_model") or "Unknown",
+            )
         if not data:
             return DeviceInfo(
                 identifiers={(DOMAIN, "unknown")},
@@ -126,6 +157,11 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         Returns:
             DeviceInfo object with device identifiers and details
         """
+        if self._meter:
+            return self._build_device_info(
+                self.coordinator.data, self._config_name, meter=self._meter, scope=self._entry_id,
+                translations=self.coordinator.mijnted_translations,
+            )
         return self._build_device_info(self.coordinator.data, self._config_name)
 
     @property
@@ -388,7 +424,7 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             name=self.name,
             source="recorder",
             statistic_id=self.entity_id,
-            unit_of_measurement=UNIT_MIJNTED,
+            unit_of_measurement=self._usage_unit,
             mean_type=mean_type,
             unit_class=None
         )
@@ -479,11 +515,11 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
             return
         metadata = StatisticMetaData(
             mean_type=StatisticMeanType.ARITHMETIC, has_sum=False,
-            name=self.coordinator.mijnted_translations.statistic_name(
+            name=self._statistic_name(
                 series_key or ("monthly_usage" if self.sensor_type == "published_usage" else self.sensor_type)
             ),
             source=DOMAIN, statistic_id=self._get_monthly_statistic_id(series_key),
-            unit_of_measurement=UNIT_MIJNTED, unit_class=None,
+            unit_of_measurement=self._usage_unit, unit_class=None,
         )
         await self._async_safe_import_statistics(metadata, sorted(statistics, key=lambda row: row["start"]), external=True)
 
@@ -529,10 +565,10 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
         metadata = StatisticMetaData(
             mean_type=StatisticMeanType.ARITHMETIC,
             has_sum=False,
-            name=self.coordinator.mijnted_translations.statistic_name(series_key or self.sensor_type),
+            name=self._statistic_name(series_key or self.sensor_type),
             source=DOMAIN,
             statistic_id=self._get_average_statistic_id(series_key),
-            unit_of_measurement=UNIT_MIJNTED,
+            unit_of_measurement=self._usage_unit,
             unit_class=None,
         )
         # Reimport cached periods so backfill and late corrections do not depend
@@ -542,14 +578,14 @@ class MijnTedSensor(CoordinatorEntity, SensorEntity):
     async def _setup_statistics_injection(self) -> None:
         """Register coordinator listener for injection and trigger initial injection if data exists."""
         def _inject_on_update() -> None:
-            if self.hass and self.coordinator.data:
+            if self.hass and self.available:
                 self.hass.async_create_task(self._async_inject_statistics())
         
         self.async_on_remove(
             self.coordinator.async_add_listener(_inject_on_update)
         )
         
-        if self.coordinator.data:
+        if self.available:
             self.hass.async_create_task(self._async_inject_statistics())
     
     async def async_added_to_hass(self) -> None:

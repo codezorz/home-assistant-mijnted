@@ -11,7 +11,7 @@ from .base import MijnTedSensor
 from .daily import async_import_daily_statistics, daily_statistic_id, reported_daily_values
 from ..utils import DataUtil, DateUtil
 from ..utils.readings import finite_usage
-from ..const import DEFAULT_NAME, UNIT_MIJNTED, DEFAULT_START_VALUE
+from ..const import DEFAULT_NAME, DEFAULT_START_VALUE, UNIT_WATER
 
 
 class MijnTedMonthlyUsageSensor(MijnTedSensor):
@@ -33,7 +33,7 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
         """
         super().__init__(coordinator, "monthly_usage", "monthly_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
-        self._attr_suggested_display_precision = 0
+        self._attr_suggested_display_precision = self._usage_precision
         self._last_known_month: Optional[str] = None
         self._cancel_month_timer = None
 
@@ -75,6 +75,9 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
         """
         now = dt_util.now()
         month_key = DateUtil.format_month_key(now.year, now.month)
+        if self._usage_unit == UNIT_WATER:
+            cached = (self.coordinator.data or {}).get("monthly_history_cache", {}).get(month_key)
+            return finite_usage(self._extract_value_from_cache_entry(cached, "published_usage"))
         changed_month = self._last_known_month is not None and self._last_known_month != month_key
         if self._last_known_month != month_key:
             self._last_known_value = 0.0 if changed_month else None
@@ -129,7 +132,7 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
         Returns:
             Unit string constant
         """
-        return UNIT_MIJNTED
+        return self._usage_unit
     
     @property
     def state_class(self) -> SensorStateClass:
@@ -143,6 +146,8 @@ class MijnTedMonthlyUsageSensor(MijnTedSensor):
     async def _async_inject_statistics(self) -> None:
         """Import entity statistics and upsert consumption-month aggregates."""
         await self._async_inject_monthly_usage_statistics()
+        if self._usage_unit == UNIT_WATER:
+            return
         await self._build_statistics_from_history(
             "total_usage", StatisticMeanType.NONE, include_current=True,
             current_value_calculator=lambda current: self.state,
@@ -176,7 +181,7 @@ class MijnTedPublishedUsageSensor(MijnTedSensor):
         """Create the retrospective entity without automatic statistics collection."""
         super().__init__(coordinator, "published_usage", "published_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-timeline-variant"
-        self._attr_suggested_display_precision = 0
+        self._attr_suggested_display_precision = self._usage_precision
 
     @property
     def state_class(self) -> None:
@@ -200,15 +205,16 @@ class MijnTedPublishedUsageSensor(MijnTedSensor):
     @property
     def unit_of_measurement(self) -> str:
         """Return the same units as the current-month usage entity."""
-        return UNIT_MIJNTED
+        return self._usage_unit
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Expose own reading-period metadata and route independently selectable graphs."""
         attributes = {
             "monthly_statistic_id": self._get_monthly_statistic_id(),
-            "daily_statistic_id": daily_statistic_id(self._entry_id),
         }
+        if self._usage_unit != UNIT_WATER:
+            attributes["daily_statistic_id"] = daily_statistic_id(self._entry_id)
         report = (self.coordinator.data or {}).get("reading_report") or {}
         own_metadata = ("month_id", "reading_date", "start_date", "end_date",
                         "value_source", "start_locked", "boundary_reconciled")
@@ -240,7 +246,7 @@ class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
         """
         super().__init__(coordinator, "last_year_monthly_usage", "last_year_monthly_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
-        self._attr_suggested_display_precision = 0
+        self._attr_suggested_display_precision = self._usage_precision
 
     @property
     def state(self) -> Optional[float]:
@@ -258,7 +264,7 @@ class MijnTedLastYearMonthlyUsageSensor(MijnTedSensor):
         Returns:
             Unit string constant
         """
-        return UNIT_MIJNTED
+        return self._usage_unit
     
     @property
     def state_class(self) -> SensorStateClass:
@@ -304,7 +310,7 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
         """
         super().__init__(coordinator, "average_monthly_usage", "average_monthly_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-line"
-        self._attr_suggested_display_precision = 0
+        self._attr_suggested_display_precision = self._usage_precision
 
     @property
     def state(self) -> Optional[float]:
@@ -331,7 +337,7 @@ class MijnTedAverageMonthlyUsageSensor(MijnTedSensor):
         Returns:
             Unit string constant
         """
-        return UNIT_MIJNTED
+        return self._usage_unit
     
     @property
     def state_class(self) -> None:
@@ -378,7 +384,7 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
         """
         super().__init__(coordinator, "last_year_average_monthly_usage", "last_year_average_monthly_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:chart-line-variant"
-        self._attr_suggested_display_precision = 0
+        self._attr_suggested_display_precision = self._usage_precision
 
     @property
     def state(self) -> Optional[float]:
@@ -396,7 +402,7 @@ class MijnTedLastYearAverageMonthlyUsageSensor(MijnTedSensor):
         Returns:
             Unit string constant
         """
-        return UNIT_MIJNTED
+        return self._usage_unit
     
     @property
     def state_class(self) -> None:
@@ -441,7 +447,7 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         super().__init__(coordinator, "total_usage", "total_usage", entry_id, config_name=config_name)
         self._attr_icon = "mdi:lightning-bolt"
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
-        self._attr_suggested_display_precision = 0
+        self._attr_suggested_display_precision = self._usage_precision
 
     @property
     def state(self) -> Optional[float]:
@@ -469,7 +475,7 @@ class MijnTedTotalUsageSensor(MijnTedSensor):
         Returns:
             Unit string constant
         """
-        return UNIT_MIJNTED
+        return self._usage_unit
     
     def _collect_total_usage_entries(self, history: List[Any]) -> List[Dict[str, Any]]:
         """Collect and validate history entries for total usage statistics injection."""

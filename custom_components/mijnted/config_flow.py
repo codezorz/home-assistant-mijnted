@@ -10,11 +10,14 @@ from homeassistant.const import CONF_CLIENT_ID
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.selector import SelectSelector, SelectSelectorConfig
 
 from .const import (
+    CONF_ENABLED_METERS,
     CONF_NAME,
     CONF_PASSWORD,
     CONF_POLLING_INTERVAL,
+    CONF_PRIMARY_DELIVERY,
     CONF_USERNAME,
     DEFAULT_NAME,
     DEFAULT_POLLING_INTERVAL,
@@ -23,6 +26,7 @@ from .const import (
     MIN_POLLING_INTERVAL,
 )
 from .auth import MijntedAuth
+from .localization import async_load_translations
 from .exceptions import (
     MijntedApiError,
     MijntedAuthenticationError,
@@ -41,6 +45,18 @@ def _polling_placeholders() -> Dict[str, str]:
         "minimum": str(MIN_POLLING_INTERVAL),
         "maximum": str(MAX_POLLING_INTERVAL),
     }
+
+
+def _primary_choice_label(delivery: str, payload: Dict[str, Any]) -> str:
+    """Show the portal's delivery number, model and meter numbers as identity clues."""
+    parts = [delivery]
+    if model := payload.get("active_model"):
+        parts.append(str(model))
+    numbers = dict.fromkeys(str(row["deviceNumber"]) for row in payload.get("filter_status", [])
+                            if isinstance(row, dict) and row.get("deviceNumber") is not None)
+    if numbers:
+        parts.append(", ".join(numbers))
+    return " — ".join(parts)
 
 
 class CannotConnect(HomeAssistantError):
@@ -303,7 +319,12 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
         Returns:
             FlowResult: The next step in the options flow.
         """
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        data = (coordinator.data or {}) if coordinator else {}
+        candidates = data.get("primary_candidates", {}) if CONF_PRIMARY_DELIVERY not in self.config_entry.data else {}
         if user_input is not None:
+            if user_input.get(CONF_PRIMARY_DELIVERY) not in candidates:
+                user_input = {key: value for key, value in user_input.items() if key != CONF_PRIMARY_DELIVERY}
             updated_data = {**self.config_entry.data, **user_input}
             new_title = updated_data.get(CONF_NAME, DEFAULT_NAME)
             self.hass.config_entries.async_update_entry(
@@ -312,27 +333,28 @@ class MijnTedOptionsFlowHandler(config_entries.OptionsFlow):
                 data=updated_data,
             )
             await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-            return self.async_create_entry(title="", data={})
+            return self.async_create_entry(title="", data=dict(self.config_entry.options))
 
-        return self.async_show_form(
-            step_id="init",
-            description_placeholders=_polling_placeholders(),
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_NAME,
-                        default=self.config_entry.data.get(CONF_NAME, DEFAULT_NAME),
-                    ): str,
-                    vol.Optional(
-                        CONF_POLLING_INTERVAL,
-                        default=self.config_entry.data.get(
-                            CONF_POLLING_INTERVAL,
-                            DEFAULT_POLLING_INTERVAL.total_seconds()
-                        ),
-                    ): vol.All(
-                        vol.Coerce(int),
-                        vol.Range(min=MIN_POLLING_INTERVAL, max=MAX_POLLING_INTERVAL)
-                    )
-                }
-            ),
-        )
+        fields = {
+            vol.Optional(CONF_NAME, default=self.config_entry.data.get(CONF_NAME, DEFAULT_NAME)): str,
+            vol.Optional(
+                CONF_POLLING_INTERVAL,
+                default=self.config_entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL.total_seconds()),
+            ): vol.All(vol.Coerce(int), vol.Range(min=MIN_POLLING_INTERVAL, max=MAX_POLLING_INTERVAL)),
+        }
+        if candidates:
+            fields[vol.Optional(CONF_PRIMARY_DELIVERY)] = SelectSelector(SelectSelectorConfig(
+                options=[{"value": key, "label": _primary_choice_label(key, source)}
+                         for key, source in candidates.items()],
+            ))
+        meters = data.get("meters", {})
+        if meters:
+            translations = await async_load_translations(self.hass)
+            saved = self.config_entry.data.get(CONF_ENABLED_METERS, list(meters))
+            fields[vol.Optional(CONF_ENABLED_METERS, default=[key for key in saved if key in meters])] = (
+                SelectSelector(SelectSelectorConfig(
+                    options=[{"value": key, "label": meter.label(translations)} for key, meter in meters.items()],
+                    multiple=True,
+                ))
+            )
+        return self.async_show_form(step_id="init", description_placeholders=_polling_placeholders(), data_schema=vol.Schema(fields))
