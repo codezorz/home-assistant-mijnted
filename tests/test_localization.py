@@ -121,7 +121,12 @@ class TestTranslationResources:
         flow.context = {"entry_id": "entry"}
         flow.hass.config_entries.async_get_entry.return_value = SimpleNamespace(data={})
         flow.async_show_form = MagicMock(side_effect=lambda **kwargs: kwargs)
-        options = MijnTedOptionsFlowHandler(SimpleNamespace(data={}))
+        options = MijnTedOptionsFlowHandler(SimpleNamespace(entry_id="entry", data={}))
+        from custom_components.mijnted.meters import Meter
+        options.hass = SimpleNamespace(config=SimpleNamespace(language=language), data={
+            "mijnted": {"entry": SimpleNamespace(data={"meters": {"1_gj": Meter("1", "GJ", "heating")},
+                                                       "primary_candidates": {"1": {"active_model": "F71"}}})},
+        })
         options.async_show_form = MagicMock(side_effect=lambda **kwargs: kwargs)
         forms = [
             ("config", await flow.async_step_user()),

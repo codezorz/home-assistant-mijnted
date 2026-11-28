@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from copy import copy
 from datetime import date, datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
@@ -14,6 +15,7 @@ from .const import (
     HTTP_STATUS_OK,
     HTTP_STATUS_UNAUTHORIZED,
     REQUEST_TIMEOUT,
+    UNIT_HEAT_ENERGY,
     USER_AGENT,
 )
 from .auth import MijntedAuth
@@ -23,6 +25,7 @@ from .exceptions import (
     MijntedConnectionError,
     MijntedTimeoutError,
 )
+from .meters import canonical_unit
 from .utils import ApiUtil, DateUtil, ListUtil
 
 _LOGGER = logging.getLogger(__name__)
@@ -69,6 +72,10 @@ class MijntedApi:
         self.session: Optional[aiohttp.ClientSession] = None
         self.base_url = API_BASE_URL
         self.delivery_type: Optional[str] = None
+        self.delivery_types: Optional[List[Any]] = None
+        self._meter_unit: Optional[str] = None
+        self._meter_usage_by_year: Dict[int, Dict[str, Any]] = {}
+        self._token_retry_lock = asyncio.Lock()
         self.token_update_callback = token_update_callback
         self.auth: Optional[MijntedAuth] = None
         self._auth_init_params = {
@@ -166,7 +173,38 @@ class MijntedApi:
         """
         self._ensure_session()
         await self.auth.authenticate()
-        await self.get_delivery_types()
+        self.delivery_types = await self.get_delivery_types()
+
+    def for_meter(self, delivery_type: str, unit: str) -> "MijntedApi":
+        """Bind data requests to a meter while borrowing the authenticated session.
+
+        The caller owns the session; use this view only inside its authenticated
+        context. All views share the same live token state.
+        """
+        view = copy(self)
+        view.delivery_type = delivery_type
+        view._meter_unit = unit
+        view._meter_usage_by_year = {}
+        return view
+
+    def _with_meter_unit(self, url: str) -> str:
+        """Select GJ data without discarding a dated request's existing query."""
+        if self._meter_unit == UNIT_HEAT_ENERGY:
+            separator = "&" if "?" in url else "?"
+            return f"{url}{separator}unitOfMeasure={UNIT_HEAT_ENERGY}"
+        return url
+
+    def _meter_readings(self, result: Any) -> List[Dict[str, Any]]:
+        """Reject an unlabelled or mixed-unit reading set for a selected meter."""
+        readings = result if isinstance(result, list) else ApiUtil.extract_value(result, [])
+        if not isinstance(readings, list):
+            return []
+        if self._meter_unit and any(
+            not isinstance(row, dict) or canonical_unit(row.get("unitOfMeasure")) != self._meter_unit
+            for row in readings
+        ):
+            return []
+        return readings
 
     async def _parse_response(self, response: aiohttp.ClientResponse) -> Dict[str, Any]:
         """Parses an aiohttp response to dict."""
@@ -180,14 +218,18 @@ class MijntedApi:
         except (json.JSONDecodeError, ValueError):
             return {"value": text_response}
 
-    async def _retry_after_unauthorized(self, method: str, url: str, timeout: aiohttp.ClientTimeout, **kwargs) -> Dict[str, Any]:
+    async def _retry_after_unauthorized(
+        self, method: str, url: str, timeout: aiohttp.ClientTimeout, rejected_auth: str, **kwargs,
+    ) -> Dict[str, Any]:
         """Refresh the access token and retry the request once after a 401."""
         _LOGGER.debug(
             "Access token expired, refreshing...",
             extra={"url": url, "method": method, "residential_unit": self.residential_unit},
         )
         self._ensure_session()
-        await self.auth.refresh_access_token()
+        async with self._token_retry_lock:
+            if self._headers()["Authorization"] == rejected_auth:
+                await self.auth.refresh_access_token()
         async with self.session.request(method, url, headers=self._headers(), timeout=timeout, **kwargs) as retry_response:
             if retry_response.status == HTTP_STATUS_OK:
                 return await self._parse_response(retry_response)
@@ -213,12 +255,13 @@ class MijntedApi:
             await self.authenticate()
 
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        headers = self._headers()
         try:
-            async with self.session.request(method, url, headers=self._headers(), timeout=timeout, **kwargs) as response:
+            async with self.session.request(method, url, headers=headers, timeout=timeout, **kwargs) as response:
                 if response.status == HTTP_STATUS_OK:
                     return await self._parse_response(response)
                 if response.status == HTTP_STATUS_UNAUTHORIZED:
-                    return await self._retry_after_unauthorized(method, url, timeout, **kwargs)
+                    return await self._retry_after_unauthorized(method, url, timeout, headers["Authorization"], **kwargs)
                 error_text = await response.text()
                 _LOGGER.error(
                     "API request failed: %s - %s", response.status, error_text,
@@ -270,8 +313,21 @@ class MijntedApi:
         """
         if year is None:
             year = self._get_current_year()
+        if self._meter_unit and year in self._meter_usage_by_year:
+            return self._meter_usage_by_year[year]
         url = f"{self.base_url}/residentialUnitUsage/{year}/{self.residential_unit}/{self.delivery_type}"
-        return await self._make_request("GET", url)
+        result = await self._make_request("GET", self._with_meter_unit(url))
+        if not self._meter_unit:
+            return result
+        months = result.get("monthlyEnergyUsages") if isinstance(result, dict) else None
+        selected = {"monthlyEnergyUsages": [
+            row for row in months
+            if isinstance(row, dict) and canonical_unit(row.get("unitOfMeasurement")) == self._meter_unit
+        ]} if isinstance(months, list) else {}
+        if selected.get("monthlyEnergyUsages"):
+            # Backfilling months in the same year shares one publication response.
+            self._meter_usage_by_year[year] = selected
+        return selected
 
     async def get_last_data_update(self) -> Dict[str, Any]:
         """Get last data update information.
@@ -280,7 +336,7 @@ class MijntedApi:
             Dictionary containing last sync date information
         """
         url = f"{self.base_url}/getLastSyncDate/{self.residential_unit}/{self.delivery_type}/{self._get_current_year()}"
-        return await self._make_request("GET", url)
+        return await self._make_request("GET", self._with_meter_unit(url))
 
     async def get_filter_status(self, delivery_type: Optional[Any] = None) -> List[Dict[str, Any]]:
         """Get filter status information.
@@ -293,11 +349,8 @@ class MijntedApi:
         """
         delivery_type = self.delivery_type if delivery_type is None else delivery_type
         url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{delivery_type}/{self._get_current_year()}"
-        result = await self._make_request("GET", url)
-        if isinstance(result, list):
-            return result
-        value = ApiUtil.extract_value(result, [])
-        return value if isinstance(value, list) else []
+        result = await self._make_request("GET", self._with_meter_unit(url))
+        return self._meter_readings(result)
 
     async def get_device_statuses_for_date(self, target_date: date) -> List[Dict[str, Any]]:
         """Get device statuses for a specific date.
@@ -312,11 +365,8 @@ class MijntedApi:
             date_str = target_date.strftime(API_DATE_FORMAT)
             year = target_date.year
             url = f"{self.base_url}/deviceStatuses/{self.residential_unit}/{self.delivery_type}/{year}?fromDate={date_str}"
-            result = await self._make_request("GET", url)
-            if isinstance(result, list):
-                return result
-            value = ApiUtil.extract_value(result, [])
-            return value if isinstance(value, list) else []
+            result = await self._make_request("GET", self._with_meter_unit(url))
+            return self._meter_readings(result)
         except Exception as err:
             date_str = target_date.strftime(API_DATE_FORMAT) if target_date else "unknown"
             _LOGGER.warning(
@@ -339,7 +389,7 @@ class MijntedApi:
         if year is None:
             year = self._get_current_year()
         url = f"{self.base_url}/usageInsight/{year}/{self.residential_unit}/{self.delivery_type}"
-        return await self._make_request("GET", url)
+        return await self._make_request("GET", self._with_meter_unit(url))
 
     async def get_active_model(self, delivery_type: Optional[Any] = None) -> Dict[str, Any]:
         """Get active model information.
@@ -376,7 +426,7 @@ class MijntedApi:
         if year is None:
             year = self._get_current_year()
         url = f"{self.base_url}/residentialUnitUsagePerRoom/{year}/{self.residential_unit}/{self.delivery_type}"
-        return await self._make_request("GET", url)
+        return await self._make_request("GET", self._with_meter_unit(url))
 
     async def get_unit_of_measures(self, delivery_type: Optional[Any] = None) -> List[Dict[str, Any]]:
         """Get unit of measures for the residential unit.

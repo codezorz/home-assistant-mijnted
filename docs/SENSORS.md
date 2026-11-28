@@ -217,14 +217,40 @@ devices require an integration reload. Unique ID:
 - Unit: `Einheiten`/`Eenheden` normalize to `Units`; other units pass through.
 - Attributes: `room`, `device_id`, `measurement_device_id`.
 
-## Water Sensors
+## Additional heating and water devices
+
+Each additional delivery/unit pair has its own device, for example
+`Home Heating (GJ)`, `Home Warm water (m³)`, or `Home Cold water (m³)`.
+The device label includes the configured name; entity labels are short.
+Additional devices and their reporting series are scoped by config entry,
+delivery type and unit. Options can hide and re-enable each additional device;
+entity IDs, cached history, and statistics are retained. The primary device
+keeps its reporting IDs; an unidentified primary delivery pauses new samples
+until the entry can be bound to the existing history. Fractional readings
+request three displayed decimal places without rounding recorded data.
+
+Heating in GJ uses the dated heating reporting pipeline, including monthly and
+daily statistics and individual readings. Heating in count units is also
+available when it is not the primary delivery. Each reporting device has its
+own **Reset statistics** button; it rebuilds only that device's monthly cache.
+
+### Water usage reports
+
+**Monthly usage** shows the current month's volume if published by MijnTed;
+**Published usage** shows the latest published month. Building averages and
+last-year comparisons use the same published volume records. Missing data and
+unpublished placeholder zeros do not become recorded consumption. This report
+does not infer monthly or daily totals from cumulative water meter readings.
+Select the meter-specific statistics for **Month + Mean**. Their IDs insert
+`meter_<deliveryType>_m3_` between the entry ID and series name; GJ uses
+`meter_<deliveryType>_gj_`.
+
+### Water meter readings
 
 Deliveries reporting `m³` receive water sensors. Discovery includes the primary
 payload and additional delivery types, adding unseen delivery/device pairs after
 successful refreshes. Missing startup responses can recover without reload.
 A failed water delivery leaves the heat sensors and other deliveries unaffected.
-
-### Water meter
 
 Unique ID: `mijnted_<configEntryId>_water_<deliveryType>_device_<deviceNumber>`.
 Value: the delivery's `currentReadingValue`, in `m³`; device class `water`, state
@@ -240,8 +266,8 @@ Unknown until a valid positive reading exists. Absent or non-positive readings
 retain the last known value, preventing false meter resets. Attributes:
 `delivery_type`, `room`, `device_id`, `measurement_device_id`.
 
-Water sensors use HA's ordinary state-class statistics, not integration recorder
-injection or the monthly cache. A separate monthly water-usage sensor is not provided.
+Individual water readings use HA's ordinary state-class statistics, independently
+of the published water usage reports.
 
 ## Edge Cases and Expected Behavior
 

@@ -5,6 +5,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .base import MijnTedSensor
 from ..const import DEFAULT_NAME, UNIT_WATER
+from ..meters import Meter, canonical_unit
 from ..utils import DataUtil
 
 WATER_KIND_WARM = "warm"
@@ -27,10 +28,11 @@ def delivery_payloads(data: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any
             if isinstance(delivery, dict):
                 deliveries[str(delivery_type)] = delivery
     delivery_types = data.get("delivery_types")
-    if isinstance(delivery_types, list) and delivery_types:
+    primary = data.get("primary_delivery_type")
+    if "primary_delivery_type" not in data and isinstance(delivery_types, list) and delivery_types:
         primary = delivery_types[0]
-        if isinstance(primary, (str, int)):
-            deliveries[str(primary)] = data
+    if isinstance(primary, (str, int)):
+        deliveries[str(primary)] = data
     return deliveries
 
 
@@ -58,12 +60,12 @@ def get_water_kind(delivery_type: str, active_model: Any) -> Optional[str]:
 def is_water_delivery(delivery: Dict[str, Any]) -> bool:
     """Return True when a delivery-type payload reports its readings in m³."""
     for device in delivery_devices(delivery):
-        if device.get("unitOfMeasure") == UNIT_WATER:
+        if canonical_unit(device.get("unitOfMeasure")) == UNIT_WATER:
             return True
     unit_of_measures = delivery.get("unit_of_measures")
     if isinstance(unit_of_measures, list):
         for unit in unit_of_measures:
-            if isinstance(unit, dict) and UNIT_WATER in (unit.get("value"), unit.get("displayName")):
+            if isinstance(unit, dict) and any(canonical_unit(unit.get(key)) == UNIT_WATER for key in ("value", "displayName")):
                 return True
     return False
 
@@ -109,6 +111,7 @@ class MijnTedWaterMeterSensor(MijnTedSensor):
         device_number: str,
         entry_id: str,
         config_name: str = DEFAULT_NAME,
+        meter: Optional[Meter] = None,
     ) -> None:
         """Initialize the water meter sensor."""
         super().__init__(
@@ -124,7 +127,19 @@ class MijnTedWaterMeterSensor(MijnTedSensor):
         self._attr_device_class = SensorDeviceClass.WATER
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
         self._attr_native_unit_of_measurement = UNIT_WATER
+        self._attr_suggested_display_precision = 3
+        self._water_meter = meter
         self._refresh_name_placeholders()
+
+    @property
+    def device_info(self):
+        """Associate the existing water entity with its reporting device."""
+        if self._water_meter:
+            return self._build_device_info(
+                self._delivery, self._config_name, meter=self._water_meter,
+                scope=self._water_meter.scope(self._entry_id), translations=self.coordinator.mijnted_translations,
+            )
+        return super().device_info
 
     @property
     def _delivery(self) -> Dict[str, Any]:

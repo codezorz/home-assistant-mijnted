@@ -13,17 +13,24 @@ from homeassistant.util import dt as dt_util
 
 from .api import MijntedApi
 from .daily import DailyUsageTracker
+from .localization import async_load_translations
 from .naming import DeviceNameTracker
 from .const import (
+    ADDITIONAL_METER_REFRESH_TIMEOUT,
     CACHE_HISTORY_MONTHS,
+    CONF_ENABLED_METERS,
     CONF_PASSWORD,
     CONF_POLLING_INTERVAL,
+    CONF_PRIMARY_DELIVERY,
     CONF_USERNAME,
     DEFAULT_POLLING_INTERVAL,
     DEFAULT_START_VALUE,
     DOMAIN,
     STORAGE_KEY,
     STORAGE_VERSION,
+    UNIT_HEAT_ENERGY,
+    UNIT_MIJNTED,
+    UNIT_WATER,
 )
 from .exceptions import (
     MijntedApiError,
@@ -34,7 +41,10 @@ from .exceptions import (
 from .utils import ApiUtil, DataUtil, DateUtil, TimestampUtil
 from .utils.readings import build_reading_report
 from .reconciliation import async_reconcile_boundaries, finite_usage, published_usage
+from .meters import Meter, MeterCoordinator, canonical_unit
+from .primary import legacy_identity, match_legacy_delivery
 from .sensors.base import MijnTedSensor
+from .sensors.water import delivery_payloads, get_water_kind, is_water_delivery
 from .sensors.models import (
     DeviceReading,
     MONTH_STATE_COMPLETE_READINGS,
@@ -73,22 +83,32 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _load_persisted_cache(hass: HomeAssistant, entry_id: str) -> Optional[Dict[str, MonthCacheEntry]]:
+async def _load_persisted_cache(
+    hass: HomeAssistant, entry_id: str, *, strict: bool = False,
+) -> Optional[Dict[str, MonthCacheEntry]]:
     """Load monthly history cache from persistent storage."""
     store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}")
     try:
         data = await store.async_load()
+        if strict and data is not None and (
+            not isinstance(data, dict) or not isinstance(data.get("monthly_history_cache"), dict)
+        ):
+            raise ValueError("Invalid monthly history store")
         if data and isinstance(data, dict):
             cache = data.get("monthly_history_cache")
             if isinstance(cache, dict):
                 validated_cache: Dict[str, MonthCacheEntry] = {}
                 for month_key, cache_entry_dict in cache.items():
                     if not isinstance(cache_entry_dict, dict):
+                        if strict:
+                            raise ValueError(f"Invalid monthly history record for {month_key}")
                         continue
                     
                     try:
                         cache_entry = MonthCacheEntry.from_dict(cache_entry_dict)
                     except Exception as err:
+                        if strict:
+                            raise
                         _LOGGER.warning("Failed to deserialize cache entry for %s: %s", month_key, err)
                         continue
                     
@@ -101,14 +121,17 @@ async def _load_persisted_cache(hass: HomeAssistant, entry_id: str) -> Optional[
                     return validated_cache
     except Exception as err:
         _LOGGER.warning("Failed to load persisted cache: %s", err)
+        if strict:
+            raise
     return None
 
 
 async def _save_persisted_cache(
     hass: HomeAssistant, 
     entry_id: str, 
-    monthly_history_cache: Dict[str, MonthCacheEntry]
-) -> None:
+    monthly_history_cache: Dict[str, MonthCacheEntry],
+    *, verify: bool = False,
+) -> bool:
     """Save monthly history cache to persistent storage."""
     complete_cache: Dict[str, Dict[str, Any]] = {}
     for month_key, cache_entry in monthly_history_cache.items():
@@ -128,14 +151,21 @@ async def _save_persisted_cache(
     
     if not complete_cache:
         _LOGGER.debug("No usable months to persist")
-        return
+        return True
     
     store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry_id}")
     try:
-        await store.async_save({"monthly_history_cache": complete_cache})
+        snapshot = {"monthly_history_cache": complete_cache}
+        await store.async_save(snapshot)
+        if verify and await store.async_load() != snapshot:
+            # HA's Store can log a write error without raising it to callers.
+            _LOGGER.warning("Monthly cache write could not be verified for %s", entry_id)
+            return False
         _LOGGER.debug("Saved %d months to persistent storage", len(complete_cache))
+        return True
     except Exception as err:
         _LOGGER.warning("Failed to save persisted cache: %s", err)
+        return False
 
 
 async def _clear_persisted_cache(hass: HomeAssistant, entry_id: str) -> None:
@@ -1529,7 +1559,9 @@ async def _fetch_extra_delivery_type(api: MijntedApi, delivery_type: Any) -> Dic
     }
 
 
-async def _fetch_extra_delivery_types(api: MijntedApi, delivery_types: List[Any]) -> Dict[str, Dict[str, Any]]:
+async def _fetch_extra_delivery_types(
+    api: MijntedApi, delivery_types: List[Any], *, include_primary: bool = False,
+) -> Dict[str, Dict[str, Any]]:
     """Fetch data for every delivery type except the primary one, keyed by str(delivery type).
 
     A failure for one delivery type is logged and skipped so it can never
@@ -1540,7 +1572,7 @@ async def _fetch_extra_delivery_types(api: MijntedApi, delivery_types: List[Any]
     for delivery_type in delivery_types:
         if (
             isinstance(delivery_type, (str, int))
-            and str(delivery_type) != primary
+            and (include_primary or str(delivery_type) != primary)
             and str(delivery_type) not in {str(known) for known in extra_types}
         ):
             extra_types.append(delivery_type)
@@ -1605,7 +1637,9 @@ async def _fetch_and_normalize_api_data(api: MijntedApi) -> Dict[str, Any]:
     unit_of_measures_data = _handle_gather_result(
         "unit_of_measures", unit_of_measures_data, [], residential_unit
     )
-    delivery_types = await api.get_delivery_types()
+    delivery_types = api.delivery_types
+    if not isinstance(delivery_types, list):
+        delivery_types = await api.get_delivery_types()
     extra_delivery_data = await _fetch_extra_delivery_types(api, delivery_types)
     return {
         "energy_usage_data": energy_usage_data,
@@ -1705,34 +1739,38 @@ async def _compute_anchor_calculations(
     return ({}, None)
 
 
+def _previous_payload(hass: HomeAssistant, entry: ConfigEntry, meter: Meter | None = None) -> Dict[str, Any]:
+    """Read one meter's previous snapshot without borrowing another's state."""
+    coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    data = (coordinator.data or {}) if coordinator else {}
+    if meter is not None:
+        return data.get("meter_data", {}).get(meter.key, {})
+    return data
+
+
 def _load_cache_from_coordinator(
     hass: HomeAssistant,
-    entry: ConfigEntry
+    entry: ConfigEntry,
+    meter: Meter | None = None,
 ) -> Tuple[Dict[str, MonthCacheEntry], Optional[str]]:
     """Load monthly history cache and cached_last_update_date from existing coordinator data."""
     monthly_history_cache: Dict[str, MonthCacheEntry] = {}
     cached_last_update_date: Optional[str] = None
 
-    if entry.entry_id in hass.data.get(DOMAIN, {}):
-        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
-        if existing_coordinator and existing_coordinator.data:
-            cache_data = existing_coordinator.data.get("monthly_history_cache", {})
-            cached_last_update_date = existing_coordinator.data.get("cached_last_update_date")
-            if cache_data:
-                converted_cache: Dict[str, MonthCacheEntry] = {}
-                for month_key, entry_data in cache_data.items():
-                    if isinstance(entry_data, MonthCacheEntry):
-                        converted_cache[month_key] = _ensure_month_cache_entry_state(entry_data)
-                    elif isinstance(entry_data, dict):
-                        try:
-                            converted_cache[month_key] = MonthCacheEntry.from_dict(
-                                _ensure_dict_cache_entry_state(entry_data)
-                            )
-                        except Exception as err:
-                            _LOGGER.warning("Failed to convert cache entry for %s: %s", month_key, err)
-                    else:
-                        _LOGGER.warning("Invalid cache entry type for %s: %s", month_key, type(entry_data))
-                monthly_history_cache = converted_cache
+    previous = _previous_payload(hass, entry, meter)
+    cached_last_update_date = previous.get("cached_last_update_date")
+    for month_key, entry_data in previous.get("monthly_history_cache", {}).items():
+        if isinstance(entry_data, MonthCacheEntry):
+            monthly_history_cache[month_key] = replace(_ensure_month_cache_entry_state(entry_data))
+        elif isinstance(entry_data, dict):
+            try:
+                monthly_history_cache[month_key] = MonthCacheEntry.from_dict(
+                    _ensure_dict_cache_entry_state(entry_data.copy())
+                )
+            except Exception as err:
+                _LOGGER.warning("Failed to convert cache entry for %s: %s", month_key, err)
+        else:
+            _LOGGER.warning("Invalid cache entry type for %s: %s", month_key, type(entry_data))
 
     return monthly_history_cache, cached_last_update_date
 
@@ -1884,28 +1922,21 @@ def _serialize_statistics_reinject(hints: Dict[str, set[str]]) -> Dict[str, List
 def _get_existing_statistics_reinject(
     hass: HomeAssistant,
     entry: ConfigEntry,
+    meter: Meter | None = None,
 ) -> Dict[str, set[str]]:
     """Read pending statistics reinject hints from existing coordinator data."""
-    if entry.entry_id in hass.data.get(DOMAIN, {}):
-        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
-        if existing_coordinator and existing_coordinator.data:
-            return _normalize_statistics_reinject(
-                existing_coordinator.data.get("statistics_reinject")
-            )
-    return {}
+    return _normalize_statistics_reinject(_previous_payload(hass, entry, meter).get("statistics_reinject"))
 
 
 def _get_or_create_statistics_tracking(
     hass: HomeAssistant,
-    entry: ConfigEntry
+    entry: ConfigEntry,
+    meter: Meter | None = None,
 ) -> StatisticsTracking:
     """Get existing StatisticsTracking from coordinator or create a new one."""
-    if entry.entry_id in hass.data.get(DOMAIN, {}):
-        existing_coordinator = hass.data[DOMAIN][entry.entry_id]
-        if existing_coordinator and existing_coordinator.data:
-            existing_tracking = existing_coordinator.data.get("statistics_tracking")
-            if isinstance(existing_tracking, StatisticsTracking):
-                return existing_tracking
+    existing_tracking = _previous_payload(hass, entry, meter).get("statistics_tracking")
+    if isinstance(existing_tracking, StatisticsTracking):
+        return existing_tracking
     return StatisticsTracking(
         monthly_usage=None,
         last_year_monthly_usage=None,
@@ -1920,12 +1951,13 @@ async def _load_or_build_cache(
     last_update: Any,
     energy_usage_data: Dict[str, Any],
     now: datetime,
+    meter: Meter | None = None,
 ) -> Tuple[Dict[str, MonthCacheEntry], bool]:
     """Load cache from coordinator/storage, or build initial. Returns (cache, was_modified)."""
-    monthly_history_cache, _ = _load_cache_from_coordinator(hass, entry)
+    monthly_history_cache, _ = _load_cache_from_coordinator(hass, entry, meter)
 
     if not monthly_history_cache:
-        persisted_cache = await _load_persisted_cache(hass, entry.entry_id)
+        persisted_cache = await _load_persisted_cache(hass, meter.scope(entry.entry_id) if meter else entry.entry_id)
         if persisted_cache:
             monthly_history_cache = persisted_cache
             _LOGGER.info("Restored monthly history cache from storage (%d complete months)", len(monthly_history_cache))
@@ -2024,18 +2056,19 @@ async def _ensure_monthly_history_cache(
     last_update: Any,
     energy_usage_data: Dict[str, Any],
     filter_status: List[Dict[str, Any]],
+    meter: Meter | None = None,
 ) -> Tuple[Dict[str, MonthCacheEntry], Optional[str], StatisticsTracking, Dict[str, List[str]]]:
     """Load/build/update/enrich/persist monthly history cache."""
     now = dt_util.now()
     current_last_update_date = _extract_last_update_date(last_update)
-    _, cached_last_update_date = _load_cache_from_coordinator(hass, entry)
+    _, cached_last_update_date = _load_cache_from_coordinator(hass, entry, meter)
     last_update_date_changed = current_last_update_date != cached_last_update_date
 
     current_month_refresh_skipped = False
-    pending_statistics_reinject = _get_existing_statistics_reinject(hass, entry)
+    pending_statistics_reinject = _get_existing_statistics_reinject(hass, entry, meter)
     try:
         monthly_history_cache, cache_was_modified = await _load_or_build_cache(
-            api, hass, entry, last_update, energy_usage_data, now
+            api, hass, entry, last_update, energy_usage_data, now, meter
         )
         usage_snapshot_before_update = _snapshot_historical_month_usage_values(
             monthly_history_cache, now
@@ -2057,7 +2090,7 @@ async def _ensure_monthly_history_cache(
         )
         if cache_was_modified or enrichment_modified:
             try:
-                await _save_persisted_cache(hass, entry.entry_id, monthly_history_cache)
+                await _save_persisted_cache(hass, meter.scope(entry.entry_id) if meter else entry.entry_id, monthly_history_cache)
             except Exception as err:
                 _LOGGER.warning("Failed to persist cache: %s", err)
     except Exception as err:
@@ -2065,13 +2098,13 @@ async def _ensure_monthly_history_cache(
             "Error in monthly history cache logic: %s", err,
             extra={"error_type": type(err).__name__}, exc_info=True,
         )
-        monthly_history_cache = {}
+        monthly_history_cache, _ = _load_cache_from_coordinator(hass, entry, meter)
 
     effective_last_update_date = (
         cached_last_update_date if current_month_refresh_skipped
         else current_last_update_date
     )
-    statistics_tracking = _get_or_create_statistics_tracking(hass, entry)
+    statistics_tracking = _get_or_create_statistics_tracking(hass, entry, meter)
     statistics_reinject = _serialize_statistics_reinject(pending_statistics_reinject)
     return (
         monthly_history_cache,
@@ -2115,6 +2148,7 @@ def _build_coordinator_return_dict(
         "usage_insight_last_year": usage_insight_last_year_data,
         "active_model": active_model,
         "delivery_types": delivery_types,
+        "primary_delivery_type": api.delivery_type,
         "residential_unit": api.residential_unit,
         "residential_unit_detail": residential_unit_detail_data,
         "usage_this_year": usage_this_year,
@@ -2239,6 +2273,202 @@ def _handle_grant_expired(hass: HomeAssistant, entry: ConfigEntry, err: MijntedG
     raise UpdateFailed(translation_domain=DOMAIN, translation_key="grant_expired") from err
 
 
+def _discover_reporting_meters(payload: Dict[str, Any], previous: Dict[str, Meter]) -> Dict[str, Meter]:
+    """Keep discovered identities through partial metadata responses."""
+    meters = previous.copy()
+    primary = str(payload.get("primary_delivery_type"))
+    for delivery_type, delivery in delivery_payloads(payload).items():
+        if not delivery_type.isascii() or not delivery_type.isdecimal():
+            continue
+        if is_water_delivery(delivery):
+            kind = get_water_kind(delivery_type, delivery.get("active_model")) or "water"
+            water = Meter(delivery_type, UNIT_WATER, kind)
+            meters[water.key] = water
+            continue
+        units = {
+            canonical_unit(unit.get(field))
+            for unit in delivery.get("unit_of_measures") or [] if isinstance(unit, dict)
+            for field in ("value", "displayName")
+        }
+        if UNIT_HEAT_ENERGY in units:
+            heating = Meter(delivery_type, UNIT_HEAT_ENERGY, "heating")
+            meters[heating.key] = heating
+        if not payload.get("primary_unresolved") and delivery_type != primary and UNIT_MIJNTED in units:
+            heating = Meter(delivery_type, UNIT_MIJNTED, "heating")
+            meters[heating.key] = heating
+    return meters
+
+
+async def _water_history(
+    api: MijntedApi, hass: HomeAssistant, entry: ConfigEntry, meter: Meter, now: datetime,
+) -> Tuple[Dict[str, MonthCacheEntry], bool]:
+    """Store published water totals without assuming the raw meters reset in January."""
+    scope = meter.scope(entry.entry_id)
+    previous = _previous_payload(hass, entry, meter)
+    dirty = previous.get("water_cache_dirty", False)
+    cache, _ = _load_cache_from_coordinator(hass, entry, meter)
+    if not cache and not dirty:
+        cache = await _load_persisted_cache(hass, scope, strict=True) or {}
+    retained = DateUtil.get_last_n_months_from_date(CACHE_HISTORY_MONTHS + 1, now.date())
+    months = {DateUtil.format_month_key(year, month) for month, year in retained}
+    cache = {key: record for key, record in cache.items() if key in months}
+    before = {key: record.to_dict() for key, record in cache.items()}
+    results = await _fetch_missing_years_data(api, {year for _, year in retained}, None, now.year)
+    for year, result in results.items():
+        for row in result.get("monthlyEnergyUsages", []):
+            if not isinstance(row, dict):
+                continue
+            month_year = row.get("monthYear")
+            parsed = DataUtil.parse_month_year(month_year) if isinstance(month_year, str) else None
+            value = published_usage(row)
+            if parsed is None or parsed[1] != year or value is None:
+                continue
+            month, _ = parsed
+            key = DateUtil.format_month_key(year, month)
+            if key not in months:
+                continue
+            cache[key] = replace(
+                _empty_month_cache_entry(month, year), total_usage=value, published_usage=value,
+                average_usage=finite_usage(row.get("averageEnergyUseForBillingUnit")),
+                finalized=True, state=MONTH_STATE_FINALIZED,
+            )
+    if dirty or before != {key: record.to_dict() for key, record in cache.items()}:
+        dirty = not await _save_persisted_cache(hass, scope, cache, verify=True)
+    return cache, dirty
+
+
+async def _project_heating_meter(
+    api: MijntedApi, hass: HomeAssistant, entry: ConfigEntry, meter: Meter,
+    source: Dict[str, Any], trackers: Dict[str, Tuple[DailyUsageTracker, DeviceNameTracker]],
+) -> Dict[str, Any]:
+    """Run the existing dated reporting pipeline against an isolated heating meter."""
+    usage, sync, readings, insight = await asyncio.gather(
+        api.get_energy_usage(), api.get_last_data_update(), api.get_filter_status(),
+        api.get_usage_insight(), return_exceptions=True,
+    )
+    usage = _handle_gather_result("meter_usage", usage, {}, api.residential_unit)
+    sync = _handle_gather_result("meter_sync", sync, {}, api.residential_unit)
+    readings = _handle_gather_result("meter_readings", readings, [], api.residential_unit)
+    insight = _handle_gather_result("meter_insight", insight, {}, api.residential_unit)
+    if not readings and not usage.get("monthlyEnergyUsages"):
+        return {**_previous_payload(hass, entry, meter), "meter_available": False}
+    last_update = ApiUtil.extract_value(sync, "")
+    cache, cached_date, tracking, reinject = await _ensure_monthly_history_cache(
+        api, hass, entry, last_update, usage, readings, meter,
+    )
+    scope = meter.scope(entry.entry_id)
+    if scope not in trackers:
+        trackers[scope] = DailyUsageTracker(hass, scope), DeviceNameTracker(hass, scope)
+    daily_tracker, name_tracker = trackers[scope]
+    payload = {
+        "active_model": source.get("active_model"), "residential_unit": api.residential_unit,
+        "filter_status": readings, "last_update": last_update, "energy_usage_data": usage,
+        "usage_this_year": usage,
+        "delivery_types": [meter.delivery_type], "primary_delivery_type": meter.delivery_type,
+        "usage_insight": insight if isinstance(insight, dict) and canonical_unit(insight.get("unitType")) == meter.unit else {},
+        "monthly_history_cache": cache, "cached_last_update_date": cached_date,
+        "statistics_tracking": tracking, "statistics_reinject": reinject,
+    }
+    await _prepare_reading_report(payload, daily_tracker, last_update, readings, cache)
+    if payload["reading_report"].get("value") is None:
+        payload["reading_report"] = _latest_publication(cache)
+    payload["device_names"] = await name_tracker.async_update(payload)
+    return payload
+
+
+async def _prepare_reading_report(
+    payload: Dict[str, Any], tracker: DailyUsageTracker, last_update: Any,
+    readings: List[Dict[str, Any]], cache: Dict[str, MonthCacheEntry],
+) -> None:
+    """Project reports from a complete checkpoint and that meter's own baseline."""
+    source_date = DateUtil.parse_last_sync_date(last_update)
+    source_key = DateUtil.format_month_key(source_date.year, source_date.month) if source_date else ""
+    month = cache.get(source_key)
+    payload["daily_usage"] = await tracker.async_update(
+        last_update, readings, dt_util.now(), {device.id for device in month.devices} if month else set(),
+    )
+    snapshot = tracker.reading_snapshot
+    report_date = DateUtil.parse_last_sync_date(snapshot.get("date"))
+    report_key = DateUtil.format_month_key(report_date.year, report_date.month) if report_date else ""
+    report_month = cache.get(report_key)
+    payload["reading_report"] = build_reading_report(snapshot, report_month.to_dict() if report_month else {})
+
+
+def _latest_publication(cache: Dict[str, MonthCacheEntry]) -> Dict[str, Any]:
+    """Return a published period when no complete dated observation is available."""
+    published = [record for record in cache.values() if record.published_usage is not None]
+    if not published:
+        return {}
+    latest = max(published, key=lambda record: (record.year, record.month))
+    return {"value": latest.published_usage, "month_id": latest.month_id,
+            "start_date": latest.start_date, "end_date": latest.end_date, "value_source": "published"}
+
+
+async def _fetch_reporting_meters(
+    api: MijntedApi, hass: HomeAssistant, entry: ConfigEntry, payload: Dict[str, Any],
+    trackers: Dict[str, Tuple[DailyUsageTracker, DeviceNameTracker]],
+) -> None:
+    """Discover and update enabled meters without failing the primary delivery."""
+    previous = _previous_payload(hass, entry)
+    meters = _discover_reporting_meters(payload, previous.get("meters", {}))
+    sources = delivery_payloads(payload)
+    enabled = entry.data.get(CONF_ENABLED_METERS)
+    payload["meters"] = meters
+    async def fetch(key: str, meter: Meter) -> Tuple[str, Dict[str, Any]]:
+        """Bound each meter's work, including backfill and retries."""
+        try:
+            async with asyncio.timeout(ADDITIONAL_METER_REFRESH_TIMEOUT):
+                source = sources.get(meter.delivery_type)
+                if source is None:
+                    raise MijntedApiError("Delivery not present in current discovery response")
+                view = api.for_meter(meter.delivery_type, meter.unit)
+                if meter.unit != UNIT_WATER:
+                    return key, await _project_heating_meter(view, hass, entry, meter, source, trackers)
+                cache, dirty = await _water_history(view, hass, entry, meter, dt_util.now())
+                return key, {
+                    "active_model": source.get("active_model"), "monthly_history_cache": cache,
+                    "meter_available": bool(cache or source.get("filter_status")),
+                    "reading_report": _latest_publication(cache), "water_cache_dirty": dirty,
+                }
+        except TimeoutError:
+            _LOGGER.warning("Optional meter %s exceeded its refresh budget", key)
+        except Exception as err:
+            _LOGGER.warning("Could not refresh meter %s: %s", key, err)
+        return key, {**previous.get("meter_data", {}).get(key, {}), "meter_available": False}
+
+    payload["meter_data"] = dict(await asyncio.gather(*(
+        fetch(key, meter) for key, meter in meters.items() if enabled is None or key in enabled
+    )))
+
+
+async def _resolve_primary_delivery(
+    api: MijntedApi, hass: HomeAssistant, entry: ConfigEntry,
+) -> Tuple[str | None, Dict[str, Dict[str, Any]]]:
+    """Choose a fresh default or prove the binding before reading legacy history."""
+    saved = entry.data.get(CONF_PRIMARY_DELIVERY)
+    if saved is not None:
+        return str(saved), {}
+    deliveries = list(dict.fromkeys(
+        str(delivery) for delivery in api.delivery_types
+        if type(delivery) in (str, int) and str(delivery).isascii() and str(delivery).isdecimal()
+    ))
+    if not deliveries:
+        return None, {}
+    legacy, numbers, model = legacy_identity(hass, entry, api.residential_unit)
+    try:
+        cache = await _load_persisted_cache(hass, entry.entry_id, strict=True)
+    except Exception:
+        legacy = True  # A failed read does not establish that this is a fresh entry.
+    else:
+        if cache:
+            legacy = True
+            numbers.update(str(device.id) for record in cache.values() for device in record.devices)
+    if not legacy:
+        return deliveries[0], {}
+    candidates = await _fetch_extra_delivery_types(api, deliveries, include_primary=True)
+    return match_legacy_delivery(candidates, numbers, model), candidates
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up MijnTed from a config entry.
     
@@ -2252,6 +2482,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     daily_tracker = DailyUsageTracker(hass, entry.entry_id)
     name_tracker = DeviceNameTracker(hass, entry.entry_id)
+    meter_trackers: Dict[str, Tuple[DailyUsageTracker, DeviceNameTracker]] = {}
 
     async def token_update_callback(refresh_token: str, access_token: Optional[str], residential_unit: Optional[str], refresh_token_expires_at: Optional[datetime] = None) -> None:
         """Callback to persist updated tokens to config entry."""
@@ -2303,6 +2534,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async with api:
                 await api.authenticate()
                 _sync_tokens_to_config(hass, entry, api)
+                if not isinstance(api.delivery_types, list):
+                    api.delivery_types = await api.get_delivery_types()
+                primary, candidates = await _resolve_primary_delivery(api, hass, entry)
+                if primary is None:
+                    payload = {
+                        "primary_unresolved": True, "primary_delivery_type": None,
+                        "residential_unit": api.residential_unit, "delivery_types": api.delivery_types,
+                        "extra_delivery_data": candidates, "primary_candidates": candidates,
+                    }
+                    payload["device_names"] = await name_tracker.async_update(payload)
+                    await _fetch_reporting_meters(api, hass, entry, payload, meter_trackers)
+                    return payload
+                api.delivery_type = primary
 
                 data = await _fetch_and_normalize_api_data(api)
                 energy_usage_data = data["energy_usage_data"]
@@ -2355,21 +2599,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     statistics_reinject,
                     data["extra_delivery_data"],
                 )
-                source_date = DateUtil.parse_last_sync_date(last_update)
-                source_month = DateUtil.format_month_key(source_date.year, source_date.month) if source_date else ""
-                source_entry = monthly_history_cache.get(source_month)
-                expected_devices = {device.id for device in source_entry.devices} if source_entry else set()
-                payload["daily_usage"] = await daily_tracker.async_update(
-                    last_update, filter_status, dt_util.now(), expected_devices,
-                )
-                snapshot = daily_tracker.reading_snapshot
-                report_date = DateUtil.parse_last_sync_date(snapshot.get("date"))
-                report_key = DateUtil.format_month_key(report_date.year, report_date.month) if report_date else ""
-                report_month = monthly_history_cache.get(report_key)
-                payload["reading_report"] = build_reading_report(
-                    snapshot, report_month.to_dict() if report_month else {},
-                )
+                await _prepare_reading_report(payload, daily_tracker, last_update, filter_status, monthly_history_cache)
                 payload["device_names"] = await name_tracker.async_update(payload)
+                await _fetch_reporting_meters(api, hass, entry, payload, meter_trackers)
+                if entry.data.get(CONF_PRIMARY_DELIVERY) is None:
+                    hass.config_entries.async_update_entry(
+                        entry, data={**entry.data, CONF_PRIMARY_DELIVERY: primary},
+                    )
                 return payload
         except MijntedGrantExpiredError as err:
             _handle_grant_expired(hass, entry, err)
@@ -2409,8 +2645,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     await coordinator.async_config_entry_first_refresh()
+    coordinator.mijnted_translations = await async_load_translations(hass)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    views: Dict[str, MeterCoordinator] = {}
+    coordinator.mijnted_meter_coordinators = views
+
+    def update_views() -> None:
+        """Publish per-meter snapshots before the platforms discover new entities."""
+        for key in coordinator.data.get("meter_data", {}):
+            if key not in views:
+                views[key] = MeterCoordinator(coordinator, coordinator.data["meters"][key])
+        for view in views.values():
+            view.update_from_parent()
+
+    update_views()
+    entry.async_on_unload(coordinator.async_add_listener(update_views))
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
 

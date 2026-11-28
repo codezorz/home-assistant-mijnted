@@ -41,10 +41,15 @@
     "step": {
       "init": {
         "title": "MijnTed settings",
-        "description": "Change the device name or polling interval. The polling interval must be between {minimum} and {maximum} seconds.",
+        "description": "Change the device name, polling interval, or which additional meters are shown. The polling interval must be between {minimum} and {maximum} seconds.",
         "data": {
           "name": "Device name",
-          "polling_interval": "Polling interval (seconds)"
+          "polling_interval": "Polling interval (seconds)",
+          "enabled_meters": "Additional meters",
+          "primary_delivery": "Delivery for existing history"
+        },
+        "data_description": {
+          "primary_delivery": "Home Assistant could not identify the delivery that owns your existing history. Choose the old delivery only if you can identify it by its model or meter number. Leave this blank if you are unsure."
         }
       }
     }
@@ -56,6 +61,10 @@
     "water_meter_warm": "Warm water meter",
     "water_meter_cold": "Cold water meter",
     "water_meter_generic": "Water meter",
+    "delivery_heating": "Heating",
+    "delivery_warm": "Warm water",
+    "delivery_cold": "Cold water",
+    "delivery_water": "Water",
     "reported_daily_usage": "Reported daily usage"
   },
   "entity": {

@@ -11,6 +11,16 @@ One config-entry coordinator fetches/normalizes data and prepares projections
 before platform listeners run. Entities consume that data independently of each
 other's enabled state.
 
+Additional delivery/unit devices receive passive coordinator views from that
+same poll. Their month stores, recorder series, and (for heating) dated daily
+observations and device-name reservations use the scope
+`<entry_id>_meter_<delivery_type>_<unit_key>`. Reports and corrections never
+share a meter's cached readings with another meter. Water reporting uses the
+published monthly volume and does not apply the heating boundary algorithm.
+Additional reporting tasks run in parallel with a 10-second update budget so a
+stalled meter cannot hold up the entry for its entire backfill. Unchanged water
+publications retry a failed cache write on the next refresh.
+
 | Owner | Output/responsibility |
 |---|---|
 | `__init__.py` | API payloads, monthly cache load/save/enrichment, coordinator/platform setup |

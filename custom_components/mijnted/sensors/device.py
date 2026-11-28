@@ -1,7 +1,9 @@
 from typing import Any, Dict, Optional
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .base import MijnTedSensor
-from ..const import DEFAULT_NAME, DOMAIN, UNIT_MIJNTED
+from ..const import DEFAULT_NAME, UNIT_HEAT_ENERGY, UNIT_MIJNTED
+from ..utils.readings import finite_usage
 
 
 class MijnTedDeviceSensor(MijnTedSensor):
@@ -39,6 +41,11 @@ class MijnTedDeviceSensor(MijnTedSensor):
         self.device_number = device_number
         self._attr_icon = "mdi:radiator"
         self._attr_suggested_display_precision = 0
+        if self._usage_unit == UNIT_HEAT_ENERGY:
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+            self._attr_native_unit_of_measurement = self._meter.unit
+            self._attr_suggested_display_precision = 3
         self._refresh_name_placeholders()
 
     @property
@@ -79,20 +86,25 @@ class MijnTedDeviceSensor(MijnTedSensor):
         super()._handle_coordinator_update()
 
     @property
-    def state(self) -> Any:
-        """Return the state of the sensor.
-        
-        Returns:
-            Current reading value from device data, or last known value if unavailable
-        """
+    def native_value(self) -> Any:
+        """Return the latest reading, retaining the previous value on partial responses."""
         device_data = self._device_data
         if device_data:
             value = device_data.get("currentReadingValue")
+            if self._usage_unit == UNIT_HEAT_ENERGY:
+                value = finite_usage(value)
             if value is not None:
                 self._update_last_known_value(value)
                 return value
         
         return self._last_known_value
+
+    @property
+    def state(self) -> Any:
+        """Let HA convert GJ values when the user selects another energy unit."""
+        if self._usage_unit == UNIT_HEAT_ENERGY:
+            return super().state
+        return self.native_value
 
     @property
     def unit_of_measurement(self) -> str:
@@ -101,6 +113,10 @@ class MijnTedDeviceSensor(MijnTedSensor):
         Returns:
             Unit of measurement string from device data, or empty string if not available
         """
+        if self._usage_unit == UNIT_HEAT_ENERGY:
+            return super().unit_of_measurement
+        if self._meter:
+            return self._meter.unit
         device_data = self._device_data
         if device_data:
             unit = device_data.get("unitOfMeasure", "")

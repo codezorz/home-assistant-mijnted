@@ -39,10 +39,15 @@
     "step": {
       "init": {
         "title": "MijnTed-Einstellungen",
-        "description": "Ändere den Gerätenamen oder das Abrufintervall. Das Abrufintervall muss zwischen {minimum} und {maximum} Sekunden liegen.",
+        "description": "Ändere den Gerätenamen, das Abrufintervall oder die angezeigten zusätzlichen Zähler. Das Abrufintervall muss zwischen {minimum} und {maximum} Sekunden liegen.",
         "data": {
           "name": "Gerätename",
-          "polling_interval": "Abrufintervall (Sekunden)"
+          "polling_interval": "Abrufintervall (Sekunden)",
+          "enabled_meters": "Zusätzliche Zähler",
+          "primary_delivery": "Lieferung für den bisherigen Verlauf"
+        },
+        "data_description": {
+          "primary_delivery": "Home Assistant konnte nicht ermitteln, zu welcher Lieferung dein bisheriger Verlauf gehört. Wähle die bisherige Lieferung nur aus, wenn du sie am Modell oder an der Zählernummer erkennst. Lass das Feld im Zweifel leer."
         }
       }
     }
@@ -54,6 +59,10 @@
     "water_meter_warm": "Warmwasserzähler",
     "water_meter_cold": "Kaltwasserzähler",
     "water_meter_generic": "Wasserzähler",
+    "delivery_heating": "Heizung",
+    "delivery_warm": "Warmwasser",
+    "delivery_cold": "Kaltwasser",
+    "delivery_water": "Wasser",
     "reported_daily_usage": "Gemeldeter Tagesverbrauch"
   },
   "entity": {

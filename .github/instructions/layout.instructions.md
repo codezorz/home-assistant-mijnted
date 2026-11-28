@@ -12,9 +12,11 @@ custom_components/mijnted/
 ├── auth.py              # MijntedAuth: token refresh / credential rotation
 ├── config_flow.py       # Config flow UI and validation
 ├── const.py             # Domain, URLs, timeouts, platforms, all constants
+├── meters.py            # Delivery/unit identity and passive coordinator views
 ├── exceptions.py        # MijntedApiError, MijntedAuthenticationError, etc.
 ├── localization.py      # HA-loaded labels, room mapping, statistic-name synchronization
 ├── naming.py            # Durable duplicate-name reservations and coordinator name projection
+├── primary.py           # Safe binding of existing primary identities to a delivery
 ├── reconciliation.py    # Revisable published-month boundaries and retry state
 ├── daily.py             # Persisted forward-only dated reading checkpoints
 ├── manifest.json        # Metadata, version, requirements

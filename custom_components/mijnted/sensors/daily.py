@@ -7,7 +7,7 @@ from homeassistant.components.recorder.models import StatisticData, StatisticMet
 from homeassistant.util import dt as dt_util
 
 from .base import MijnTedSensor
-from ..const import DOMAIN, UNIT_MIJNTED
+from ..const import DOMAIN
 from ..utils.readings import finite_usage
 
 
@@ -40,9 +40,9 @@ async def async_import_daily_statistics(sensor: MijnTedSensor) -> None:
         return
     metadata = StatisticMetaData(
         source=DOMAIN, statistic_id=daily_statistic_id(sensor._entry_id),
-        name=sensor.coordinator.mijnted_translations.statistic_name("reported_daily_usage"),
+        name=sensor._statistic_name("reported_daily_usage"),
         mean_type=StatisticMeanType.ARITHMETIC,
-        has_sum=False, unit_of_measurement=UNIT_MIJNTED, unit_class=None,
+        has_sum=False, unit_of_measurement=sensor._usage_unit, unit_class=None,
     )
     rows = [StatisticData(
         start=datetime.combine(date.fromisoformat(day), time.min, dt_util.get_default_time_zone()),

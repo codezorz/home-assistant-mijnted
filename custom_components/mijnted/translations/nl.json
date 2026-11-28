@@ -39,10 +39,15 @@
     "step": {
       "init": {
         "title": "MijnTed-instellingen",
-        "description": "Wijzig de apparaatnaam of het ophaalinterval. Het ophaalinterval moet tussen {minimum} en {maximum} seconden liggen.",
+        "description": "Wijzig de apparaatnaam, het ophaalinterval of de extra meters die worden getoond. Het ophaalinterval moet tussen {minimum} en {maximum} seconden liggen.",
         "data": {
           "name": "Apparaatnaam",
-          "polling_interval": "Ophaalinterval (seconden)"
+          "polling_interval": "Ophaalinterval (seconden)",
+          "enabled_meters": "Extra meters",
+          "primary_delivery": "Levering voor de bestaande historie"
+        },
+        "data_description": {
+          "primary_delivery": "Home Assistant kon niet bepalen bij welke levering je bestaande historie hoort. Kies de oude levering alleen als je die aan het model of meternummer herkent. Laat dit veld leeg als je het niet zeker weet."
         }
       }
     }
@@ -54,6 +59,10 @@
     "water_meter_warm": "Warmwatermeter",
     "water_meter_cold": "Koudwatermeter",
     "water_meter_generic": "Watermeter",
+    "delivery_heating": "Verwarming",
+    "delivery_warm": "Warm water",
+    "delivery_cold": "Koud water",
+    "delivery_water": "Water",
     "reported_daily_usage": "Gerapporteerd dagverbruik"
   },
   "entity": {
